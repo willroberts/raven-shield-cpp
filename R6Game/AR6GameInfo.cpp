@@ -610,56 +610,80 @@ __declspec(naked) void AR6GameInfo_MasterServerManagerCatchContext(void)
     }
 }
 
-// R6Game.dll @ 100012e0 : execNativeLogout
+// R6Game.dll @ 100012e0 : execNativeLogout; native VM frame, two stack arguments/RET8.
 // Sends the exiting player's authorization ID to the service outside pending level transitions.
-void __thiscall AR6GameInfo::execNativeLogout(AR6GameInfo* this, FFrame* stack, void* unusedResult)
+__declspec(naked) void __thiscall AR6GameInfo::execNativeLogout(FFrame& Stack, void* const unusedResult)
 {
-    using ScriptNative = void (__thiscall *)(UObject*, FFrame*, void*);
-    byte** codeCursor = (byte**)((byte*)stack + 0xc);
-    NativeCppExceptionRegistration exceptionRegistration;
-    exceptionRegistration.state = -1;
-    exceptionRegistration.handlerAddress = (uint)&AR6GameInfo_execNativeLogoutExceptionHandler;
-    exceptionRegistration.previousAddress = __readfsdword(0);
-    // Native ESP is saved separately at frame -0x10.
-    __writefsdword(0, (uint)&exceptionRegistration);
-    byte* argumentCode = *codeCursor;
-    APlayerController* exiting = nullptr;
-    byte opcode = *argumentCode;
-    *codeCursor = (byte*)((uint)argumentCode + 1U);
-    ScriptNative* nativeTable = (ScriptNative*)ImportedGNativesAddress;
-    UObject* receiver = *(UObject**)((byte*)stack + 8);
-    exceptionRegistration.state = 0;
-    nativeTable[opcode](receiver, stack, &exiting);
-    byte* nextCode = (byte*)((uint)*codeCursor + 1U);
-    *codeCursor = nextCode;
-    if (*nextCode == 0x42) {
-        receiver = *(UObject**)((byte*)stack + 8);
-        *codeCursor = (byte*)((uint)nextCode + 1U);
-        ScriptNative* debugNatives = (ScriptNative*)ImportedGNativesAddress;
-        debugNatives[0x42](receiver, stack, nullptr);
+    byte* nativeFrame;
+    AR6GameInfo* receiver;
+    __asm {
+        push ebp
+        mov ebp,esp
+        push 0xffffffff
+        push R6GameAddresses::AR6GameInfo_execNativeLogoutExceptionHandler
+        mov eax,fs:0x0
+        push eax
+        mov dword ptr fs:0x0,esp
+        sub esp,0x14
+        push ebx
+        push esi
+        mov nativeFrame,ebp
+        mov receiver,ecx
     }
-    if (this->Level->NetMode != 0) {
-        APlayerController* exitingController = exiting;
+    FFrame* stack = *(FFrame**)(nativeFrame + 8);
+    byte* argumentCode = *(byte**)((byte*)stack + 0xc);
+    *(uint*)(nativeFrame - 0x14) = 0;
+    uint opcode = *argumentCode;
+    byte* nextCode = (byte*)((uint)argumentCode + 1U);
+    __asm {
+        push edi
+    }
+    *(byte**)((byte*)stack + 0xc) = nextCode;
+    __asm {
+        mov dword ptr [ebp-0x10],esp
+    }
+    using ScriptNative = void (__thiscall *)(UObject*, FFrame*, void*);
+    uint* nativeTable = *(uint**)R6GameAddresses::Core_GNativesSlot;
+    UObject* context = *(UObject**)((byte*)stack + 8);
+    *(uint*)(nativeFrame - 4) = 0;
+    ((ScriptNative)nativeTable[opcode])(context, stack, nativeFrame - 0x14);
+    nextCode = (byte*)((uint)*(byte**)((byte*)stack + 0xc) + 1U);
+    *(byte**)((byte*)stack + 0xc) = nextCode;
+    if (*nextCode == 0x42) {
+        context = *(UObject**)((byte*)stack + 8);
+        *(byte**)((byte*)stack + 0xc) = (byte*)((uint)nextCode + 1U);
+        nativeTable = *(uint**)R6GameAddresses::Core_GNativesSlot;
+        ((ScriptNative)nativeTable[0x42])(context, stack, nullptr);
+    }
+    if (receiver->Level->NetMode != 0) {
+        APlayerController* exitingController = *(APlayerController**)(nativeFrame - 0x14);
         if (exitingController != nullptr &&
-            (*(uint*)((byte*)this + 0x3b4) & 0x200000U) == 0) { // m_bPendingLevelExists.
+            (*(uint*)((byte*)receiver + 0x3b4) & 0x200000U) == 0) { // m_bPendingLevelExists.
             const FString* authorizationSource =
                 (const FString*)&exitingController->m_stPlayerVerCDKeyStatus.m_szAuthorizationID; // +0x69c.
-            // Construct directly in the outgoing 12-byte value; slot +0x94 consumes and owns that same FString.
-            __asm {
-                mov eax,authorizationSource
-                sub esp,0xc
-                mov ecx,esp
-                mov dword ptr [ebp-0x1c],esp // Native temporary argument-storage binding.
-                push eax
-                call dword ptr ds:R6GameAddresses::Core_FString_CopyConstructorSlot // FString const-reference copy constructor.
-                mov eax,this
-                mov ecx,dword ptr [eax+0x5c8] // Reload m_GameService after construction.
-                mov edx,dword ptr [ecx]
-                call dword ptr [edx+0x94] // CDKeyDisconnecUser; callee removes the three FString words.
-            }
+            // The callee owns the copied header; failed service lookup leaves it outside caller cleanup.
+            uint transferred[3];
+            *(uint**)(nativeFrame - 0x1c) = transferred;
+            using CopyABI = FString* (__thiscall *)(FString*, const FString*);
+            (*(CopyABI*)R6GameAddresses::Core_FString_CopyConstructorSlot)
+                ((FString*)transferred, authorizationSource);
+            void* service = *(void**)((byte*)receiver + 0x5c8);
+            uint* serviceTable = *(uint**)service;
+            using DisconnectABI = void (__thiscall *)(void*, uint, uint, uint);
+            ((DisconnectABI)serviceTable[0x94 / 4])
+                (service, transferred[0], transferred[1], transferred[2]);
         }
     }
-    __writefsdword(0, exceptionRegistration.previousAddress);
+    __asm {
+        mov ecx,dword ptr [ebp-0xc]
+        pop edi
+        pop esi
+        mov dword ptr fs:0x0,ecx
+        pop ebx
+        mov esp,ebp
+        pop ebp
+        ret 0x8
+    }
 }
 
 // R6Game.dll @ 100013a3 : rethrow execNativeLogout's caught four-byte value

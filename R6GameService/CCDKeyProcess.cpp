@@ -3,10 +3,14 @@
 
 // Identified CCDKeyProcess members and associated cleanup; original full layout remains unresolved.
 
-// Constructs container subobjects, clears native byte ranges, publishes hash and optional message buffer with exact construction bitmap/state gaps.
-// R6GameService.dll @ 10023a00 : complete native operations and raw ABI; descriptive helper name.
-__declspec(naked) void * __thiscall ConstructCCDKeyProcess(void *owner,uint localPortWord,uint initializeSecondaryBaseWord)
+// Constructs containers, clears native byte ranges and publishes hash/message owners with exact lifetime gaps.
+// R6GameService.dll @ 10023a00 : C++ construction with native bitmap/state slots and reused incoming argument.
+__declspec(naked) void * __thiscall ConstructCCDKeyProcess
+    (void *owner,uint localPortWord,uint initializeSecondaryBaseWord)
 {
+  byte *entryFrame;
+  byte *nativeFrame;
+  byte *receiver;
   __asm {
     push   0xffffffff
     push   R6GameServiceAddresses::SelectCCDKeyConstruction
@@ -17,127 +21,122 @@ __declspec(naked) void * __thiscall ConstructCCDKeyProcess(void *owner,uint loca
     push   ebx
     push   esi
     push   edi
-    xor    edi,edi
-    mov    DWORD PTR [esp+0x10],edi
-    mov    eax,DWORD PTR [esp+0x30]
-    xor    ebx,ebx
-    mov    esi,ecx
-    cmp    eax,ebx
-    mov    DWORD PTR [esp+0x14],esi
-    je     Branch1
-    mov    DWORD PTR [esi+0x4],0x10076a00
-    mov    edi,0x1
-  Branch1:
+    mov    entryFrame,esp
+    mov    receiver,ecx
+  }
+  uint bitmap = 0;
+  *(uint *)(entryFrame + 0x10) = bitmap;
+  uint initializeBase = *(uint *)(entryFrame + 0x30);
+  *(byte **)(entryFrame + 0x14) = receiver;
+  if (initializeBase != 0) {
+    *(uint *)(receiver + 4) = 0x10076a00;
+    bitmap = 1;
+  }
+  __asm {
     push   ebp
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clExtalloc_Override_BaseclassVTable
-    lea    ecx,[esi+0x8]
-    or     edi,0x4
-    mov    DWORD PTR [esp+0x1c],ecx
-    mov    DWORD PTR [esp+0x14],edi
-    mov    DWORD PTR [ecx+0xc],0x100769f8
-    lea    eax,[esp+0x34]
-    lea    edx,[esp+0x13]
-    push   eax
-    push   edx
-    mov    DWORD PTR [esp+0x30],0x3
-    call   R6GameServiceAddresses::InitializeThirtyByteListStorage
-    lea    ecx,[esi+0x18]
-    or     edi,0x8
-    mov    DWORD PTR [esp+0x1c],ecx
-    mov    DWORD PTR [esp+0x14],edi
-    mov    DWORD PTR [ecx+0xc],0x100769f0
-    lea    eax,[esp+0x34]
-    lea    edx,[esp+0x13]
-    push   eax
-    push   edx
-    mov    DWORD PTR [esp+0x30],0x6
-    call   R6GameServiceAddresses::InitializeTreeSentinel
-    lea    ecx,[esi+0x28]
-    or     edi,0x10
-    mov    DWORD PTR [esp+0x1c],ecx
-    mov    DWORD PTR [esp+0x14],edi
-    mov    DWORD PTR [ecx+0xc],0x100769e8
-    lea    eax,[esp+0x34]
-    lea    edx,[esp+0x13]
-    push   eax
-    push   edx
-    mov    DWORD PTR [esp+0x30],0x9
-    call   R6GameServiceAddresses::InitializeTreeSentinel
-    lea    ecx,[esi+0x38]
-    or     edi,0x20
-    mov    DWORD PTR [esp+0x1c],ecx
-    mov    DWORD PTR [esp+0x14],edi
-    mov    DWORD PTR [ecx+0xc],0x100769e0
-    lea    eax,[esp+0x34]
-    lea    edx,[esp+0x13]
-    push   eax
-    push   edx
-    mov    DWORD PTR [esp+0x30],0xc
-    call   R6GameServiceAddresses::InitializeTreeSentinel
-    mov    DWORD PTR [esp+0x28],0xa
-    lea    ebp,[esi+0x48]
-    or     edi,0x40
-    mov    ecx,ebp
-    mov    DWORD PTR [esp+0x14],edi
-    mov    DWORD PTR [esp+0x34],ecx
-    mov    DWORD PTR [ecx+0xc],0x100769d8
-    mov    BYTE PTR [esp+0x28],0xe
-    call   R6GameServiceAddresses::InitializeCircularListStorage
-    mov    ax,WORD PTR [esp+0x30]
-    mov    DWORD PTR [esi],R6GameServiceAddresses::CCDKeyProcessVTable
-    mov    DWORD PTR [esi+0xd8],ebx
-    mov    DWORD PTR [esi+0xc8],ebx
-    mov    DWORD PTR [esi+0xcc],ebx
-    mov    DWORD PTR [esi+0xd0],ebx
-    mov    DWORD PTR [esi+0xd4],ebx
-    mov    WORD PTR [esi+0x5c],ax
-    mov    BYTE PTR [esi+0x5e],bl
-    mov    eax,DWORD PTR [ebp+0x4]
-    mov    DWORD PTR [esp+0x28],0xf
-    cmp    eax,ebx
-    je     Branch2
-    mov    ecx,DWORD PTR [ebp+0x0]
-    mov    edx,DWORD PTR [ecx+0x4]
-    mov    ecx,ebp
-    push   edx
-    call   R6GameServiceAddresses::ReleaseFirstWordPayloadTreeNodes
-    mov    eax,DWORD PTR [ebp+0x0]
-    mov    DWORD PTR [eax+0x8],eax
-    mov    eax,DWORD PTR [ebp+0x0]
-    mov    DWORD PTR [eax+0x4],ebx
-    mov    eax,DWORD PTR [ebp+0x0]
-    mov    DWORD PTR [eax+0xc],eax
-    mov    DWORD PTR [ebp+0x4],ebx
-  Branch2:
-    mov    ecx,0xe
-    xor    eax,eax
-    lea    edi,[esi+0x64]
+    mov    nativeFrame,esp
+  }
+  using ListABI = void (__thiscall *)(void *,byte *,uint *);
+  using CircularABI = void (__thiscall *)(void *);
+  using ReleaseABI = uint (__thiscall *)(void *,uint);
+  using MessageABI = void * (__thiscall *)(void *,uint,uint);
+  *(uint *)receiver = R6GameServiceAddresses::clExtalloc_Override_BaseclassVTable;
+  void *member = receiver + 8;
+  bitmap |= 4;
+  *(void **)(nativeFrame + 0x1c) = member;
+  *(uint *)(nativeFrame + 0x14) = bitmap;
+  *(uint *)((byte *)member + 0xc) = 0x100769f8;
+  *(uint *)(nativeFrame + 0x28) = 3;
+  ((ListABI)R6GameServiceAddresses::InitializeThirtyByteListStorage)
+      (member,nativeFrame + 0x13,(uint *)(nativeFrame + 0x34));
+  member = receiver + 0x18;
+  bitmap |= 8;
+  *(void **)(nativeFrame + 0x1c) = member;
+  *(uint *)(nativeFrame + 0x14) = bitmap;
+  *(uint *)((byte *)member + 0xc) = 0x100769f0;
+  *(uint *)(nativeFrame + 0x28) = 6;
+  ((ListABI)R6GameServiceAddresses::InitializeTreeSentinel)
+      (member,nativeFrame + 0x13,(uint *)(nativeFrame + 0x34));
+  member = receiver + 0x28;
+  bitmap |= 0x10;
+  *(void **)(nativeFrame + 0x1c) = member;
+  *(uint *)(nativeFrame + 0x14) = bitmap;
+  *(uint *)((byte *)member + 0xc) = 0x100769e8;
+  *(uint *)(nativeFrame + 0x28) = 9;
+  ((ListABI)R6GameServiceAddresses::InitializeTreeSentinel)
+      (member,nativeFrame + 0x13,(uint *)(nativeFrame + 0x34));
+  member = receiver + 0x38;
+  bitmap |= 0x20;
+  *(void **)(nativeFrame + 0x1c) = member;
+  *(uint *)(nativeFrame + 0x14) = bitmap;
+  *(uint *)((byte *)member + 0xc) = 0x100769e0;
+  *(uint *)(nativeFrame + 0x28) = 0xc;
+  ((ListABI)R6GameServiceAddresses::InitializeTreeSentinel)
+      (member,nativeFrame + 0x13,(uint *)(nativeFrame + 0x34));
+  *(uint *)(nativeFrame + 0x28) = 0xa;
+  byte *lastMember = receiver + 0x48;
+  bitmap |= 0x40;
+  *(uint *)(nativeFrame + 0x14) = bitmap;
+  // This incoming full flag word becomes scratch; earlier initializers see it before the overwrite.
+  *(byte **)(nativeFrame + 0x34) = lastMember;
+  *(uint *)(lastMember + 0xc) = 0x100769d8;
+  *(byte *)(nativeFrame + 0x28) = 0xe;
+  ((CircularABI)R6GameServiceAddresses::InitializeCircularListStorage)(lastMember);
+  ushort port = *(ushort *)(nativeFrame + 0x30);
+  *(uint *)receiver = R6GameServiceAddresses::CCDKeyProcessVTable;
+  *(uint *)(receiver + 0xd8) = 0;
+  *(uint *)(receiver + 0xc8) = 0;
+  *(uint *)(receiver + 0xcc) = 0;
+  *(uint *)(receiver + 0xd0) = 0;
+  *(uint *)(receiver + 0xd4) = 0;
+  *(ushort *)(receiver + 0x5c) = port;
+  *(byte *)(receiver + 0x5e) = 0;
+  uint lastCount = *(uint *)(lastMember + 4);
+  *(uint *)(nativeFrame + 0x28) = 0xf;
+  if (lastCount != 0) {
+    uint head = *(uint *)lastMember;
+    uint root = *(uint *)(head + 4);
+    ((ReleaseABI)R6GameServiceAddresses::ReleaseFirstWordPayloadTreeNodes)(lastMember,root);
+    head = *(uint *)lastMember;
+    *(uint *)(head + 8) = head;
+    head = *(uint *)lastMember;
+    *(uint *)(head + 4) = 0;
+    head = *(uint *)lastMember;
+    *(uint *)(head + 0xc) = head;
+    *(uint *)(lastMember + 4) = 0;
+  }
+  __asm {
     push   0x1
-    rep    stos DWORD PTR es:[edi],eax
-    stos   BYTE PTR es:[edi],al
-    mov    ecx,0xa
-    xor    eax,eax
-    lea    edi,[esi+0x9d]
-    rep    stos DWORD PTR es:[edi],eax
+  }
+  for (uint word = 0; word < 0xe; ++word) *(uint *)(receiver + 0x64 + word * 4) = 0;
+  *(byte *)(receiver + 0x9c) = 0;
+  for (uint word = 0; word < 0xa; ++word) *(uint *)(receiver + 0x9d + word * 4) = 0;
+  void *hash;
+  __asm {
     call   R6GameServiceAddresses::CreateRegisteredHashAlgorithmThunk
     push   0x20
-    mov    DWORD PTR [esi+0x60],eax
+    mov    hash,eax
+  }
+  *(void **)(receiver + 0x60) = hash;
+  void *pendingMessage;
+  __asm {
     call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    DWORD PTR [esp+0x34],eax
-    cmp    eax,ebx
-    mov    BYTE PTR [esp+0x28],0x10
+    mov    pendingMessage,eax
+  }
+  *(void **)(nativeFrame + 0x34) = pendingMessage;
+  *(byte *)(nativeFrame + 0x28) = 0x10;
+  __asm {
     pop    ebp
-    je     Branch3
-    mov    ecx,DWORD PTR [esp+0x2c]
-    push   0x1
-    push   ecx
-    mov    ecx,eax
-    call   R6GameServiceAddresses::ConstructCMessageBuffer
-    mov    DWORD PTR [esi+0x58],eax
-    jmp    Branch4
-  Branch3:
-    mov    DWORD PTR [esi+0x58],ebx
-  Branch4:
+  }
+  if (pendingMessage != nullptr) {
+    uint currentPort = *(uint *)(entryFrame + 0x2c);
+    void *message = ((MessageABI)R6GameServiceAddresses::ConstructCMessageBuffer)(pendingMessage,currentPort,1);
+    *(void **)(receiver + 0x58) = message;
+  } else {
+    *(uint *)(receiver + 0x58) = 0;
+  }
+  __asm {
+    mov    esi,receiver
     mov    ecx,DWORD PTR [esp+0x1c]
     mov    eax,esi
     pop    edi

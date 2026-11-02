@@ -13,21 +13,26 @@ __declspec(naked) uint __stdcall thunk_SetContextCallbackAtC8(void *context,uint
   }
 }
 
-// For a nonnull context, stores callback at+c8 then changes only AL to1; null clears only AL without reading callback word.
-// R6GameService.dll @ 100235e0 : complete native operations and raw ABI; descriptive helper name.
+// Stores a callback at +c8 and sets AL to1; null clears only AL without reading the callback word.
+// R6GameService.dll @ 100235e0 : C++ guarded callback store; null clears only AL without a callback read.
 __declspec(naked) uint __stdcall SetContextCallbackAtC8(void *context,uint callbackWord)
 {
+  byte *nativeFrame;
+  uint entryEax;
   __asm {
-    mov    ecx,DWORD PTR [esp+0x4]
-    test   ecx,ecx
-    je     Branch1
-    mov    eax,DWORD PTR [esp+0x8]
-    push   eax
-    call   R6GameServiceAddresses::CCDKeyProcessSetCallback1
-    mov    al,0x1
-    ret    0x8
-  Branch1:
-    xor    al,al
+    mov    nativeFrame,esp
+    mov    entryEax,eax
+  }
+  void *owner = *(void **)(nativeFrame + 4);
+  uint output = entryEax & 0xffffff00;
+  if (owner != nullptr) {
+    uint callback = *(uint *)(nativeFrame + 8);
+    using StoreABI = uint (__thiscall *)(void *,uint);
+    uint stored = ((StoreABI)R6GameServiceAddresses::CCDKeyProcessSetCallback1)(owner,callback);
+    output = (stored & 0xffffff00) | 1;
+  }
+  __asm {
+    mov    eax,output
     ret    0x8
   }
 }
@@ -41,21 +46,26 @@ __declspec(naked) uint __stdcall thunk_SetContextCallbackAtCC(void *context,uint
   }
 }
 
-// For a nonnull context, stores callback at+cc then changes only AL to1; null clears only AL without reading callback word.
-// R6GameService.dll @ 10023600 : complete native operations and raw ABI; descriptive helper name.
+// Stores a callback at +cc and sets AL to1; null clears only AL without reading the callback word.
+// R6GameService.dll @ 10023600 : C++ guarded callback store; null clears only AL without a callback read.
 __declspec(naked) uint __stdcall SetContextCallbackAtCC(void *context,uint callbackWord)
 {
+  byte *nativeFrame;
+  uint entryEax;
   __asm {
-    mov    ecx,DWORD PTR [esp+0x4]
-    test   ecx,ecx
-    je     Branch2
-    mov    eax,DWORD PTR [esp+0x8]
-    push   eax
-    call   R6GameServiceAddresses::CCDKeyProcessSetCallback2
-    mov    al,0x1
-    ret    0x8
-  Branch2:
-    xor    al,al
+    mov    nativeFrame,esp
+    mov    entryEax,eax
+  }
+  void *owner = *(void **)(nativeFrame + 4);
+  uint output = entryEax & 0xffffff00;
+  if (owner != nullptr) {
+    uint callback = *(uint *)(nativeFrame + 8);
+    using StoreABI = uint (__thiscall *)(void *,uint);
+    uint stored = ((StoreABI)R6GameServiceAddresses::CCDKeyProcessSetCallback2)(owner,callback);
+    output = (stored & 0xffffff00) | 1;
+  }
+  __asm {
+    mov    eax,output
     ret    0x8
   }
 }
@@ -69,21 +79,26 @@ __declspec(naked) uint __stdcall thunk_SetContextCallbackAtD0(void *context,uint
   }
 }
 
-// For a nonnull context, stores callback at+d0 then changes only AL to1; null clears only AL without reading callback word.
-// R6GameService.dll @ 10023620 : complete native operations and raw ABI; descriptive helper name.
+// Stores a callback at +d0 and sets AL to1; null clears only AL without reading the callback word.
+// R6GameService.dll @ 10023620 : C++ guarded callback store; null clears only AL without a callback read.
 __declspec(naked) uint __stdcall SetContextCallbackAtD0(void *context,uint callbackWord)
 {
+  byte *nativeFrame;
+  uint entryEax;
   __asm {
-    mov    ecx,DWORD PTR [esp+0x4]
-    test   ecx,ecx
-    je     Branch3
-    mov    eax,DWORD PTR [esp+0x8]
-    push   eax
-    call   R6GameServiceAddresses::CCDKeyProcessSetCallback3
-    mov    al,0x1
-    ret    0x8
-  Branch3:
-    xor    al,al
+    mov    nativeFrame,esp
+    mov    entryEax,eax
+  }
+  void *owner = *(void **)(nativeFrame + 4);
+  uint output = entryEax & 0xffffff00;
+  if (owner != nullptr) {
+    uint callback = *(uint *)(nativeFrame + 8);
+    using StoreABI = uint (__thiscall *)(void *,uint);
+    uint stored = ((StoreABI)R6GameServiceAddresses::CCDKeyProcessSetCallback3)(owner,callback);
+    output = (stored & 0xffffff00) | 1;
+  }
+  __asm {
+    mov    eax,output
     ret    0x8
   }
 }
@@ -97,71 +112,72 @@ __declspec(naked) uint __stdcall thunk_SetContextCallbackAtD4(void *context,uint
   }
 }
 
-// For a nonnull context, stores callback at+d4 then changes only AL to1; null clears only AL without reading callback word.
-// R6GameService.dll @ 10023640 : complete native operations and raw ABI; descriptive helper name.
+// Stores a callback at +d4 and sets AL to1; null clears only AL without reading the callback word.
+// R6GameService.dll @ 10023640 : C++ guarded callback store; null clears only AL without a callback read.
 __declspec(naked) uint __stdcall SetContextCallbackAtD4(void *context,uint callbackWord)
 {
+  byte *nativeFrame;
+  uint entryEax;
   __asm {
-    mov    ecx,DWORD PTR [esp+0x4]
-    test   ecx,ecx
-    je     Branch4
-    mov    eax,DWORD PTR [esp+0x8]
-    push   eax
-    call   R6GameServiceAddresses::CCDKeyProcessSetCallback4
-    mov    al,0x1
-    ret    0x8
-  Branch4:
-    xor    al,al
+    mov    nativeFrame,esp
+    mov    entryEax,eax
+  }
+  void *owner = *(void **)(nativeFrame + 4);
+  uint output = entryEax & 0xffffff00;
+  if (owner != nullptr) {
+    uint callback = *(uint *)(nativeFrame + 8);
+    using StoreABI = uint (__thiscall *)(void *,uint);
+    uint stored = ((StoreABI)R6GameServiceAddresses::CCDKeyProcessSetCallback4)(owner,callback);
+    output = (stored & 0xffffff00) | 1;
+  }
+  __asm {
+    mov    eax,output
     ret    0x8
   }
 }
 
 // Creates/tracks a context and returns it only when nested status AL is nonzero; failed validation adds no rollback.
-// R6GameService.dll @ 10023210 : complete native operations and raw ABI; descriptive helper name.
-__declspec(naked) void * __stdcall CreateValidatedCDKeyContext(uint portWord)
+// R6GameService.dll @ 10023210 : C++ stdcall factory/status gate; failed status does not roll back tracking.
+void * __stdcall CreateValidatedCDKeyContext(uint portWord)
 {
-  __asm {
-    mov    eax,DWORD PTR [esp+0x4]
-    push   esi
-    push   eax
-    call   R6GameServiceAddresses::AllocateAndTrackContext
-    mov    esi,eax
-    test   esi,esi
-    je     Branch5
-    push   esi
-    call   R6GameServiceAddresses::ReadCDKeyContextStatus
-    test   al,al
-    je     Branch5
-    mov    eax,esi
-    pop    esi
-    ret    0x4
-  Branch5:
-    xor    eax,eax
-    pop    esi
-    ret    0x4
-  }
+  using AllocateABI = void * (__stdcall *)(uint);
+  using StatusABI = uint (__stdcall *)(void *);
+  void *context = ((AllocateABI)R6GameServiceAddresses::AllocateAndTrackContext)(portWord);
+  if (context == nullptr) return nullptr;
+  uint status = ((StatusABI)R6GameServiceAddresses::ReadCDKeyContextStatus)(context);
+  if ((byte)status == 0) return nullptr;
+  return context;
 }
 
 // Calls full registry deletion for NULL context, otherwise tail-forwards original word to registry removal.
-// R6GameService.dll @ 10023240 : complete native operations and raw ABI; descriptive helper name.
+// R6GameService.dll @ 10023240 : C++ routing with raw EAX seed and original-frame registry-removal tail.
 __declspec(naked) uint __stdcall RemoveCDKeyContextOrRegistry(uint contextWord)
 {
+  byte *nativeFrame;
   __asm {
-    mov    eax,DWORD PTR [esp+0x4]
-    test   eax,eax
-    jne    Branch6
-    call   R6GameServiceAddresses::DeleteCurrentCDKeyRegistry
-    ret    0x4
-  Branch6:
-    mov    DWORD PTR [esp+0x4],eax
+    mov    nativeFrame,esp
+  }
+  uint context = *(uint *)(nativeFrame + 4);
+  if (context == 0) {
+    __asm {
+      xor    eax,eax
+      call   R6GameServiceAddresses::DeleteCurrentCDKeyRegistry
+      ret    0x4
+    }
+  }
+  *(uint *)(nativeFrame + 4) = context;
+  __asm {
+    mov    eax,context
     jmp    R6GameServiceAddresses::ReleaseEmptyCDKeyRegistry
   }
 }
 
-// Constructs a context, lazily creates its pointer registry and inserts a missing unsigned pointer pair; preserves native allocation/unwind gaps.
-// R6GameService.dll @ 10023300 : complete native operations and raw ABI; descriptive helper name.
+// Constructs/tracks a context in its lazy pointer registry, preserving allocation and unwind gaps.
+// R6GameService.dll @ 10023300 : C++ allocation/tracking with native construction slots and two exit frames.
 __declspec(naked) void * __stdcall AllocateAndTrackContext(uint portWord)
 {
+  byte *entryFrame;
+  byte *nativeFrame;
   __asm {
     push   0xffffffff
     push   R6GameServiceAddresses::SelectContextFactoryLifetime
@@ -173,122 +189,89 @@ __declspec(naked) void * __stdcall AllocateAndTrackContext(uint portWord)
     push   ebp
     push   edi
     xor    edi,edi
-    push   0xdc
-    mov    DWORD PTR [esp+0x14],edi
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    DWORD PTR [esp+0x10],eax
-    cmp    eax,edi
-    mov    DWORD PTR [esp+0x28],edi
-    je     Branch7
-    mov    ecx,DWORD PTR [esp+0x30]
-    push   0x1
-    push   ecx
-    mov    ecx,eax
-    call   R6GameServiceAddresses::ConstructCCDKeyProcess
-    mov    ebp,eax
-    jmp    Branch8
-  Branch7:
-    xor    ebp,ebp
-  Branch8:
-    or     ebx,0xffffffff
-    cmp    ebp,edi
-    mov    DWORD PTR [esp+0x28],ebx
-    jne    Branch9
-    pop    edi
-    pop    ebp
-    xor    eax,eax
-    pop    ebx
-    mov    ecx,DWORD PTR [esp+0x14]
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x20
-    ret    0x4
-  Branch9:
-    mov    eax,ds:0x10093bf8
+    mov    entryFrame,esp
+  }
+  using AllocateABI = void * (__stdcall *)(uint);
+  using ConstructABI = void * (__thiscall *)(void *,uint,uint);
+  using TreeABI = void (__thiscall *)(void *,byte *,uint *);
+  using PredecessorABI = uint (__cdecl *)(uint);
+  using InsertABI = void * (__thiscall *)(void *,void *,uint,uint,const void *,uint);
+  *(uint *)(entryFrame + 0x10) = 0;
+  void *allocation = ((AllocateABI)R6GameServiceAddresses::AllocateGameServiceBytes)(0xdc);
+  *(void **)(entryFrame + 0x10) = allocation;
+  *(uint *)(entryFrame + 0x28) = 0;
+  void *context = nullptr;
+  if (allocation != nullptr) {
+    uint port = *(uint *)(entryFrame + 0x30);
+    context = ((ConstructABI)R6GameServiceAddresses::ConstructCCDKeyProcess)(allocation,port,1);
+  }
+  *(uint *)(entryFrame + 0x28) = 0xffffffff;
+  if (context == nullptr) {
+    __asm {
+      pop    edi
+      pop    ebp
+      xor    eax,eax
+      pop    ebx
+      mov    ecx,DWORD PTR [esp+0x14]
+      mov    DWORD PTR fs:0x0,ecx
+      add    esp,0x20
+      ret    0x4
+    }
+  }
+  byte *registry = *(byte **)0x10093bf8;
+  __asm {
     push   esi
-    cmp    eax,edi
-    jne    Branch12
-    push   0x14
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    esi,eax
-    mov    DWORD PTR [esp+0x1c],esi
-    cmp    esi,edi
-    je     Branch10
-    mov    DWORD PTR [esi+0x10],0x100769c0
-    mov    DWORD PTR [esp+0x14],0x1
-    lea    ecx,[esi+0x4]
-    mov    DWORD PTR [esp+0x20],ecx
-    lea    edx,[esp+0x34]
-    lea    eax,[esp+0x13]
-    push   edx
-    push   eax
-    mov    DWORD PTR [esp+0x34],0x4
-    call   R6GameServiceAddresses::InitializeTreeSentinel
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clPointerMap_PAXPAVCCDKeyProcessVTable
-    jmp    Branch11
-  Branch10:
-    xor    esi,esi
-  Branch11:
-    mov    eax,esi
-    mov    DWORD PTR [esp+0x2c],ebx
-    mov    ds:0x10093bf8,eax
-  Branch12:
-    lea    ebx,[eax+0x4]
-    mov    DWORD PTR [esp+0x14],ebp
-    mov    DWORD PTR [esp+0x18],ebp
-    mov    cl,0x1
-    mov    edx,DWORD PTR [ebx]
-    mov    edi,edx
-    mov    esi,DWORD PTR [edx+0x4]
-    test   esi,esi
-    je     Branch16
-  Branch13:
-    mov    ecx,DWORD PTR [esi+0x10]
-    mov    edi,esi
-    cmp    ebp,ecx
-    setb   cl
-    test   cl,cl
-    je     Branch14
-    mov    esi,DWORD PTR [esi+0x8]
-    jmp    Branch15
-  Branch14:
-    mov    esi,DWORD PTR [esi+0xc]
-  Branch15:
-    test   esi,esi
-    jne    Branch13
-  Branch16:
-    test   cl,cl
-    mov    eax,edi
-    je     Branch18
-    cmp    edi,DWORD PTR [edx+0x8]
-    jne    Branch17
-    lea    ecx,[esp+0x14]
-    push   0x0
-    push   ecx
-    push   edi
-    lea    edx,[esp+0x2c]
-    push   esi
-    push   edx
-    jmp    Branch19
-  Branch17:
-    push   edi
-    call   R6GameServiceAddresses::OrderedTreePredecessor
-    add    esp,0x4
-  Branch18:
-    mov    ecx,DWORD PTR [esp+0x14]
-    mov    edx,DWORD PTR [eax+0x10]
-    cmp    edx,ecx
-    jae    Branch20
-    lea    edx,[esp+0x14]
-    push   0x0
-    push   edx
-    push   edi
-    lea    eax,[esp+0x28]
-    push   esi
-    push   eax
-  Branch19:
-    mov    ecx,ebx
-    call   R6GameServiceAddresses::InsertPairTreeNodeAtHint
-  Branch20:
+    mov    nativeFrame,esp
+  }
+  if (registry == nullptr) {
+    byte *pendingRegistry = (byte *)((AllocateABI)R6GameServiceAddresses::AllocateGameServiceBytes)(0x14);
+    *(byte **)(nativeFrame + 0x1c) = pendingRegistry;
+    if (pendingRegistry != nullptr) {
+      *(uint *)(pendingRegistry + 0x10) = 0x100769c0;
+      *(uint *)(nativeFrame + 0x14) = 1;
+      void *tree = pendingRegistry + 4;
+      *(void **)(nativeFrame + 0x20) = tree;
+      *(uint *)(nativeFrame + 0x2c) = 4;
+      ((TreeABI)R6GameServiceAddresses::InitializeTreeSentinel)
+          (tree,nativeFrame + 0x13,(uint *)(nativeFrame + 0x34));
+      *(uint *)pendingRegistry = R6GameServiceAddresses::clPointerMap_PAXPAVCCDKeyProcessVTable;
+    }
+    registry = pendingRegistry;
+    *(uint *)(nativeFrame + 0x2c) = 0xffffffff;
+    *(byte **)0x10093bf8 = registry;
+  }
+  // A failed registry allocation still publishes null, then enters the same unchecked tree accesses.
+  byte *tree = (byte *)((uint)registry + 4);
+  *(void **)(nativeFrame + 0x14) = context;
+  *(void **)(nativeFrame + 0x18) = context;
+  bool left = true;
+  uint head = *(uint *)tree;
+  uint parent = head;
+  uint node = *(uint *)(head + 4);
+  while (node != 0) {
+    uint key = *(uint *)(node + 0x10);
+    parent = node;
+    left = (uint)context < key;
+    node = *(uint *)(node + (left ? 8 : 0xc));
+  }
+  uint candidate = parent;
+  bool insertAtLeftmost = false;
+  if (left) {
+    if (parent == *(uint *)(head + 8)) insertAtLeftmost = true;
+    else candidate = ((PredecessorABI)R6GameServiceAddresses::OrderedTreePredecessor)(parent);
+  }
+  if (insertAtLeftmost) {
+    ((InsertABI)R6GameServiceAddresses::InsertPairTreeNodeAtHint)
+        (tree,nativeFrame + 0x20,node,parent,nativeFrame + 0x14,0);
+  } else {
+    uint currentKey = *(uint *)(nativeFrame + 0x14);
+    uint candidateKey = *(uint *)(candidate + 0x10);
+    if (candidateKey < currentKey)
+      ((InsertABI)R6GameServiceAddresses::InsertPairTreeNodeAtHint)
+          (tree,nativeFrame + 0x1c,node,parent,nativeFrame + 0x14,0);
+  }
+  __asm {
+    mov    ebp,context
     mov    ecx,DWORD PTR [esp+0x24]
     pop    esi
     mov    eax,ebp
@@ -302,65 +285,67 @@ __declspec(naked) void * __stdcall AllocateAndTrackContext(uint portWord)
 }
 
 // Calls current registry slot8, reloads current registry/count and deletes/clears it only when that word is zero.
-// R6GameService.dll @ 10023460 : complete native operations and raw ABI; descriptive helper name.
+// R6GameService.dll @ 10023460 : C++ registry removal/count gate with original argument and raw return lane.
 __declspec(naked) uint __stdcall ReleaseEmptyCDKeyRegistry(uint contextWord)
 {
+  byte *nativeFrame;
+  uint output;
   __asm {
-    mov    ecx,DWORD PTR ds:0x10093bf8
-    test   ecx,ecx
-    je     Branch22
-    mov    edx,DWORD PTR [esp+0x4]
-    mov    eax,DWORD PTR [ecx]
-    push   edx
-    call   DWORD PTR [eax+0x8]
-    mov    ecx,DWORD PTR ds:0x10093bf8
-    mov    eax,DWORD PTR [ecx+0x8]
-    test   eax,eax
-    jne    Branch22
-    test   ecx,ecx
-    je     Branch21
-    mov    eax,DWORD PTR [ecx]
-    push   0x1
-    call   DWORD PTR [eax]
-  Branch21:
-    mov    DWORD PTR ds:0x10093bf8,0x0
-  Branch22:
+    mov    nativeFrame,esp
+    mov    output,eax
+  }
+  byte *registry = *(byte **)0x10093bf8;
+  if (registry != nullptr) {
+    uint context = *(uint *)(nativeFrame + 4);
+    byte *table = *(byte **)registry;
+    using RemoveABI = uint (__thiscall *)(void *,uint);
+    (*(RemoveABI *)(table + 8))(registry,context);
+    registry = *(byte **)0x10093bf8;
+    // The count read precedes the redundant pointer test, retaining a null replacement's native fault.
+    output = *(uint *)(registry + 8);
+    if (output == 0) {
+      if (registry != nullptr) {
+        table = *(byte **)registry;
+        output = (*(RemoveABI *)table)(registry,1);
+      }
+      *(uint *)0x10093bf8 = 0;
+    }
+  }
+  __asm {
+    mov    eax,output
     ret    0x4
   }
 }
 
 // Calls nonnull current registry deleting slot with flag1, then clears global regardless of callback replacement.
-// R6GameService.dll @ 100234a0 : complete native operations and raw ABI; descriptive helper name.
-__declspec(naked) uint __cdecl DeleteCurrentCDKeyRegistry(void)
+// R6GameService.dll @ 100234a0 : C++ deleting dispatch, retaining incoming EAX when no registry exists.
+__declspec(naked) uint __cdecl DeleteCurrentCDKeyRegistry()
 {
+  uint output;
   __asm {
-    mov    ecx,DWORD PTR ds:0x10093bf8
-    test   ecx,ecx
-    je     Branch23
-    mov    eax,DWORD PTR [ecx]
-    push   0x1
-    call   DWORD PTR [eax]
-    mov    DWORD PTR ds:0x10093bf8,0x0
-  Branch23:
+    mov    output,eax
+  }
+  byte *registry = *(byte **)0x10093bf8;
+  if (registry != nullptr) {
+    using DeleteABI = uint (__thiscall *)(void *,uint);
+    byte *table = *(byte **)registry;
+    output = (*(DeleteABI *)table)(registry,1);
+    *(uint *)0x10093bf8 = 0;
+  }
+  __asm {
+    mov    eax,output
     ret
   }
 }
 
 // Reads nested byte+c through context+58, retaining pointer upper EAX; NULL context returns zero with no nested access.
-// R6GameService.dll @ 100234c0 : complete native operations and raw ABI; descriptive helper name.
-__declspec(naked) uint __stdcall ReadCDKeyContextStatus(void *context)
+// R6GameService.dll @ 100234c0 : C++ nested status read with pointer upper bits retained in EAX.
+uint __stdcall ReadCDKeyContextStatus(void *context)
 {
-  __asm {
-    mov    eax,DWORD PTR [esp+0x4]
-    test   eax,eax
-    je     Branch24
-    mov    eax,DWORD PTR [eax+0x58]
-    mov    al,BYTE PTR [eax+0xc]
-    ret    0x4
-  Branch24:
-    xor    al,al
-    ret    0x4
-  }
+  if (context == nullptr) return 0;
+  uint nested = *(uint *)((byte *)context + 0x58);
+  byte status = *(byte *)(nested + 0xc);
+  return (nested & 0xffffff00) | status;
 }
 
 // Releases current pending context allocation from inherited EBP-1c through actual shared free tail.
@@ -506,129 +491,145 @@ __declspec(naked) uint __stdcall ForwardGuardedCDKeyContextOperation6(uint word0
 }
 
 // For a nonnull context, forwards the remaining words and raw EAX; null clears only AL.
-// R6GameService.dll @ 100234e0 : complete native operations and raw ABI; descriptive helper name.
+// R6GameService.dll @ 100234e0 : C++ guarded forwarding; native incoming slots and return width.
 __declspec(naked) uint __stdcall InvokeOptionalCDKeyContextAL(uint word0,uint word1)
 {
+  byte *nativeFrame;
+  uint entryEax;
   __asm {
-    mov    ecx,DWORD PTR [esp+0x4]
-    test   ecx,ecx
-    je     Branch26
-    mov    eax,DWORD PTR [esp+0x8]
-    push   eax
-    call   R6GameServiceAddresses::ProcessInputWithinTimeLimit
-    ret    0x8
-  Branch26:
-    xor    al,al
+    mov    nativeFrame,esp
+    mov    entryEax,eax
+  }
+  void *context = *(void **)(nativeFrame + 4);
+  uint output = (entryEax & 0xffffff00);
+  if (context != nullptr) {
+    using MemberABI = uint (__thiscall *)(void *,uint);
+    uint argument1 = *(uint *)(nativeFrame + 0x8);
+    output = ((MemberABI)R6GameServiceAddresses::ProcessInputWithinTimeLimit)
+        (context,argument1);
+  }
+  __asm {
+    mov    eax,output
     ret    0x8
   }
 }
 
 // For a nonnull context, forwards the remaining full words and raw EAX; null returns zero.
-// R6GameService.dll @ 10023500 : complete native operations and raw ABI; descriptive helper name.
+// R6GameService.dll @ 10023500 : C++ guarded forwarding; native incoming slots and return width.
 __declspec(naked) uint __stdcall InvokeOptionalCDKeyContextWord(uint word0,uint word1,uint word2,uint word3,uint word4)
 {
+  byte *nativeFrame;
   __asm {
-    mov    ecx,DWORD PTR [esp+0x4]
-    test   ecx,ecx
-    je     Branch27
-    mov    eax,DWORD PTR [esp+0x14]
-    mov    edx,DWORD PTR [esp+0x10]
-    push   eax
-    mov    eax,DWORD PTR [esp+0x10]
-    push   edx
-    mov    edx,DWORD PTR [esp+0x10]
-    push   eax
-    push   edx
-    call   R6GameServiceAddresses::SendDescriptorWithText
-    ret    0x14
-  Branch27:
-    xor    eax,eax
+    mov    nativeFrame,esp
+  }
+  void *context = *(void **)(nativeFrame + 4);
+  uint output = 0;
+  if (context != nullptr) {
+    using MemberABI = uint (__thiscall *)(void *,uint,uint,uint,uint);
+    uint argument4 = *(uint *)(nativeFrame + 0x14);
+    uint argument3 = *(uint *)(nativeFrame + 0x10);
+    uint argument2 = *(uint *)(nativeFrame + 0xc);
+    uint argument1 = *(uint *)(nativeFrame + 0x8);
+    output = ((MemberABI)R6GameServiceAddresses::SendDescriptorWithText)
+        (context,argument1,argument2,argument3,argument4);
+  }
+  __asm {
+    mov    eax,output
     ret    0x14
   }
 }
 
 // For a nonnull context, forwards the remaining full words and raw EAX; null returns zero.
-// R6GameService.dll @ 10023530 : complete native operations and raw ABI; descriptive helper name.
+// R6GameService.dll @ 10023530 : C++ guarded forwarding; native incoming slots and return width.
 __declspec(naked) uint __stdcall ForwardValueDescriptorThroughContext(uint word0,uint word1,uint word2)
 {
+  byte *nativeFrame;
   __asm {
-    mov    ecx,DWORD PTR [esp+0x4]
-    test   ecx,ecx
-    je     Branch28
-    mov    eax,DWORD PTR [esp+0xc]
-    mov    edx,DWORD PTR [esp+0x8]
-    push   eax
-    push   edx
-    call   R6GameServiceAddresses::SendDescriptorWithValue
-    ret    0xc
-  Branch28:
-    xor    eax,eax
+    mov    nativeFrame,esp
+  }
+  void *context = *(void **)(nativeFrame + 4);
+  uint output = 0;
+  if (context != nullptr) {
+    using MemberABI = uint (__thiscall *)(void *,uint,uint);
+    uint argument2 = *(uint *)(nativeFrame + 0xc);
+    uint argument1 = *(uint *)(nativeFrame + 0x8);
+    output = ((MemberABI)R6GameServiceAddresses::SendDescriptorWithValue)
+        (context,argument1,argument2);
+  }
+  __asm {
+    mov    eax,output
     ret    0xc
   }
 }
 
 // For a nonnull context, forwards the remaining full words and raw EAX; null returns zero.
-// R6GameService.dll @ 10023550 : complete native operations and raw ABI; descriptive helper name.
+// R6GameService.dll @ 10023550 : C++ guarded forwarding; native incoming slots and return width.
 __declspec(naked) uint __stdcall ForwardCompoundDescriptorThroughContext(uint word0,uint word1,uint word2,uint word3)
 {
+  byte *nativeFrame;
   __asm {
-    mov    ecx,DWORD PTR [esp+0x4]
-    test   ecx,ecx
-    je     Branch29
-    mov    eax,DWORD PTR [esp+0x10]
-    mov    edx,DWORD PTR [esp+0xc]
-    push   eax
-    mov    eax,DWORD PTR [esp+0xc]
-    push   edx
-    push   eax
-    call   R6GameServiceAddresses::SendCompoundDescriptor
-    ret    0x10
-  Branch29:
-    xor    eax,eax
+    mov    nativeFrame,esp
+  }
+  void *context = *(void **)(nativeFrame + 4);
+  uint output = 0;
+  if (context != nullptr) {
+    using MemberABI = uint (__thiscall *)(void *,uint,uint,uint);
+    uint argument3 = *(uint *)(nativeFrame + 0x10);
+    uint argument2 = *(uint *)(nativeFrame + 0xc);
+    uint argument1 = *(uint *)(nativeFrame + 0x8);
+    output = ((MemberABI)R6GameServiceAddresses::SendCompoundDescriptor)
+        (context,argument1,argument2,argument3);
+  }
+  __asm {
+    mov    eax,output
     ret    0x10
   }
 }
 
 // For a nonnull context, forwards the remaining full words and raw EAX; null returns zero.
-// R6GameService.dll @ 10023580 : complete native operations and raw ABI; descriptive helper name.
+// R6GameService.dll @ 10023580 : C++ guarded forwarding; native incoming slots and return width.
 __declspec(naked) uint __stdcall DispatchRangeDescriptorThroughContext(uint word0,uint word1,uint word2,uint word3)
 {
+  byte *nativeFrame;
   __asm {
-    mov    ecx,DWORD PTR [esp+0x4]
-    test   ecx,ecx
-    je     Branch30
-    mov    eax,DWORD PTR [esp+0x10]
-    mov    edx,DWORD PTR [esp+0xc]
-    push   eax
-    mov    eax,DWORD PTR [esp+0xc]
-    push   edx
-    push   eax
-    call   R6GameServiceAddresses::UppercaseAndDispatchRanges
-    ret    0x10
-  Branch30:
-    xor    eax,eax
+    mov    nativeFrame,esp
+  }
+  void *context = *(void **)(nativeFrame + 4);
+  uint output = 0;
+  if (context != nullptr) {
+    using MemberABI = uint (__thiscall *)(void *,uint,uint,uint);
+    uint argument3 = *(uint *)(nativeFrame + 0x10);
+    uint argument2 = *(uint *)(nativeFrame + 0xc);
+    uint argument1 = *(uint *)(nativeFrame + 0x8);
+    output = ((MemberABI)R6GameServiceAddresses::UppercaseAndDispatchRanges)
+        (context,argument1,argument2,argument3);
+  }
+  __asm {
+    mov    eax,output
     ret    0x10
   }
 }
 
 // For a nonnull context, forwards the remaining full words and raw EAX; null returns zero.
-// R6GameService.dll @ 100235b0 : complete native operations and raw ABI; descriptive helper name.
+// R6GameService.dll @ 100235b0 : C++ guarded forwarding; native incoming slots and return width.
 __declspec(naked) uint __stdcall DispatchRecordThroughContext(uint word0,uint word1,uint word2,uint word3)
 {
+  byte *nativeFrame;
   __asm {
-    mov    ecx,DWORD PTR [esp+0x4]
-    test   ecx,ecx
-    je     Branch31
-    mov    eax,DWORD PTR [esp+0x10]
-    mov    edx,DWORD PTR [esp+0xc]
-    push   eax
-    mov    eax,DWORD PTR [esp+0xc]
-    push   edx
-    push   eax
-    call   R6GameServiceAddresses::CopyAndDispatchRecordFields
-    ret    0x10
-  Branch31:
-    xor    eax,eax
+    mov    nativeFrame,esp
+  }
+  void *context = *(void **)(nativeFrame + 4);
+  uint output = 0;
+  if (context != nullptr) {
+    using MemberABI = uint (__thiscall *)(void *,uint,uint,uint);
+    uint argument3 = *(uint *)(nativeFrame + 0x10);
+    uint argument2 = *(uint *)(nativeFrame + 0xc);
+    uint argument1 = *(uint *)(nativeFrame + 0x8);
+    output = ((MemberABI)R6GameServiceAddresses::CopyAndDispatchRecordFields)
+        (context,argument1,argument2,argument3);
+  }
+  __asm {
+    mov    eax,output
     ret    0x10
   }
 }

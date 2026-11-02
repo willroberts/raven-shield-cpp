@@ -3,16 +3,73 @@
 
 // R6GameService.dll data @ 1007aa14 : function metadata supplied by the exception selector.
 extern const R6GameServiceNative::FuncInfo EncryptWrapperExceptionHandlerFunctionInfo;
-// R6GameService.dll data @ 1007aa8c : function metadata supplied by the exception selector.
-extern const R6GameServiceNative::FuncInfo DecryptWrapperExceptionHandlerFunctionInfo;
-// R6GameService.dll data @ 1007aaf4 : function metadata supplied by the exception selector.
-extern const R6GameServiceNative::FuncInfo MachineValidationExceptionHandlerFunctionInfo;
 // R6GameService.dll data @ 10080988 : function metadata supplied by the exception selector.
 extern const R6GameServiceNative::FuncInfo EncryptWideHexExceptionHandlerFunctionInfo;
-// R6GameService.dll data @ 100809cc : function metadata supplied by the exception selector.
-extern const R6GameServiceNative::FuncInfo DecryptWideHexExceptionHandlerFunctionInfo;
-// R6GameService.dll data @ 100809f8 : function metadata supplied by the exception selector.
-extern const R6GameServiceNative::FuncInfo ValidateWideHexExceptionHandlerFunctionInfo;
+
+// R6GameService.dll data @ 1007aa30 : native key conversion lifetime/guard record.
+const R6GameServiceNative::UnwindEntry DecryptWrapperUnwindMap[5] = {
+  {-1, R6GameServiceAddresses::DestroyConstructedDecryptResult},
+  {0x0, R6GameServiceAddresses::DestroyDecryptInputFString},
+  {0x1, 0x0},
+  {0x2, R6GameServiceAddresses::DestroyDecryptOutputWideString},
+  {0x1, 0x0},
+};
+// R6GameService.dll data @ 1007aa58 : native key conversion lifetime/guard record.
+const R6GameServiceNative::CatchHandler DecryptWrapperCatchHandlers[2] = {
+  {0x0, R6GameServiceAddresses::UnsignedShortPointerTypeDescriptor, -32, R6GameServiceAddresses::ForwardDecryptWideError},
+  {0x0, 0x0, 0x0, R6GameServiceAddresses::ReportDecryptException},
+};
+// R6GameService.dll data @ 1007aa78 : native key conversion lifetime/guard record.
+const R6GameServiceNative::TryBlock DecryptWrapperTryMap[1] = {
+  {0x2, 0x3, 0x4, 0x2, R6GameServiceAddresses::DecryptWrapperCatchHandlers},
+};
+// R6GameService.dll data @ 1007aa8c : native key conversion lifetime/guard record.
+const R6GameServiceNative::FuncInfo DecryptWrapperExceptionHandlerFunctionInfo = {
+  0x19930520, 0x5, R6GameServiceAddresses::DecryptWrapperUnwindMap,
+  0x1, R6GameServiceAddresses::DecryptWrapperTryMap, 0x0, 0x0,
+};
+// R6GameService.dll data @ 1007aaa8 : native key conversion lifetime/guard record.
+const R6GameServiceNative::UnwindEntry MachineValidationUnwindMap[3] = {
+  {-1, R6GameServiceAddresses::DestroyValidationInputFString},
+  {0x0, 0x0},
+  {0x0, 0x0},
+};
+// R6GameService.dll data @ 1007aac0 : native key conversion lifetime/guard record.
+const R6GameServiceNative::CatchHandler MachineValidationCatchHandlers[2] = {
+  {0x0, R6GameServiceAddresses::UnsignedShortPointerTypeDescriptor, -28,
+   R6GameServiceAddresses::ForwardMachineValidationWideError},
+  {0x0, 0x0, 0x0, R6GameServiceAddresses::ReportMachineValidationException},
+};
+// R6GameService.dll data @ 1007aae0 : native key conversion lifetime/guard record.
+const R6GameServiceNative::TryBlock MachineValidationTryMap[1] = {
+  {0x1, 0x1, 0x2, 0x2, R6GameServiceAddresses::MachineValidationCatchHandlers},
+};
+// R6GameService.dll data @ 1007aaf4 : native key conversion lifetime/guard record.
+const R6GameServiceNative::FuncInfo MachineValidationExceptionHandlerFunctionInfo = {
+  0x19930520, 0x3, R6GameServiceAddresses::MachineValidationUnwindMap,
+  0x1, R6GameServiceAddresses::MachineValidationTryMap, 0x0, 0x0,
+};
+// R6GameService.dll data @ 100809a4 : native key conversion lifetime/guard record.
+const R6GameServiceNative::UnwindEntry DecryptWideHexUnwindMap[5] = {
+  {-1, R6GameServiceAddresses::DestroyConstructedDecryptWideResult},
+  {0x0, R6GameServiceAddresses::DestroyDecryptEncodedInput},
+  {0x1, R6GameServiceAddresses::DestroyDecryptPayloadBytes},
+  {0x2, R6GameServiceAddresses::DestroyDecryptSeedBytes},
+  {0x3, R6GameServiceAddresses::DestroyDecryptTemporaryText},
+};
+// R6GameService.dll data @ 100809cc : native key conversion lifetime/guard record.
+const R6GameServiceNative::FuncInfo DecryptWideHexExceptionHandlerFunctionInfo = {
+  0x19930520, 0x5, R6GameServiceAddresses::DecryptWideHexUnwindMap, 0x0, 0x0, 0x0, 0x0,
+};
+// R6GameService.dll data @ 100809e8 : native key conversion lifetime/guard record.
+const R6GameServiceNative::UnwindEntry ValidateWideHexUnwindMap[2] = {
+  {-1, R6GameServiceAddresses::DestroyWideValidationEncodedInput},
+  {0x0, R6GameServiceAddresses::DestroyWideValidationPayload},
+};
+// R6GameService.dll data @ 100809f8 : native key conversion lifetime/guard record.
+const R6GameServiceNative::FuncInfo ValidateWideHexExceptionHandlerFunctionInfo = {
+  0x19930520, 0x2, R6GameServiceAddresses::ValidateWideHexUnwindMap, 0x0, 0x0, 0x0, 0x0,
+};
 
 // Wrappers reported under UeviLCore by their native exception context; original static declarations are unresolved.
 
@@ -120,9 +177,11 @@ __declspec(naked) void __cdecl ReportEncryptException(void)
 }
 
 // Decrypts an owned FString through an outgoing by-value CRT string and constructs the hidden FString result.
-// R6GameService.dll @ 100018c0 : complete native control/access order and raw ABI retained.
+// R6GameService.dll @ 100018c0 : C++ conversion/lifetimes; native frame and owned CRT argument transfer.
 __declspec(naked) FString * __cdecl DecryptFStringWithUeviLCore(FString *hiddenResult,FString input)
 {
+  byte *nativeFrame;
+  void *outgoing;
   __asm {
     // Explicit hidden result plus owned 12-byte input; result flag-14, local CRT output-3c.
     push   ebp
@@ -137,44 +196,45 @@ __declspec(naked) FString * __cdecl DecryptFStringWithUeviLCore(FString *hiddenR
     push   esi
     push   edi
     mov    DWORD PTR [ebp-0x10],esp
-    mov    DWORD PTR [ebp-0x14],0x0
-    mov    edi,0x1
-    mov    DWORD PTR [ebp-0x4],edi
-    mov    bl,0x2
-    lea    ecx,[ebp+0xc]
-    mov    BYTE PTR [ebp-0x4],bl
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    // Construct 28-byte outgoing CRT argument in place; helper callee owns its cleanup. Save storage at-1c.
+    mov    nativeFrame,ebp
+  }
+  using DataABI = const ushort * (__thiscall *)(const FString *);
+  using ConstructABI = void * (__thiscall *)(void *,const ushort *);
+  using FStringDestroyABI = void (__thiscall *)(FString *);
+  *(uint *)(nativeFrame - 0x14) = 0;
+  *(uint *)(nativeFrame - 4) = 1;
+  *(byte *)(nativeFrame - 4) = 2;
+  const ushort *text = (*(DataABI *)R6GameServiceAddresses::Core__DFStringSlot)
+      ((const FString *)(nativeFrame + 0xc));
+  // Construct directly in the seven-word argument area; the helper owns that value.
+  __asm {
     sub    esp,0x1c
     mov    ecx,esp
-    mov    DWORD PTR [ebp-0x1c],esp
-    push   eax
-    call   DWORD PTR ds:R6GameServiceAddresses::MSVCP71_GU_char_traits_Construct_basic_stringSlot2
-    // Helper34d00 gets hidden output pointer followed by seven by-value words; constructor EAX is ignored.
+    mov    outgoing,esp
+  }
+  *(void **)(nativeFrame - 0x1c) = outgoing;
+  (*(ConstructABI *)R6GameServiceAddresses::MSVCP71_GU_char_traits_Construct_basic_stringSlot2)(outgoing,text);
+  byte *returned;
+  __asm {
     lea    eax,[ebp-0x3c]
     push   eax
     call   R6GameServiceAddresses::DecryptHexToWideString
     add    esp,0x20
-    cmp    DWORD PTR [eax+0x18],0x8
-    mov    BYTE PTR [ebp-0x4],0x3
-    jb     Branch3
-    mov    eax,DWORD PTR [eax+0x4]
-    jmp    Branch4
-  Branch3:
-    add    eax,0x4
-  Branch4:
-    mov    esi,DWORD PTR [ebp+0x8]
-    push   eax
-    mov    ecx,esi
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot2
-    // Flag result ownership after FString construction; destroy only local output here, then owned input.
-    lea    ecx,[ebp-0x3c]
-    mov    DWORD PTR [ebp-0x14],edi
-    mov    BYTE PTR [ebp-0x4],bl
-    call   DWORD PTR ds:R6GameServiceAddresses::MSVCP71_GU_char_traits_Destroy_basic_stringSlot
-    lea    ecx,[ebp+0xc]
-    mov    BYTE PTR [ebp-0x4],0x0
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringSlot
+    mov    returned,eax
+  }
+  uint capacity = *(uint *)(returned + 0x18);
+  *(byte *)(nativeFrame - 4) = 3;
+  const ushort *decoded = capacity < 8 ? (const ushort *)(returned + 4) : *(const ushort **)(returned + 4);
+  FString *output = *(FString **)(nativeFrame + 8);
+  (*(ConstructABI *)R6GameServiceAddresses::Core__ConstructFStringSlot2)(output,decoded);
+  *(uint *)(nativeFrame - 0x14) = 1;
+  *(byte *)(nativeFrame - 4) = 2;
+  using WideDestroyABI = void (__thiscall *)(void *);
+  (*(WideDestroyABI *)R6GameServiceAddresses::MSVCP71_GU_char_traits_Destroy_basic_stringSlot)(nativeFrame - 0x3c);
+  *(byte *)(nativeFrame - 4) = 0;
+  (*(FStringDestroyABI *)R6GameServiceAddresses::Core__DestroyFStringSlot)((FString *)(nativeFrame + 0xc));
+  __asm {
+    mov    esi,output
     mov    ecx,DWORD PTR [ebp-0xc]
     pop    edi
     mov    eax,esi
@@ -218,9 +278,11 @@ __declspec(naked) void __cdecl ReportDecryptException(void)
 }
 
 // Validates an owned FString through an outgoing CRT string and returns the zero-extended raw helper AL.
-// R6GameService.dll @ 100019a0 : complete native control/access order and raw ABI retained.
+// R6GameService.dll @ 100019a0 : C++ conversion/lifetimes; native frame and owned CRT argument transfer.
 __declspec(naked) uint __cdecl IsCDKeyValidOnMachine(FString input)
 {
+  byte *nativeFrame;
+  void *outgoing;
   __asm {
     // Owned 12-byte input with no hidden FString result; native return is zero-extended helper AL.
     push   ebp
@@ -235,23 +297,35 @@ __declspec(naked) uint __cdecl IsCDKeyValidOnMachine(FString input)
     push   esi
     push   edi
     mov    DWORD PTR [ebp-0x10],esp
-    mov    DWORD PTR [ebp-0x4],0x0
-    lea    ecx,[ebp+0x8]
-    mov    BYTE PTR [ebp-0x4],0x1
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    // Construct 28-byte outgoing CRT argument in place; helper34e50 owns its destruction.
+    mov    nativeFrame,ebp
+  }
+  using DataABI = const ushort * (__thiscall *)(const FString *);
+  using ConstructABI = void * (__thiscall *)(void *,const ushort *);
+  using FStringDestroyABI = void (__thiscall *)(FString *);
+  *(uint *)(nativeFrame - 4) = 0;
+  *(byte *)(nativeFrame - 4) = 1;
+  const ushort *text = (*(DataABI *)R6GameServiceAddresses::Core__DFStringSlot)
+      ((const FString *)(nativeFrame + 0x8));
+  // Construct directly in the seven-word argument area; the helper owns that value.
+  __asm {
     sub    esp,0x1c
     mov    ecx,esp
-    mov    DWORD PTR [ebp-0x18],esp
-    push   eax
-    call   DWORD PTR ds:R6GameServiceAddresses::MSVCP71_GU_char_traits_Construct_basic_stringSlot2
+    mov    outgoing,esp
+  }
+  *(void **)(nativeFrame - 0x18) = outgoing;
+  (*(ConstructABI *)R6GameServiceAddresses::MSVCP71_GU_char_traits_Construct_basic_stringSlot2)(outgoing,text);
+  uint output;
+  __asm {
     call   R6GameServiceAddresses::ValidateWideHexMachineChecksum
     add    esp,0x1c
-    // Cache zero-extended AL before lowering state-1 and destroying input; destructor EAX cannot change result.
     lea    ecx,[ebp+0x8]
     movzx  esi,al
-    mov    DWORD PTR [ebp-0x4],0xffffffff
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringSlot
+    mov    output,esi
+  }
+  *(uint *)(nativeFrame - 4) = 0xffffffff;
+  (*(FStringDestroyABI *)R6GameServiceAddresses::Core__DestroyFStringSlot)((FString *)(nativeFrame + 8));
+  __asm {
+    mov    esi,output
     mov    ecx,DWORD PTR [ebp-0xc]
     pop    edi
     mov    eax,esi
@@ -552,9 +626,11 @@ __declspec(naked) std::basic_string<unsigned short> * __cdecl EncryptWideStringT
 }
 
 // Decodes hex, discards its trailing checksum, reverses seeded low-byte XOR and sign-extends bytes into a wide string.
-// R6GameService.dll @ 10034d00 : complete native control/access order and raw ABI retained.
-__declspec(naked) std::basic_string<unsigned short> * __cdecl DecryptHexToWideString(std::basic_string<unsigned short> *output,std::basic_string<unsigned short> encodedInput)
+// R6GameService.dll @ 10034d00 : C++ decoding/lifetimes with native ESP frame and cookie exit.
+__declspec(naked) std::basic_string<unsigned short> * __cdecl DecryptHexToWideString
+    (std::basic_string<unsigned short> *hiddenResult,std::basic_string<unsigned short> encodedInput)
 {
+  byte *nativeFrame;
   __asm {
     // ESP-based EH: result flag-50, seed vector-4c, payload-3c, local CRT text-2c, saved cookie-10.
     push   0xffffffff
@@ -570,91 +646,58 @@ __declspec(naked) std::basic_string<unsigned short> * __cdecl DecryptHexToWideSt
     xor    esi,esi
     mov    DWORD PTR [esp+0x50],eax
     push   edi
-    mov    DWORD PTR [esp+0x14],esi
-    // State1 owns by-value encoded input at entryESP+8 before hex decoding. State2 owns decoded payload.
-    lea    eax,[esp+0x6c]
-    push   eax
-    lea    ecx,[esp+0x2c]
-    push   ecx
-    mov    DWORD PTR [esp+0x68],0x1
-    call   R6GameServiceAddresses::DecodeWideHexToByteVector
-    lea    edx,[esp+0x30]
-    push   edx
-    mov    BYTE PTR [esp+0x6c],0x2
-    call   R6GameServiceAddresses::PopTrailingBigEndianDword
-    // Discard popped trailer result, build seed vector; state3 then covers checksum/srand/local text construction.
-    lea    eax,[esp+0x24]
-    push   eax
-    call   R6GameServiceAddresses::BuildByteVectorFromCollectedStrings
-    add    esp,0x10
-    lea    ecx,[esp+0x18]
-    push   ecx
-    lea    ecx,[esp+0x14]
-    mov    BYTE PTR [esp+0x64],0x3
-    call   R6GameServiceAddresses::UpdateChecksumFromBuffer
-    mov    edx,DWORD PTR [esp+0x10]
-    push   edx
-    call   DWORD PTR ds:R6GameServiceAddresses::MSVCR71_srandSlot
-    add    esp,0x4
-    lea    ecx,[esp+0x38]
-    call   DWORD PTR ds:R6GameServiceAddresses::MSVCP71_GU_char_traits_Construct_basic_stringSlot3
-    // Cache payload begin/end and rand target after local CRT construction; callbacks cannot change this loop range/target.
-    mov    ebp,DWORD PTR [esp+0x30]
-    mov    edi,DWORD PTR [esp+0x2c]
-    mov    ebx,DWORD PTR ds:R6GameServiceAddresses::MSVCR71_randSlot
-    mov    BYTE PTR [esp+0x60],0x4
-    lea    esp,[esp+0x0]
-  Branch17:
-    test   edi,edi
-    je     Branch18
-    mov    eax,ebp
-    sub    eax,edi
-    cmp    esi,eax
-    jae    Branch18
-    // Call cached rand; XOR byte, sign-extend AL into AX while preserving EAX upper16, append raw word argument.
-    call   ebx
-    xor    al,BYTE PTR [edi+esi*1]
-    movsx  ax,al
-    lea    ecx,[esp+0x38]
-    push   eax
-    call   DWORD PTR ds:R6GameServiceAddresses::MSVCP71_GU_char_traits_Y_basic_stringSlot
-    inc    esi
-    jmp    Branch17
-  Branch18:
-    // Reload hidden result after loop, copy-construct from local text, then publish result ownership bit0.
-    mov    esi,DWORD PTR [esp+0x68]
-    lea    ecx,[esp+0x38]
-    push   ecx
-    mov    ecx,esi
-    call   DWORD PTR ds:R6GameServiceAddresses::MSVCP71_GU_char_traits_Construct_basic_stringSlot
-    // Lower state3 before local text destruction; seed free happens with state3 still live.
-    lea    ecx,[esp+0x38]
-    mov    DWORD PTR [esp+0x14],0x1
-    mov    BYTE PTR [esp+0x60],0x3
-    call   DWORD PTR ds:R6GameServiceAddresses::MSVCP71_GU_char_traits_Destroy_basic_stringSlot
-    mov    eax,DWORD PTR [esp+0x1c]
-    xor    ebx,ebx
-    cmp    eax,ebx
-    je     Branch19
-    push   eax
-    call   R6GameServiceAddresses::FreeThroughGlobalAllocator
-    add    esp,0x4
-  Branch19:
-    // Reset only seed vector begin/end/capacity after its free; payload free uses cached original begin EDI.
-    cmp    edi,ebx
-    mov    DWORD PTR [esp+0x1c],ebx
-    mov    DWORD PTR [esp+0x20],ebx
-    mov    DWORD PTR [esp+0x24],ebx
-    je     Branch20
-    push   edi
-    call   R6GameServiceAddresses::FreeThroughGlobalAllocator
-    add    esp,0x4
-  Branch20:
-    // Lower state0 before owned input destructor; result flag remains live if that destructor throws.
-    lea    ecx,[esp+0x6c]
-    mov    BYTE PTR [esp+0x60],0x0
-    call   DWORD PTR ds:R6GameServiceAddresses::MSVCP71_GU_char_traits_Destroy_basic_stringSlot
-    // Restore FS/registers; cookie check uses saved cookie after FS restore and retains native failure branch.
+    mov    nativeFrame,esp
+  }
+  using VectorABI = void * (__cdecl *)(void *);
+  using DecodeABI = void * (__cdecl *)(void *,const void *);
+  using PopABI = uint (__cdecl *)(void *);
+  using ChecksumABI = uint * (__thiscall *)(uint *,const void *);
+  using SrandABI = void (__cdecl *)(uint);
+  using RandABI = uint (__cdecl *)();
+  using DefaultABI = void * (__thiscall *)(void *);
+  using AppendABI = void * (__thiscall *)(void *,uint);
+  using CopyABI = void * (__thiscall *)(void *,const void *);
+  using DestroyABI = uint (__thiscall *)(void *);
+  using FreeABI = void (__cdecl *)(void *);
+  *(uint *)(nativeFrame + 0x14) = 0;
+  *(uint *)(nativeFrame + 0x60) = 1;
+  ((DecodeABI)R6GameServiceAddresses::DecodeWideHexToByteVector)(nativeFrame + 0x28,nativeFrame + 0x6c);
+  *(byte *)(nativeFrame + 0x60) = 2;
+  ((PopABI)R6GameServiceAddresses::PopTrailingBigEndianDword)(nativeFrame + 0x28);
+  ((VectorABI)R6GameServiceAddresses::BuildByteVectorFromCollectedStrings)(nativeFrame + 0x18);
+  *(byte *)(nativeFrame + 0x60) = 3;
+  ((ChecksumABI)R6GameServiceAddresses::UpdateChecksumFromBuffer)
+      ((uint *)(nativeFrame + 0x10),nativeFrame + 0x18);
+  (*(SrandABI *)R6GameServiceAddresses::MSVCR71_srandSlot)(*(uint *)(nativeFrame + 0x10));
+  (*(DefaultABI *)R6GameServiceAddresses::MSVCP71_GU_char_traits_Construct_basic_stringSlot3)(nativeFrame + 0x38);
+  uint payloadEnd = *(uint *)(nativeFrame + 0x30);
+  uint payloadBegin = *(uint *)(nativeFrame + 0x2c);
+  RandABI random = *(RandABI *)R6GameServiceAddresses::MSVCR71_randSlot;
+  *(byte *)(nativeFrame + 0x60) = 4;
+  for (uint index = 0; payloadBegin != 0 && index < payloadEnd - payloadBegin; ++index) {
+    uint value = random();
+    byte decoded = (byte)value ^ *(byte *)(payloadBegin + index);
+    // MOVSX AX,AL changes only the low word; append receives the surviving PRNG high word as well.
+    uint word = decoded < 0x80 ? decoded : 0xff00 | decoded;
+    (*(AppendABI *)R6GameServiceAddresses::MSVCP71_GU_char_traits_Y_basic_stringSlot)
+        (nativeFrame + 0x38,(value & 0xffff0000) | word);
+  }
+  void *output = *(void **)(nativeFrame + 0x68);
+  (*(CopyABI *)R6GameServiceAddresses::MSVCP71_GU_char_traits_Construct_basic_stringSlot)(output,nativeFrame + 0x38);
+  *(uint *)(nativeFrame + 0x14) = 1;
+  *(byte *)(nativeFrame + 0x60) = 3;
+  (*(DestroyABI *)R6GameServiceAddresses::MSVCP71_GU_char_traits_Destroy_basic_stringSlot)(nativeFrame + 0x38);
+  void *seed = *(void **)(nativeFrame + 0x1c);
+  if (seed != nullptr) ((FreeABI)R6GameServiceAddresses::FreeThroughGlobalAllocator)(seed);
+  // State3 remains live across both frees; a throwing free can be retried by the native vector action.
+  *(uint *)(nativeFrame + 0x1c) = 0;
+  *(uint *)(nativeFrame + 0x20) = 0;
+  *(uint *)(nativeFrame + 0x24) = 0;
+  if (payloadBegin != 0) ((FreeABI)R6GameServiceAddresses::FreeThroughGlobalAllocator)((void *)payloadBegin);
+  *(byte *)(nativeFrame + 0x60) = 0;
+  (*(DestroyABI *)R6GameServiceAddresses::MSVCP71_GU_char_traits_Destroy_basic_stringSlot)(nativeFrame + 0x6c);
+  __asm {
+    mov    esi,output
     mov    ecx,DWORD PTR [esp+0x58]
     pop    edi
     mov    eax,esi
@@ -670,9 +713,10 @@ __declspec(naked) std::basic_string<unsigned short> * __cdecl DecryptHexToWideSt
 }
 
 // Compares the trailing decoded checksum with the current collected-string checksum and destroys the owned input.
-// R6GameService.dll @ 10034e50 : complete native control/access order and raw ABI retained.
+// R6GameService.dll @ 10034e50 : boolean AL result; upper EAX retains the final imported destructor residue.
 __declspec(naked) bool __cdecl ValidateWideHexMachineChecksum(std::basic_string<unsigned short> encodedInput)
 {
+  byte *nativeFrame;
   __asm {
     // ESP-based EH: input at entryESP+4, decoded vector-1c; no PRNG calls occur in this validator.
     push   0xffffffff
@@ -683,34 +727,28 @@ __declspec(naked) bool __cdecl ValidateWideHexMachineChecksum(std::basic_string<
     sub    esp,0x10
     push   ebx
     push   esi
-    lea    eax,[esp+0x28]
-    push   eax
-    lea    ecx,[esp+0xc]
-    push   ecx
-    mov    DWORD PTR [esp+0x28],0x0
-    call   R6GameServiceAddresses::DecodeWideHexToByteVector
-    lea    edx,[esp+0x10]
-    push   edx
-    mov    BYTE PTR [esp+0x2c],0x1
-    call   R6GameServiceAddresses::PopTrailingBigEndianDword
-    add    esp,0xc
-    // Cache popped full checksum and compare with current checksum; predicate stays in BL across cleanup.
-    mov    esi,eax
-    call   R6GameServiceAddresses::ComputeCollectedStringsChecksum
-    cmp    esi,eax
-    mov    eax,DWORD PTR [esp+0xc]
-    sete   bl
-    // Normal payload free retains state1 and unreset vector fields until input lifetime ends.
-    test   eax,eax
-    je     Branch21
-    push   eax
-    call   R6GameServiceAddresses::FreeThroughGlobalAllocator
-    add    esp,0x4
-  Branch21:
-    // Lower state-1 before owned input destructor; only AL is replaced by cached boolean, upper EAX stays raw.
-    lea    ecx,[esp+0x28]
-    mov    DWORD PTR [esp+0x20],0xffffffff
-    call   DWORD PTR ds:R6GameServiceAddresses::MSVCP71_GU_char_traits_Destroy_basic_stringSlot
+    mov    nativeFrame,esp
+  }
+  using DecodeABI = void * (__cdecl *)(void *,const void *);
+  using PopABI = uint (__cdecl *)(void *);
+  using ChecksumABI = uint (__cdecl *)();
+  using FreeABI = void (__cdecl *)(void *);
+  using DestroyABI = uint (__thiscall *)(void *);
+  *(uint *)(nativeFrame + 0x20) = 0;
+  ((DecodeABI)R6GameServiceAddresses::DecodeWideHexToByteVector)(nativeFrame + 8,nativeFrame + 0x28);
+  *(byte *)(nativeFrame + 0x20) = 1;
+  uint embedded = ((PopABI)R6GameServiceAddresses::PopTrailingBigEndianDword)(nativeFrame + 8);
+  uint current = ((ChecksumABI)R6GameServiceAddresses::ComputeCollectedStringsChecksum)();
+  bool matches = embedded == current;
+  void *payload = *(void **)(nativeFrame + 0xc);
+  // Normal free leaves the state and vector words live until the input lifetime ends.
+  if (payload != nullptr) ((FreeABI)R6GameServiceAddresses::FreeThroughGlobalAllocator)(payload);
+  *(uint *)(nativeFrame + 0x20) = 0xffffffff;
+  uint residue = (*(DestroyABI *)R6GameServiceAddresses::MSVCP71_GU_char_traits_Destroy_basic_stringSlot)
+      (nativeFrame + 0x28);
+  __asm {
+    mov    eax,residue
+    mov    bl,matches
     mov    ecx,DWORD PTR [esp+0x18]
     pop    esi
     mov    al,bl

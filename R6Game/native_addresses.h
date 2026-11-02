@@ -8,6 +8,8 @@ constexpr unsigned int AR6GameInfo_MasterServerManager = 0x10001200;
 constexpr unsigned int AR6GameInfo_MasterServerManagerCatchPointer = 0x10001288;
 constexpr unsigned int AR6GameInfo_MasterServerManagerCatchContext = 0x1000129c;
 constexpr unsigned int AR6GameInfo_execNativeLogout = 0x100012e0;
+// Private CRT frame selector used by the logout VM bridge.
+constexpr unsigned int AR6GameInfo_execNativeLogoutExceptionHandler = 0x10013490;
 constexpr unsigned int AR6GameInfo_execNativeLogoutCatchPointer = 0x100013a3;
 constexpr unsigned int AR6GameInfo_execNativeLogoutCatchContext = 0x100013b7;
 constexpr unsigned int AR6GameInfo_execGetSystemUserName = 0x10001410;
@@ -745,6 +747,8 @@ constexpr unsigned int Core_GIsSSESlot = 0x10016044;
 constexpr unsigned int Core_appUnwindfSlot = 0x10016048;
 constexpr unsigned int Core_UObject_GetFullNameSlot = 0x10016058;
 constexpr unsigned int Core_FString_CopyConstructorSlot = 0x1001605c;
+// Import slot for the script native-dispatch table.
+constexpr unsigned int Core_GNativesSlot = 0x10016060;
 constexpr unsigned int Core_FString_DestructorSlot = 0x10016064;
 constexpr unsigned int Core_UObject_DestructorSlot = 0x1001610c;
 constexpr unsigned int Core_FStringNoInit_DestructorSlot = 0x10016110;

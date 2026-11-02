@@ -374,171 +374,173 @@ __declspec(naked) void __stdcall NoOpRegistrationCallbackRet54
 }
 
 // Dispatches queued 0x26/0x27 replies, retaining the opcode byte when indexed decoding fails.
-// R6GameService.dll @ 1002f960 : ECX service, RET; native word writes preserve upper callback argument bits.
-__declspec(naked) void __fastcall PumpRegistrationMessages(void *service)
+// R6GameService.dll @ 1002f960 : RET0; initial ECX word is persistent opcode scratch and is popped into ECX on exit.
+__declspec(naked) uint __fastcall PumpRegistrationMessages(void *service)
 {
+  byte *nativeFrame;
+  void *receiver;
   __asm {
-    push ecx
-    push esi
-    push edi
-    mov edi,ecx
-    call R6GameServiceAddresses::UpdateRegistrationState
-    mov al,byte ptr [edi+0x9b]
-    test al,al
-    jz registration_pump_done
-    mov ecx,dword ptr [edi+0x120]
-    call R6GameServiceAddresses::TakeNextTransportMessage
-    mov esi,eax
-    test esi,esi
-    jz registration_pump_done
-  registration_pump_next:
-    mov al,byte ptr [esi+4]
-    cmp al,0x26
-    jb registration_pump_clear_opcode
-    cmp al,0x27
-    ja registration_pump_clear_opcode
-    mov ecx,dword ptr [esi+8]
-    push 0
-    lea eax,[esp+0xc]
-    push 1
-    push eax
-    call R6GameServiceAddresses::CopyIndexedBytesExact
-    jmp registration_pump_dispatch
-  registration_pump_clear_opcode:
-    mov byte ptr [esp+8],0
-  registration_pump_dispatch:
-    mov eax,dword ptr [esp+8]
-    and eax,0xff
-    sub eax,0x66
-    jz registration_pump_opcode66
-    sub eax,0x6f
-    jz registration_pump_opcoded5
-    sub eax,4
-    jnz registration_pump_release
-    movzx dx,byte ptr [esi+4]
-    mov ecx,dword ptr [esi+8]
-    push ecx
-    push edx
-    mov ecx,edi
-    call R6GameServiceAddresses::DispatchParsedOpcode26Or27RecordList
-    jmp registration_pump_release
-  registration_pump_opcoded5:
-    movzx cx,byte ptr [esi+4]
-    mov eax,dword ptr [esi+8]
-    push eax
-    push ecx
-    mov ecx,edi
-    call R6GameServiceAddresses::DispatchParsedOpcode26Or27Strings
-    jmp registration_pump_release
-  registration_pump_opcode66:
-    movzx ax,byte ptr [esi+4]
-    mov edx,dword ptr [esi+8]
-    mov ecx,edi
-    push edx
-    push eax
-    call R6GameServiceAddresses::DispatchParsedOpcode26Or27
-  registration_pump_release:
-    mov ecx,esi
-    call R6GameServiceAddresses::DeleteOwnedObjectAtOffset8
-    push esi
-    call R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov ecx,dword ptr [edi+0x120]
-    call R6GameServiceAddresses::TakeNextTransportMessage
-    mov esi,eax
-    test esi,esi
-    jnz registration_pump_next
-  registration_pump_done:
-    pop edi
-    pop esi
-    pop ecx
+    push   ecx
+    push   esi
+    push   edi
+    mov    edi,ecx
+    mov    nativeFrame,esp
+    mov    receiver,edi
+  }
+  uint rawEax = ((uint (__thiscall *)(void *))R6GameServiceAddresses::UpdateRegistrationState)(receiver);
+  byte active = *((byte *)receiver + 0x9b);
+  rawEax = (rawEax & 0xffffff00) | active;
+  if (active != 0) {
+    using TakeABI = void * (__thiscall *)(void *);
+    void *transport = *(void **)((byte *)receiver + 0x120);
+    void *message = ((TakeABI)R6GameServiceAddresses::TakeNextTransportMessage)(transport);
+    while (message != nullptr) {
+      byte category = *((byte *)message + 4);
+      uint decodedEcx,decodedEdx;
+      if (category >= 0x26 && category <= 0x27) {
+        void *payload = *(void **)((byte *)message + 8);
+        // Failed decoding leaves the previous opcode byte, initially the low byte of the service pointer.
+        __asm {
+          mov    ecx,payload
+          push   0
+          lea    eax,[esp+0xc]
+          push   1
+          push   eax
+          call   R6GameServiceAddresses::CopyIndexedBytesExact
+          mov    decodedEcx,ecx
+          mov    decodedEdx,edx
+        }
+      } else *(byte *)(nativeFrame + 8) = 0;
+      uint opcode = *(uint *)(nativeFrame + 8) & 0xff;
+      using DispatchABI = uint (__thiscall *)(void *,uint,void *);
+      if (opcode == 0x66) {
+        uint replyWord = *((byte *)message + 4);
+        void *payload = *(void **)((byte *)message + 8);
+        ((DispatchABI)R6GameServiceAddresses::DispatchParsedOpcode26Or27)(receiver,replyWord,payload);
+      } else if (opcode == 0xd5) {
+        uint replyWord = (decodedEcx & 0xffff0000) | *((byte *)message + 4);
+        void *payload = *(void **)((byte *)message + 8);
+        ((DispatchABI)R6GameServiceAddresses::DispatchParsedOpcode26Or27Strings)(receiver,replyWord,payload);
+      } else if (opcode == 0xd9) {
+        uint replyWord = (decodedEdx & 0xffff0000) | *((byte *)message + 4);
+        void *payload = *(void **)((byte *)message + 8);
+        ((DispatchABI)R6GameServiceAddresses::DispatchParsedOpcode26Or27RecordList)(receiver,replyWord,payload);
+      }
+      ((uint (__thiscall *)(void *))R6GameServiceAddresses::DeleteOwnedObjectAtOffset8)(message);
+      ((void (__stdcall *)(void *))R6GameServiceAddresses::TailFreeThroughGlobalAllocator)(message);
+      transport = *(void **)((byte *)receiver + 0x120);
+      message = ((TakeABI)R6GameServiceAddresses::TakeNextTransportMessage)(transport);
+    }
+    rawEax = 0;
+  }
+  __asm {
+    mov    eax,rawEax
+    pop    edi
+    pop    esi
+    pop    ecx
     ret
   }
 }
 
 // Checks active providers in order and tail-dispatches secondary failure after clearing that provider.
-// R6GameService.dll @ 1002fa30 : ECX service, RET; reloads secondary state after transport callbacks.
-__declspec(naked) void __thiscall UpdateRegistrationState(void *service)
+// R6GameService.dll @ 1002fa30 : RET0; primary callbacks can change the secondary state inspected afterward.
+__declspec(naked) uint __thiscall UpdateRegistrationState(void *service)
 {
+  void *receiver;
+  uint rawEax;
   __asm {
-    push esi
-    mov esi,ecx
-    mov al,byte ptr [esi+0x9b]
-    test al,al
-    jz registration_check_secondary
-    mov ecx,dword ptr [esi+0x120]
-    call R6GameServiceAddresses::IsTransportConnected
-    test al,al
-    jnz registration_check_secondary
-    mov ecx,esi
-    call R6GameServiceAddresses::DropRegistrationTransport
-  registration_check_secondary:
-    mov al,byte ptr [esi+0x9a]
-    test al,al
-    jz registration_state_done
-    mov ecx,esi
-    call R6GameServiceAddresses::PollSecondaryRegistrationService
-    test al,al
-    jnz registration_state_done
-    mov ecx,esi
-    call R6GameServiceAddresses::ClearSecondaryServiceState
-    mov eax,dword ptr [esi]
-    mov ecx,esi
-    pop esi
-    jmp dword ptr [eax+0x1c]
-  registration_state_done:
-    pop esi
+    push   esi
+    mov    esi,ecx
+    mov    receiver,esi
+    mov    rawEax,eax
+  }
+  byte active = *((byte *)receiver + 0x9b);
+  rawEax = (rawEax & 0xffffff00) | active;
+  if (active != 0) {
+    void *transport = *(void **)((byte *)receiver + 0x120);
+    rawEax = ((uint (__thiscall *)(void *))R6GameServiceAddresses::IsTransportConnected)(transport);
+    if ((byte)rawEax == 0)
+      rawEax = ((uint (__thiscall *)(void *))R6GameServiceAddresses::DropRegistrationTransport)(receiver);
+  }
+  byte secondaryActive = *((byte *)receiver + 0x9a);
+  rawEax = (rawEax & 0xffffff00) | secondaryActive;
+  if (secondaryActive != 0) {
+    rawEax = ((uint (__thiscall *)(void *))R6GameServiceAddresses::PollSecondaryRegistrationService)(receiver);
+    if ((byte)rawEax == 0) {
+      ((uint (__thiscall *)(void *))R6GameServiceAddresses::ClearSecondaryServiceState)(receiver);
+      byte *table = *(byte **)receiver;
+      __asm {
+        mov    eax,table
+        mov    ecx,receiver
+        pop    esi
+        jmp    DWORD PTR [eax+0x1c]
+      }
+    }
+  }
+  __asm {
+    mov    eax,rawEax
+    pop    esi
     ret
   }
 }
 
 // Destroys and frees the transport, clears its fields, then tail-calls the owner even when transport was absent.
-// R6GameService.dll @ 1002fa80 : ECX service, RET; snapshots the vtable before clearing +0x120/+0x9b.
-__declspec(naked) void __fastcall DropRegistrationTransport(void *service)
+// R6GameService.dll @ 1002fa80 : RET0 tail callback; current table is captured before clearing provider fields.
+__declspec(naked) uint __fastcall DropRegistrationTransport(void *service)
 {
+  void *receiver,*transport;
   __asm {
-    push esi
-    mov esi,ecx
-    push edi
-    mov edi,dword ptr [esi+0x120]
-    test edi,edi
-    jz registration_transport_clear
-    mov ecx,edi
-    call R6GameServiceAddresses::CConnectionDestroyProvider
-    push edi
-    call R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  registration_transport_clear:
-    mov eax,dword ptr [esi]
-    mov dword ptr [esi+0x120],0
-    mov byte ptr [esi+0x9b],0
-    mov ecx,esi
-    pop edi
-    pop esi
-    jmp dword ptr [eax+8]
+    push   esi
+    mov    esi,ecx
+    push   edi
+    mov    edi,DWORD PTR [esi+0x120]
+    mov    receiver,esi
+    mov    transport,edi
+  }
+  if (transport != nullptr) {
+    ((uint (__thiscall *)(void *))R6GameServiceAddresses::CConnectionDestroyProvider)(transport);
+    ((void (__stdcall *)(void *))R6GameServiceAddresses::TailFreeThroughGlobalAllocator)(transport);
+  }
+  byte *table = *(byte **)receiver;
+  *(uint *)((byte *)receiver + 0x120) = 0;
+  *((byte *)receiver + 0x9b) = 0;
+  __asm {
+    mov    eax,table
+    mov    ecx,esi
+    pop    edi
+    pop    esi
+    jmp    DWORD PTR [eax+8]
   }
 }
 
 // Deletes the secondary provider through its first virtual slot, then clears its state fields.
-// R6GameService.dll @ 1002fac0 : ECX service, RET; retains EAX across the final field clears.
-__declspec(naked) void __thiscall ClearSecondaryServiceState(void *service)
+// R6GameService.dll @ 1002fac0 : RET0; secondary state fields are cleared only after the provider destructor returns.
+__declspec(naked) uint __thiscall ClearSecondaryServiceState(void *service)
 {
+  void *receiver;
+  uint rawEax;
   __asm {
-    push ebx
-    push esi
-    mov esi,ecx
-    xor ebx,ebx
-    mov ecx,dword ptr [esi+0x124]
-    cmp ecx,ebx
-    jz registration_secondary_clear
-    mov eax,dword ptr [ecx]
-    push 1
-    call dword ptr [eax]
-  registration_secondary_clear:
-    mov dword ptr [esi+0x124],ebx
-    mov dword ptr [esi+0x128],ebx
-    mov dword ptr [esi+0x12c],ebx
-    mov byte ptr [esi+0x9a],bl
-    pop esi
-    pop ebx
+    push   ebx
+    push   esi
+    mov    esi,ecx
+    xor    ebx,ebx
+    mov    receiver,esi
+    mov    rawEax,eax
+  }
+  void *provider = *(void **)((byte *)receiver + 0x124);
+  if (provider != nullptr) {
+    byte *table = *(byte **)provider;
+    using DeleteABI = uint (__thiscall *)(void *,uint);
+    rawEax = (*(DeleteABI *)table)(provider,1);
+  }
+  *(uint *)((byte *)receiver + 0x124) = 0;
+  *(uint *)((byte *)receiver + 0x128) = 0;
+  *(uint *)((byte *)receiver + 0x12c) = 0;
+  *((byte *)receiver + 0x9a) = 0;
+  __asm {
+    mov    eax,rawEax
+    pop    esi
+    pop    ebx
     ret
   }
 }
@@ -2722,23 +2724,52 @@ __declspec(naked) void __thiscall ForwardSecondaryLobbyLoginResults(
 }
 
 // Saves lobby-login reply type and identifiers, optionally logs the IDs, and always logs type-0x27 failure reason.
-// R6GameService.dll @ 10013210 : stdcall, RET 0x10; stores precede logging and no local exception guard is installed.
-void __stdcall ReceiveSecondaryLobbyLoginResults(uint replyWord,uint reason,int lobbyServerId,int groupId)
+// R6GameService.dll @ 10013210 : RET16; cached reply/log target, current failure reason and physical EAX result.
+__declspec(naked) uint __stdcall ReceiveSecondaryLobbyLoginResults(uint replyWord,uint reason,int lobbyServerId,int groupId)
 {
-  bool verbose = GServiceVerboseLogging != 0;
-  byte replyType = (byte)replyWord;
-  GSecondaryLobbyLoginReplyType = replyType;
-  GSecondaryLobbyServerId = lobbyServerId;
-  GSecondaryGroupId = groupId;
-  if (verbose) {
-    (*(FOutputDevice **)GLog_exref)->Logf(
-        L"callback: RegServerRcv_LobbyServerLoginResults() iLobbyServerID %i\n",lobbyServerId);
-    (*(FOutputDevice **)GLog_exref)->Logf(
-        L"callback: RegServerRcv_LobbyServerLoginResults() iGroupID %i\n",groupId);
+  byte *nativeFrame;
+  uint logging,reply,group;
+  __asm {
+    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServiceVerboseLogging
+    test   ecx,ecx
+    push   ebx
+    mov    bl,BYTE PTR [esp+0x8]
+    movzx  eax,bl
+    push   esi
+    mov    esi,DWORD PTR [esp+0x18]
+    mov    nativeFrame,esp
+    mov    logging,ecx
+    mov    reply,eax
+    mov    group,esi
   }
-  if (replyType == 0x27) {
-    (*(FOutputDevice **)GLog_exref)->Logf(
-        L"callback: RegServerRcv_LobbyServerLoginResults failed, reason = %i\n",(int)reason);
+  *(uint *)R6GameServiceAddresses::GSecondaryLobbyLoginReplyType = reply;
+  uint lobby = *(uint *)(nativeFrame + 0x14);
+  __asm {
+    push   edi
+  }
+  using LogABI = uint (__cdecl *)(FOutputDevice *,const TCHAR *,...);
+  LogABI logger = *(LogABI *)R6GameServiceAddresses::Core_FOutputDevice_LogfSlot;
+  *(uint *)R6GameServiceAddresses::GSecondaryLobbyServerId = lobby;
+  *(uint *)R6GameServiceAddresses::GSecondaryGroupId = group;
+  uint rawEax = lobby;
+  if (logging != 0) {
+    FOutputDevice *device = **(FOutputDevice ***)R6GameServiceAddresses::Core__GLogSlot;
+    rawEax = logger(device,(const TCHAR *)R6GameServiceAddresses::WideTextCallbackRegServerRcvLobbyServerLoginResultsILobbyServerIDI,lobby);
+    device = **(FOutputDevice ***)R6GameServiceAddresses::Core__GLogSlot;
+    rawEax = logger(device,(const TCHAR *)R6GameServiceAddresses::WideTextCallbackRegServerRcvLobbyServerLoginResultsIGroupIDI,group);
+  }
+  if (reply == 0x27) {
+    uint currentReason = *(uint *)(nativeFrame + 0x10);
+    FOutputDevice *device = **(FOutputDevice ***)R6GameServiceAddresses::Core__GLogSlot;
+    rawEax = logger(device,
+        (const TCHAR *)R6GameServiceAddresses::WideTextCallbackRegServerRcvLobbyServerLoginResultsFailedReasonI,currentReason);
+  }
+  __asm {
+    mov    eax,rawEax
+    pop    edi
+    pop    esi
+    pop    ebx
+    ret    0x10
   }
 }
 
@@ -3227,32 +3258,30 @@ const R6GameServiceNative::BaseOffsets<2> GRegistrationBaseOffsets = {-0x130, {0
 const R6GameServiceNative::BaseOffsets<1> GRegistrationSecondaryOffsets = {-4, {-4}};
 
 // Installs ten registration callbacks through unguarded singleton adapters in order; returns final callback word residue.
-// R6GameService.dll @ 100136d0 : complete native operations and raw ABI; descriptive helper name.
-__declspec(naked) uint __cdecl InstallRegistrationServiceCallbacks(void)
+// R6GameService.dll @ 100136d0 : no rollback; each singleton adapter reloads its current service receiver.
+uint __cdecl InstallRegistrationServiceCallbacks(void)
 {
-  __asm {
-    push   R6GameServiceAddresses::RegServerRcv_LoginRouterResult
-    call   R6GameServiceAddresses::SetRegistrationCallback
-    push   R6GameServiceAddresses::RegServerRcv_LoginDisconnection
-    call   R6GameServiceAddresses::registration_service_SetRegistrationCallback
-    push   R6GameServiceAddresses::RegServerRcv_RegisterServerResult
-    call   R6GameServiceAddresses::registration_service_SetRegistrationCallback2
-    push   R6GameServiceAddresses::RegServerRcv_RequestParentGroupResult
-    call   R6GameServiceAddresses::registration_service_SetRegistrationCallback3
-    push   R6GameServiceAddresses::ReceiveSecondaryLobbyLoginResults
-    call   R6GameServiceAddresses::registration_service_SetRegistrationCallback4
-    push   R6GameServiceAddresses::RegServerRcv_LobbyServerDisconnection
-    call   R6GameServiceAddresses::registration_service_SetRegistrationCallback6
-    push   R6GameServiceAddresses::RegServerRcv_LobbyServerNewMember
-    call   R6GameServiceAddresses::registration_service_SetRegistrationCallback7
-    push   R6GameServiceAddresses::RegServerRcv_LobbyServerUpdateGroupSettingsResults
-    call   R6GameServiceAddresses::registration_service_SetRegistrationCallback5
-    push   R6GameServiceAddresses::RegServerRcv_LobbyServerMatchStartReply
-    call   R6GameServiceAddresses::registration_service_SetRegistrationCallback8
-    push   R6GameServiceAddresses::RegServerRcv_LobbyServerMatchFinishReply
-    call   R6GameServiceAddresses::registration_service_SetRegistrationCallback9
-    ret
-  }
+  using SetABI = uint (__stdcall *)(void *);
+  ((SetABI)R6GameServiceAddresses::SetRegistrationCallback)
+      ((void *)R6GameServiceAddresses::RegServerRcv_LoginRouterResult);
+  ((SetABI)R6GameServiceAddresses::registration_service_SetRegistrationCallback)
+      ((void *)R6GameServiceAddresses::RegServerRcv_LoginDisconnection);
+  ((SetABI)R6GameServiceAddresses::registration_service_SetRegistrationCallback2)
+      ((void *)R6GameServiceAddresses::RegServerRcv_RegisterServerResult);
+  ((SetABI)R6GameServiceAddresses::registration_service_SetRegistrationCallback3)
+      ((void *)R6GameServiceAddresses::RegServerRcv_RequestParentGroupResult);
+  ((SetABI)R6GameServiceAddresses::registration_service_SetRegistrationCallback4)
+      ((void *)R6GameServiceAddresses::ReceiveSecondaryLobbyLoginResults);
+  ((SetABI)R6GameServiceAddresses::registration_service_SetRegistrationCallback6)
+      ((void *)R6GameServiceAddresses::RegServerRcv_LobbyServerDisconnection);
+  ((SetABI)R6GameServiceAddresses::registration_service_SetRegistrationCallback7)
+      ((void *)R6GameServiceAddresses::RegServerRcv_LobbyServerNewMember);
+  ((SetABI)R6GameServiceAddresses::registration_service_SetRegistrationCallback5)
+      ((void *)R6GameServiceAddresses::RegServerRcv_LobbyServerUpdateGroupSettingsResults);
+  ((SetABI)R6GameServiceAddresses::registration_service_SetRegistrationCallback8)
+      ((void *)R6GameServiceAddresses::RegServerRcv_LobbyServerMatchStartReply);
+  return ((SetABI)R6GameServiceAddresses::registration_service_SetRegistrationCallback9)
+      ((void *)R6GameServiceAddresses::RegServerRcv_LobbyServerMatchFinishReply);
 }
 
 // Tail-forward current registration callback slot, retaining native stack-word self-load/stores and volatile residue.

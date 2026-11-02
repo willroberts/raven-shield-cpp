@@ -68,79 +68,59 @@ byte * __cdecl CopyByteRangeAndReturnEnd(
 }
 
 // Pops four trailing bytes into a big-endian word, retaining native end publications and argument-slot scratch writes.
-// R6GameService.dll @ 10034550 : complete native control/access order and raw ABI retained.
+// R6GameService.dll @ 10034550 : C++ byte extraction/end publication with native incoming-word scratch.
 __declspec(naked) uint __cdecl PopTrailingBigEndianDword(void *vector)
 {
+  byte *nativeFrame;
+  byte *owner;
+  uint begin;
   __asm {
-    // Cache vector in ECX and begin in EDX; null begin bypasses end access, short unsigned span returns zero.
     mov    ecx,DWORD PTR [esp+0x4]
     mov    edx,DWORD PTR [ecx+0x4]
     test   edx,edx
     push   ebp
     push   esi
-    je     Branch5
-    mov    ebp,DWORD PTR [ecx+0x8]
-    mov    esi,ebp
-    sub    esi,edx
-    cmp    esi,0x4
-    jae    Branch6
-  Branch5:
-    pop    esi
-    xor    eax,eax
-    pop    ebp
-    ret
-  Branch6:
-    // Initial span>=4; each byte load precedes the current end!=cached-begin publication guard.
-    xor    eax,eax
-    mov    al,BYTE PTR [ebp-0x1]
+    mov    nativeFrame,esp
+    mov    owner,ecx
+    mov    begin,edx
+  }
+  uint end = 0;
+  uint length = 0;
+  if (begin != 0) {
+    end = *(uint *)(owner + 8);
+    length = end - begin;
+  }
+  if (begin == 0 || length < 4) {
+    __asm {
+      pop    esi
+      xor    eax,eax
+      pop    ebp
+      ret
+    }
+  }
+  uint output = *(byte *)(end - 1);
+  __asm {
     push   edi
-    and    eax,0xff
-    test   esi,esi
-    mov    edi,eax
-    je     Branch7
-    dec    ebp
-    mov    DWORD PTR [ecx+0x8],ebp
-  Branch7:
-    // Reload end for each successive byte; begin remains cached across all four steps.
-    mov    esi,DWORD PTR [ecx+0x8]
-    xor    eax,eax
-    mov    ah,BYTE PTR [esi-0x1]
-    or     edi,eax
-    mov    eax,esi
-    sub    eax,edx
-    // Overwrite original stack argument slot (entryESP+4) with current length after first pop.
-    mov    DWORD PTR [esp+0x10],eax
-    je     Branch8
-    dec    esi
-    mov    DWORD PTR [ecx+0x8],esi
-  Branch8:
-    mov    esi,DWORD PTR [ecx+0x8]
-    xor    eax,eax
-    mov    al,BYTE PTR [esi-0x1]
-    and    eax,0xff
-    shl    eax,0x10
-    or     edi,eax
-    mov    eax,esi
-    sub    eax,edx
-    // Same argument slot receives length after second pop; it no longer contains the vector pointer.
-    mov    DWORD PTR [esp+0x10],eax
-    je     Branch9
-    dec    esi
-    mov    DWORD PTR [ecx+0x8],esi
-  Branch9:
-    mov    eax,DWORD PTR [ecx+0x8]
-    movsx  esi,BYTE PTR [eax-0x1]
-    shl    esi,0x18
-    or     edi,esi
-    mov    esi,eax
-    sub    esi,edx
-    // Final argument scratch is length before fourth pop; preserve sign-extended high byte shifted by24.
-    mov    DWORD PTR [esp+0x10],esi
-    je     Branch10
-    dec    eax
-    mov    DWORD PTR [ecx+0x8],eax
-  Branch10:
-    // Return assembled EAX; retain cached vector ECX/begin EDX and restore saved registers, cdecl/plain RET.
+  }
+  if (length != 0) *(uint *)(owner + 8) = end - 1;
+  end = *(uint *)(owner + 8);
+  output |= (uint)*(byte *)(end - 1) << 8;
+  length = end - begin;
+  *(uint *)(nativeFrame + 0xc) = length;
+  if (length != 0) *(uint *)(owner + 8) = end - 1;
+  end = *(uint *)(owner + 8);
+  output |= (uint)*(byte *)(end - 1) << 16;
+  length = end - begin;
+  *(uint *)(nativeFrame + 0xc) = length;
+  if (length != 0) *(uint *)(owner + 8) = end - 1;
+  end = *(uint *)(owner + 8);
+  // Native sign-extension before the final shift yields these same high eight result bits.
+  output |= (uint)*(byte *)(end - 1) << 24;
+  length = end - begin;
+  *(uint *)(nativeFrame + 0xc) = length;
+  if (length != 0) *(uint *)(owner + 8) = end - 1;
+  __asm {
+    mov    edi,output
     mov    eax,edi
     pop    edi
     pop    esi

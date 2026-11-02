@@ -11,9 +11,10 @@ byte GForwardChecksumReady = 0;
 byte GReflectedChecksumReady = 0;
 
 // Checksums the builder returned vector, frees separately owned local storage and preserves the computed word.
-// R6GameService.dll @ 10034a30 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __cdecl ComputeCollectedStringsChecksum(void)
+// R6GameService.dll @ 10034a30 : C++ hashing/cleanup with native pooled vector lifetime slots.
+__declspec(naked) uint __cdecl ComputeCollectedStringsChecksum()
 {
+  byte *nativeFrame;
   __asm {
     // ESP-based pooled EH664c8: hidden local vector at entryESP-1c, distinct from builder returned EAX.
     push   0xffffffff
@@ -24,22 +25,19 @@ __declspec(naked) uint __cdecl ComputeCollectedStringsChecksum(void)
     sub    esp,0x10
     lea    eax,[esp]
     push   esi
-    push   eax
-    call   R6GameServiceAddresses::BuildByteVectorFromCollectedStrings
-    // Checksum uses raw returned vector; cleanup still owns local storage. State0 covers checksum and normal free.
-    push   eax
-    mov    DWORD PTR [esp+0x24],0x0
-    call   R6GameServiceAddresses::checksum_support_UpdateChecksumFromBuffer
-    mov    esi,eax
-    // Read local begin after checksum callbacks; leave fields/state live during free, cache checksum in ESI.
-    mov    eax,DWORD PTR [esp+0x10]
-    add    esp,0x8
-    test   eax,eax
-    je     Branch1
-    push   eax
-    call   R6GameServiceAddresses::FreeThroughGlobalAllocator
-    add    esp,0x4
-  Branch1:
+    mov    nativeFrame,esp
+  }
+  using BuildABI = void * (__cdecl *)(void *);
+  using ChecksumABI = uint (__cdecl *)(const void *);
+  using FreeABI = void (__cdecl *)(void *);
+  void *built = ((BuildABI)R6GameServiceAddresses::BuildByteVectorFromCollectedStrings)(nativeFrame + 4);
+  *(uint *)(nativeFrame + 0x1c) = 0;
+  uint output = ((ChecksumABI)R6GameServiceAddresses::checksum_support_UpdateChecksumFromBuffer)(built);
+  // The builder return is hashed; separately owned local begin is reloaded only after hashing completes.
+  void *localBegin = *(void **)(nativeFrame + 8);
+  if (localBegin != nullptr) ((FreeABI)R6GameServiceAddresses::FreeThroughGlobalAllocator)(localBegin);
+  __asm {
+    mov    esi,output
     mov    ecx,DWORD PTR [esp+0x14]
     mov    eax,esi
     pop    esi
@@ -205,255 +203,113 @@ __declspec(naked) void __cdecl AppendCollectedStringsChecksumBytes(void *byteVec
 
 // Updates full32 reflected state, publishing the shifted intermediate before loading each table word.
 // R6GameService.dll @ 100365d0 : complete native control/access order and raw ABI retained.
-__declspec(naked) void __thiscall UpdateReflectedTableChecksum(uint *state,const byte *begin,const byte *end)
+void __thiscall UpdateReflectedTableChecksum(uint *state,const byte *begin,const byte *end)
 {
-  __asm {
-    // Unsigned begin<end gate avoids state/table reads for empty or reversed ranges; RET8.
-    mov    edx,DWORD PTR [esp+0x4]
-    push   edi
-    mov    edi,DWORD PTR [esp+0xc]
-    cmp    edx,edi
-    jae    Branch18
-    push   ebx
-    push   esi
-    nop
-  Branch17:
-    // Read source byte, state low byte and full state separately; publish shift before table lookup.
-    mov    al,BYTE PTR [edx]
-    mov    bl,BYTE PTR [ecx]
-    mov    esi,DWORD PTR [ecx]
-    xor    al,bl
-    shr    esi,0x8
-    movzx  eax,al
-    mov    DWORD PTR [ecx],esi
-    mov    eax,DWORD PTR [eax*4+GReflectedChecksumTable]
-    xor    eax,esi
-    inc    edx
-    cmp    edx,edi
-    mov    DWORD PTR [ecx],eax
-    jb     Branch17
-    pop    esi
-    pop    ebx
-  Branch18:
-    pop    edi
-    ret    0x8
+  uint cursor = (uint)begin;
+  const uint limit = (uint)end;
+  while (cursor < limit) {
+    byte value = *(const byte *)cursor;
+    byte lowState = *(const byte *)state;
+    uint shifted = *state >> 8;
+    byte index = value ^ lowState;
+    *state = shifted;
+    // The intermediate store precedes the table read, including when state aliases that table.
+    uint tableWord = GReflectedChecksumTable[index];
+    ++cursor;
+    *state = tableWord ^ shifted;
   }
 }
 
 // Updates full32 forward state with polynomial-table words and intermediate-before-lookup publication.
 // R6GameService.dll @ 10036610 : complete native control/access order and raw ABI retained.
-__declspec(naked) void __thiscall UpdateForwardChecksumState(uint *state,const byte *begin,const byte *end)
+void __thiscall UpdateForwardChecksumState(uint *state,const byte *begin,const byte *end)
 {
-  __asm {
-    // Full32 state; high-byte index and left8 shift, with no16-bit truncation or final XOR.
-    push   esi
-    mov    esi,DWORD PTR [esp+0x8]
-    push   edi
-    mov    edi,DWORD PTR [esp+0x10]
-    cmp    esi,edi
-    jae    Branch20
-    push   ebx
-    nop
-  Branch19:
-    mov    edx,DWORD PTR [ecx]
-    mov    bl,BYTE PTR [esi]
-    mov    eax,edx
-    shr    eax,0x18
-    xor    al,bl
-    shl    edx,0x8
-    movzx  eax,al
-    // Intermediate state store precedes lookup, preserving alias/partial-publication effects.
-    mov    DWORD PTR [ecx],edx
-    mov    eax,DWORD PTR [eax*4+GForwardChecksumTable]
-    xor    eax,edx
-    inc    esi
-    cmp    esi,edi
-    mov    DWORD PTR [ecx],eax
-    jb     Branch19
-    pop    ebx
-  Branch20:
-    pop    edi
-    pop    esi
-    ret    0x8
+  uint cursor = (uint)begin;
+  const uint limit = (uint)end;
+  while (cursor < limit) {
+    uint current = *state;
+    byte value = *(const byte *)cursor;
+    byte index = (byte)(current >> 24) ^ value;
+    uint shifted = current << 8;
+    *state = shifted;
+    uint tableWord = GForwardChecksumTable[index];
+    ++cursor;
+    *state = tableWord ^ shifted;
   }
 }
 
 // Lazily builds 256 full32 forward checksum words using native polynomial0x1021.
 // R6GameService.dll @ 10036650 : complete native control/access order and raw ABI retained.
-__declspec(naked) void __cdecl InitializeForwardChecksumTable(void)
+void __cdecl InitializeForwardChecksumTable()
 {
-  __asm {
-    // Any nonzero raw ready byte skips work. No lock/atomic guard; readiness is stored only after all256 words.
-    mov    al,BYTE PTR [GForwardChecksumReady]
-    test   al,al
-    jne    Branch26
-    push   esi
-    xor    dl,dl
-    mov    esi,R6GameServiceAddresses::GForwardChecksumTable
-  Branch21:
-    xor    eax,eax
-    mov    cl,0x80
-  Branch22:
-    test   dl,cl
-    je     Branch23
-    xor    eax,0x80000000
-  Branch23:
-    test   eax,eax
-    jns    Branch24
-    add    eax,eax
-    xor    eax,0x1021
-    jmp    Branch25
-  Branch24:
-    shl    eax,1
-  Branch25:
-    shr    cl,1
-    test   cl,cl
-    jne    Branch22
-    // Forward table uses ascending byte index; gate publication follows the wrapping8-bit counter.
-    mov    DWORD PTR [esi],eax
-    inc    dl
-    add    esi,0x4
-    test   dl,dl
-    jne    Branch21
-    mov    BYTE PTR [GForwardChecksumReady],0x1
-    pop    esi
-  Branch26:
-    ret
+  if (GForwardChecksumReady != 0) return;
+  for (uint index = 0; index < 256; ++index) {
+    uint remainder = 0;
+    for (byte mask = 0x80; mask != 0; mask >>= 1) {
+      if ((index & mask) != 0) remainder ^= 0x80000000;
+      bool high = (remainder & 0x80000000) != 0;
+      remainder <<= 1;
+      if (high) remainder ^= 0x1021;
+    }
+    GForwardChecksumTable[index] = remainder;
   }
+  GForwardChecksumReady = 1;
 }
 
 // Lazily builds reflected full32 checksum words from native polynomial0x1025 and reversed byte indices.
 // R6GameService.dll @ 100366a0 : complete native control/access order and raw ABI retained.
-__declspec(naked) void __cdecl InitializeReflectedChecksumTable(void)
+void __cdecl InitializeReflectedChecksumTable()
 {
-  __asm {
-    // Polynomial0x1025 stays native; reverse32 each remainder and reverse8 each destination index.
-    mov    al,BYTE PTR [GReflectedChecksumReady]
-    test   al,al
-    jne    Branch42
-    push   ebx
-    push   esi
-    push   edi
-    xor    bl,bl
-  Branch27:
-    xor    eax,eax
-    mov    cl,0x80
-  Branch28:
-    test   bl,cl
-    je     Branch29
-    xor    eax,0x80000000
-  Branch29:
-    test   eax,eax
-    jns    Branch30
-    add    eax,eax
-    xor    eax,0x1025
-    jmp    Branch31
-  Branch30:
-    shl    eax,1
-  Branch31:
-    shr    cl,1
-    test   cl,cl
-    jne    Branch28
-    mov    edx,eax
-    xor    esi,esi
-    xor    eax,eax
-    lea    ebx,[ebx+0x0]
-  Branch32:
-    test   dl,0x1
-    je     Branch33
-    mov    ecx,0x1f
-    sub    ecx,eax
-    mov    edi,0x1
-    shl    edi,cl
-    or     esi,edi
-  Branch33:
-    inc    eax
-    shr    edx,1
-    cmp    eax,0x20
-    jb     Branch32
-    xor    cl,cl
-    test   bl,0x1
-    je     Branch34
-    mov    cl,0x80
-  Branch34:
-    mov    al,bl
-    shr    al,1
-    test   al,0x1
-    je     Branch35
-    or     cl,0x40
-  Branch35:
-    shr    al,1
-    test   al,0x1
-    je     Branch36
-    or     cl,0x20
-  Branch36:
-    shr    al,1
-    test   al,0x1
-    je     Branch37
-    or     cl,0x10
-  Branch37:
-    shr    al,1
-    test   al,0x1
-    je     Branch38
-    or     cl,0x8
-  Branch38:
-    shr    al,1
-    test   al,0x1
-    je     Branch39
-    or     cl,0x4
-  Branch39:
-    shr    al,1
-    test   al,0x1
-    je     Branch40
-    or     cl,0x2
-  Branch40:
-    test   al,0x2
-    je     Branch41
-    or     cl,0x1
-  Branch41:
-    // INC BL zero flag terminates after256 entries despite intervening MOVZX/table store.
-    inc    bl
-    movzx  eax,cl
-    mov    DWORD PTR [eax*4+GReflectedChecksumTable],esi
-    jne    Branch27
-    pop    edi
-    pop    esi
-    mov    BYTE PTR [GReflectedChecksumReady],0x1
-    pop    ebx
-  Branch42:
-    ret
+  if (GReflectedChecksumReady != 0) return;
+  for (uint index = 0; index < 256; ++index) {
+    uint remainder = 0;
+    for (byte mask = 0x80; mask != 0; mask >>= 1) {
+      if ((index & mask) != 0) remainder ^= 0x80000000;
+      bool high = (remainder & 0x80000000) != 0;
+      remainder <<= 1;
+      if (high) remainder ^= 0x1025;
+    }
+    uint reversed = 0;
+    for (uint bit = 0; bit < 32; ++bit) {
+      if ((remainder & 1) != 0) reversed |= 1u << (31 - bit);
+      remainder >>= 1;
+    }
+    byte reversedIndex = 0;
+    uint sourceIndex = index;
+    for (uint bit = 0; bit < 8; ++bit) {
+      if ((sourceIndex & 1) != 0) reversedIndex |= (byte)(0x80 >> bit);
+      sourceIndex >>= 1;
+    }
+    GReflectedChecksumTable[reversedIndex] = reversed;
   }
+  GReflectedChecksumReady = 1;
 }
 
 // Initializes forward state to0xffff, updates the live byte range and stores/returns the destination.
-// R6GameService.dll @ 10036770 : complete native control/access order and raw ABI retained.
+// R6GameService.dll @ 10036770 : C++ forward checksum with native destination, state scratch and RET4.
 __declspec(naked) uint * __thiscall UpdateChecksumFromBuffer(uint *destination,const void *byteVector)
 {
+  byte *nativeFrame;
+  uint *output;
   __asm {
-    // Initial ECX save becomes local state0xffff; final POP ECX exposes computed full32 state, not receiver.
     push   ecx
     push   esi
     mov    esi,ecx
-    mov    DWORD PTR [esp+0x4],0xffff
-    call   R6GameServiceAddresses::InitializeForwardChecksumTable
-    mov    ecx,DWORD PTR [esp+0xc]
-    mov    eax,DWORD PTR [ecx+0x4]
-    test   eax,eax
-    jne    Branch43
-    xor    ecx,ecx
-    jmp    Branch44
-  Branch43:
-    mov    ecx,DWORD PTR [ecx+0x8]
-    sub    ecx,eax
-  Branch44:
-    // Null begin forces zero endpoints; unsigned updater receives raw begin/end otherwise.
-    add    ecx,eax
-    push   ecx
-    push   eax
-    lea    ecx,[esp+0xc]
-    call   R6GameServiceAddresses::UpdateForwardChecksumState
-    mov    eax,DWORD PTR [esp+0x4]
-    mov    DWORD PTR [esi],eax
+    mov    nativeFrame,esp
+    mov    output,esi
+  }
+  *(uint *)(nativeFrame + 4) = 0xffff;
+  InitializeForwardChecksumTable();
+  byte *vector = *(byte **)(nativeFrame + 0xc);
+  uint begin = *(uint *)(vector + 4);
+  uint length = begin == 0 ? 0 : *(uint *)(vector + 8) - begin;
+  using UpdateABI = void (__thiscall *)(uint *,const byte *,const byte *);
+  ((UpdateABI)R6GameServiceAddresses::UpdateForwardChecksumState)
+      ((uint *)(nativeFrame + 4),(const byte *)begin,(const byte *)(begin + length));
+  uint computed = *(uint *)(nativeFrame + 4);
+  *output = computed;
+  __asm {
+    mov    esi,output
     mov    eax,esi
     pop    esi
     pop    ecx
@@ -462,57 +318,38 @@ __declspec(naked) uint * __thiscall UpdateChecksumFromBuffer(uint *destination,c
 }
 
 // Initializes reflected state to0xffffffff, updates the unsigned byte range and returns it without final XOR.
-// R6GameService.dll @ 100367b0 : complete native control/access order and raw ABI retained.
+// R6GameService.dll @ 100367b0 : C++ reflected checksum with native state scratch and raw ECX result residue.
 __declspec(naked) uint __cdecl checksum_support_UpdateChecksumFromBuffer(const void *byteVector)
 {
+  byte *nativeFrame;
   __asm {
-    // Retain native bit-reversal loop of0xffffffff before table initialization, without simplifying control flow.
     push   ecx
     push   ebx
     or     ebx,0xffffffff
     xor    edx,edx
     push   esi
     xor    eax,eax
-    lea    ebx,[ebx+0x0]
-  Branch45:
-    test   bl,0x1
-    je     Branch46
-    mov    ecx,0x1f
-    sub    ecx,eax
-    mov    esi,0x1
-    shl    esi,cl
-    or     edx,esi
-  Branch46:
-    inc    eax
-    shr    ebx,1
-    cmp    eax,0x20
-    jb     Branch45
-    mov    DWORD PTR [esp+0x8],edx
-    call   R6GameServiceAddresses::InitializeReflectedChecksumTable
-    mov    ecx,DWORD PTR [esp+0x10]
-    mov    eax,DWORD PTR [ecx+0x4]
-    test   eax,eax
+    mov    nativeFrame,esp
+  }
+  uint sourceBits = 0xffffffff;
+  uint reversed = 0;
+  for (uint bit = 0; bit < 32; ++bit) {
+    if ((sourceBits & 1) != 0) reversed |= 1u << (31 - bit);
+    sourceBits >>= 1;
+  }
+  *(uint *)(nativeFrame + 8) = reversed;
+  InitializeReflectedChecksumTable();
+  byte *vector = *(byte **)(nativeFrame + 0x10);
+  uint begin = *(uint *)(vector + 4);
+  __asm {
     pop    esi
     pop    ebx
-    jne    Branch47
-    // Null begin bypasses end field read; returned EAX and popped ECX both hold final raw state.
-    xor    ecx,ecx
-    mov    ecx,eax
-    push   ecx
-    push   eax
-    lea    ecx,[esp+0x8]
-    call   R6GameServiceAddresses::UpdateReflectedTableChecksum
-    mov    eax,DWORD PTR [esp]
-    pop    ecx
-    ret
-  Branch47:
-    mov    ecx,DWORD PTR [ecx+0x8]
-    sub    ecx,eax
-    add    ecx,eax
-    push   ecx
-    push   eax
-    lea    ecx,[esp+0x8]
-    call   R6GameServiceAddresses::UpdateReflectedTableChecksum
+  }
+  uint length = begin == 0 ? 0 : *(uint *)(vector + 8) - begin;
+  using UpdateABI = void (__thiscall *)(uint *,const byte *,const byte *);
+  ((UpdateABI)R6GameServiceAddresses::UpdateReflectedTableChecksum)
+      ((uint *)(nativeFrame + 8),(const byte *)begin,(const byte *)(begin + length));
+  __asm {
     mov    eax,DWORD PTR [esp]
     pop    ecx
     ret

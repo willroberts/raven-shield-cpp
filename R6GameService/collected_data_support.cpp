@@ -1,17 +1,33 @@
 #include "native_addresses.h"
 #include "native_records.h"
 
-// R6GameService.dll data @ 10080938 : function metadata supplied by the exception selector.
-extern const R6GameServiceNative::FuncInfo CollectedByteBuilderExceptionHandlerFunctionInfo;
-// R6GameService.dll data @ 10080c5c : function metadata supplied by the exception selector.
-extern const R6GameServiceNative::FuncInfo AdapterAddressCollectorExceptionHandlerFunctionInfo;
+// R6GameService.dll data @ 10080920 : completed result, collected strings and temporary bytes.
+const R6GameServiceNative::UnwindEntry CollectedByteBuilderUnwindMap[3] = {
+  {-1, R6GameServiceAddresses::ReleaseCollectedResultOnUnwind},
+  {0, R6GameServiceAddresses::DestroyCollectedStringsOnUnwind},
+  {1, R6GameServiceAddresses::ReleaseCollectedBytesOnUnwind},
+};
+// R6GameService.dll data @ 10080938 : three owned states, with no try/catch map.
+const R6GameServiceNative::FuncInfo CollectedByteBuilderExceptionHandlerFunctionInfo = {
+  0x19930520, 3, R6GameServiceAddresses::CollectedByteBuilderUnwindMap, 0, 0, 0, 0,
+};
+// R6GameService.dll data @ 10080c4c : aligned-frame query buffer and completed temporary string.
+const R6GameServiceNative::UnwindEntry AdapterAddressCollectorUnwindMap[2] = {
+  {-1, R6GameServiceAddresses::ReleaseAdapterQueryBufferOnUnwind},
+  {0, R6GameServiceAddresses::DestroyAdapterAddressStringOnUnwind},
+};
+// R6GameService.dll data @ 10080c5c : two owned states, with no try/catch map.
+const R6GameServiceNative::FuncInfo AdapterAddressCollectorExceptionHandlerFunctionInfo = {
+  0x19930520, 2, R6GameServiceAddresses::AdapterAddressCollectorUnwindMap, 0, 0, 0, 0,
+};
 
 // Collected-data byte construction; original free/helper identifiers and concrete vector templates remain inferred.
 
 // Prints each collected string and copies its unterminated bytes into a separately owned result vector.
-// R6GameService.dll @ 10034890 : complete native control/access order and raw ABI retained.
+// R6GameService.dll @ 10034890 : C++ concatenation/lifetimes with native descriptor, result guard and scratch slots.
 __declspec(naked) void * __cdecl BuildByteVectorFromCollectedStrings(void *outputVector)
 {
+  byte *nativeFrame;
   __asm {
     // ESP-based EH: result flag entryESP-30, strings-2c, temporary bytes-1c; opaque prefixes stay untouched.
     push   0xffffffff
@@ -24,144 +40,91 @@ __declspec(naked) void * __cdecl BuildByteVectorFromCollectedStrings(void *outpu
     push   ebp
     push   esi
     push   edi
-    xor    edi,edi
-    mov    DWORD PTR [esp+0x14],edi
-    mov    DWORD PTR [esp+0x1c],edi
-    mov    DWORD PTR [esp+0x20],edi
-    mov    DWORD PTR [esp+0x24],edi
-    lea    eax,[esp+0x18]
-    push   eax
-    // String ownership is active before collection. Ignore collector return; state2 starts after byte fields initialize.
-    mov    DWORD PTR [esp+0x44],0x1
-    call   R6GameServiceAddresses::CollectNetworkAdapterMacAddresses
-    xor    ebx,ebx
-    add    esp,0x4
-    mov    DWORD PTR [esp+0x2c],ebx
-    mov    DWORD PTR [esp+0x30],edi
-    mov    DWORD PTR [esp+0x34],edi
-    mov    ecx,DWORD PTR [esp+0x1c]
-    mov    BYTE PTR [esp+0x40],0x2
-    mov    DWORD PTR [esp+0x10],edi
-    xor    ebp,ebp
-  Branch1:
-    cmp    ecx,edi
-    je     Branch11
-    // Native signed32 division by0x1c, then unsigned index comparison; keep live begin/end and cached byte offset.
-    mov    esi,DWORD PTR [esp+0x20]
-    sub    esi,ecx
-    mov    eax,0x92492493
-    imul   esi
-    add    edx,esi
-    sar    edx,0x4
-    mov    eax,edx
-    shr    eax,0x1f
-    add    eax,edx
-    cmp    DWORD PTR [esp+0x10],eax
-    jae    Branch11
-    cmp    DWORD PTR [ecx+ebp*1+0x18],0x10
-    jb     Branch2
-    mov    ecx,DWORD PTR [ecx+ebp*1+0x4]
-    jmp    Branch3
-  Branch2:
-    lea    ecx,[ecx+ebp*1+0x4]
-  Branch3:
-    push   ecx
-    push   R6GameServiceAddresses::TextS
-    // Print format is " %s\n". Reload string begin/length after printf; concatenate length bytes, including embedded zeros.
-    call   DWORD PTR ds:R6GameServiceAddresses::MSVCR71_printfSlot
-    mov    ecx,DWORD PTR [esp+0x24]
-    mov    eax,DWORD PTR [ecx+ebp*1+0x14]
-    add    esp,0x8
-    test   eax,eax
-    jbe    Branch10
-  Branch4:
-    // Recheck current length before access; retain actual _Xran import and inline/heap threshold16.
-    mov    eax,DWORD PTR [ecx+ebp*1+0x14]
-    cmp    eax,edi
-    lea    esi,[ecx+ebp*1]
-    ja     Branch5
-    mov    ecx,esi
-    call   DWORD PTR ds:R6GameServiceAddresses::MSVCP71__String_base__XranSlot
-  Branch5:
-    cmp    DWORD PTR [esi+0x18],0x10
-    jb     Branch6
-    mov    esi,DWORD PTR [esi+0x4]
-    jmp    Branch7
-  Branch6:
-    add    esi,0x4
-  Branch7:
-    // EBX caches temporary begin across direct appends; reload it only after insertion. Reload source begin/length each byte.
-    test   ebx,ebx
-    lea    edx,[esi+edi*1]
-    mov    esi,DWORD PTR [esp+0x30]
-    je     Branch8
-    mov    ecx,DWORD PTR [esp+0x34]
-    mov    eax,esi
-    sub    eax,ebx
-    sub    ecx,ebx
-    cmp    eax,ecx
-    jae    Branch8
-    mov    cl,BYTE PTR [edx]
-    mov    BYTE PTR [esi],cl
-    inc    esi
-    mov    DWORD PTR [esp+0x30],esi
-    jmp    Branch9
-  Branch8:
-    push   edx
-    push   0x1
-    push   esi
-    lea    ecx,[esp+0x34]
-    call   R6GameServiceAddresses::InsertRepeatedByte
-    mov    ebx,DWORD PTR [esp+0x2c]
-  Branch9:
-    mov    ecx,DWORD PTR [esp+0x1c]
-    mov    eax,DWORD PTR [ecx+ebp*1+0x14]
-    inc    edi
-    cmp    edi,eax
-    jb     Branch4
-  Branch10:
-    mov    edx,DWORD PTR [esp+0x10]
-    inc    edx
-    add    ebp,0x1c
-    mov    DWORD PTR [esp+0x10],edx
-    xor    edi,edi
-    jmp    Branch1
-  Branch11:
-    // Load hidden result pointer late, cache in EBP and copy temporary via actual34610; ignore copy returned EAX.
-    mov    ebp,DWORD PTR [esp+0x48]
-    lea    edx,[esp+0x28]
-    push   edx
-    mov    ecx,ebp
-    call   R6GameServiceAddresses::CopyByteVector
-    // Set result guard only after copy returns. Free cached EBX while state2/temporary fields remain live.
-    cmp    ebx,edi
-    mov    DWORD PTR [esp+0x14],0x1
-    je     Branch12
-    push   ebx
-    call   R6GameServiceAddresses::FreeThroughGlobalAllocator
-    add    esp,0x4
-  Branch12:
-    // Lower to state0 before string cleanup; cache endpoints, reload begin after nonempty destructor traversal.
-    mov    esi,DWORD PTR [esp+0x1c]
-    cmp    esi,edi
-    mov    BYTE PTR [esp+0x40],0x0
-    je     Branch15
-    mov    edi,DWORD PTR [esp+0x20]
-    cmp    esi,edi
-    je     Branch14
-  Branch13:
-    mov    ecx,esi
-    call   DWORD PTR ds:R6GameServiceAddresses::MSVCP71_DU_char_traits_Destroy_basic_stringSlot
-    add    esi,0x1c
-    cmp    esi,edi
-    jne    Branch13
-    mov    esi,DWORD PTR [esp+0x1c]
-  Branch14:
-    push   esi
-    call   R6GameServiceAddresses::FreeThroughGlobalAllocator
-    add    esp,0x4
-  Branch15:
-    // Leave local fields/result flag live; return cached hidden pointer and restore saved FS registration.
+    mov    nativeFrame,esp
+  }
+  using CollectABI = uint (__cdecl *)(void *);
+  using PrintABI = int (__cdecl *)(const char *,...);
+  using RangeErrorABI = void (__thiscall *)(const void *);
+  using InsertABI = void (__thiscall *)(void *,uint,uint,const byte *);
+  using CopyABI = void * (__thiscall *)(void *,const void *);
+  using DestroyABI = void (__thiscall *)(void *);
+  using FreeABI = void (__cdecl *)(void *);
+  *(uint *)(nativeFrame + 0x14) = 0;
+  *(uint *)(nativeFrame + 0x1c) = 0;
+  *(uint *)(nativeFrame + 0x20) = 0;
+  *(uint *)(nativeFrame + 0x24) = 0;
+  *(uint *)(nativeFrame + 0x40) = 1;
+  ((CollectABI)R6GameServiceAddresses::CollectNetworkAdapterMacAddresses)(nativeFrame + 0x18);
+  uint cachedByteBegin = 0;
+  *(uint *)(nativeFrame + 0x2c) = 0;
+  *(uint *)(nativeFrame + 0x30) = 0;
+  *(uint *)(nativeFrame + 0x34) = 0;
+  uint stringsBegin = *(uint *)(nativeFrame + 0x1c);
+  *(byte *)(nativeFrame + 0x40) = 2;
+  *(uint *)(nativeFrame + 0x10) = 0;
+  uint stringOffset = 0;
+  for (;;) {
+    if (stringsBegin == 0) break;
+    int span = (int)(*(uint *)(nativeFrame + 0x20) - stringsBegin);
+    uint stringCount = (uint)(span / 0x1c);
+    if (*(uint *)(nativeFrame + 0x10) >= stringCount) break;
+    byte *string = (byte *)(stringsBegin + stringOffset);
+    const char *text = *(uint *)(string + 0x18) < 16 ? (const char *)(string + 4) : *(const char **)(string + 4);
+    (*(PrintABI *)R6GameServiceAddresses::MSVCR71_printfSlot)
+        ((const char *)R6GameServiceAddresses::TextS,text);
+    stringsBegin = *(uint *)(nativeFrame + 0x1c);
+    uint length = *(uint *)(stringsBegin + stringOffset + 0x14);
+    uint characterIndex = 0;
+    if (length != 0) {
+      do {
+        uint currentLength = *(uint *)(stringsBegin + stringOffset + 0x14);
+        string = (byte *)(stringsBegin + stringOffset);
+        if (characterIndex >= currentLength)
+          (*(RangeErrorABI *)R6GameServiceAddresses::MSVCP71__String_base__XranSlot)(string);
+        const byte *data = *(uint *)(string + 0x18) < 16 ? string + 4 : *(const byte **)(string + 4);
+        const byte *source = (const byte *)((uint)data + characterIndex);
+        uint end = *(uint *)(nativeFrame + 0x30);
+        bool direct = false;
+        if (cachedByteBegin != 0) {
+          uint capacity = *(uint *)(nativeFrame + 0x34);
+          direct = end - cachedByteBegin < capacity - cachedByteBegin;
+        }
+        if (direct) {
+          *(byte *)end = *source;
+          *(uint *)(nativeFrame + 0x30) = end + 1;
+        } else {
+          ((InsertABI)R6GameServiceAddresses::InsertRepeatedByte)(nativeFrame + 0x28,end,1,source);
+          cachedByteBegin = *(uint *)(nativeFrame + 0x2c);
+        }
+        stringsBegin = *(uint *)(nativeFrame + 0x1c);
+        length = *(uint *)(stringsBegin + stringOffset + 0x14);
+        ++characterIndex;
+      } while (characterIndex < length);
+    }
+    uint nextIndex = *(uint *)(nativeFrame + 0x10) + 1;
+    stringOffset += 0x1c;
+    *(uint *)(nativeFrame + 0x10) = nextIndex;
+  }
+  void *output = *(void **)(nativeFrame + 0x48);
+  ((CopyABI)R6GameServiceAddresses::CopyByteVector)(output,nativeFrame + 0x28);
+  *(uint *)(nativeFrame + 0x14) = 1;
+  // A throwing normal free leaves state2 live; unwind may release temporary storage again.
+  if (cachedByteBegin != 0) ((FreeABI)R6GameServiceAddresses::FreeThroughGlobalAllocator)((void *)cachedByteBegin);
+  uint stringCursor = *(uint *)(nativeFrame + 0x1c);
+  *(byte *)(nativeFrame + 0x40) = 0;
+  if (stringCursor != 0) {
+    uint stringEnd = *(uint *)(nativeFrame + 0x20);
+    if (stringCursor != stringEnd) {
+      do {
+        (*(DestroyABI *)R6GameServiceAddresses::MSVCP71_DU_char_traits_Destroy_basic_stringSlot)((void *)stringCursor);
+        stringCursor += 0x1c;
+      } while (stringCursor != stringEnd);
+      stringCursor = *(uint *)(nativeFrame + 0x1c);
+    }
+    ((FreeABI)R6GameServiceAddresses::FreeThroughGlobalAllocator)((void *)stringCursor);
+  }
+  __asm {
+    mov    ebp,output
     mov    ecx,DWORD PTR [esp+0x38]
     pop    edi
     pop    esi
@@ -217,16 +180,18 @@ __declspec(naked) void ReleaseCollectedResultOnUnwind(void)
 __declspec(naked) void CollectedByteBuilderExceptionHandler(void)
 {
   __asm {
-    // FuncInfo80938, unwind80920: state0->(-1,result66490), state1->(0,strings66480), state2->(1,bytes66488); no catches.
+    // States own the conditional result, collected strings and temporary bytes, respectively.
     mov    eax,R6GameServiceAddresses::CollectedByteBuilderExceptionHandlerFunctionInfo
     jmp    R6GameServiceAddresses::__CxxFrameHandler
   }
 }
 
 // Appends uppercase adapter hardware-address strings and returns success only in AL, preserving upper EAX residue.
-// R6GameService.dll @ 10036420 : complete native control/access order and raw ABI retained.
+// R6GameService.dll @ 10036420 : C++ adapter formatting with aligned frame, unchecked text and raw AL result.
 __declspec(naked) uint __cdecl CollectNetworkAdapterMacAddresses(void *stringVector)
 {
+  byte *nativeFrame;
+  byte *originalFrame;
   __asm {
     // Keep original EBP for arguments and align ESP to 8. Unwind parent A is aligned pre-EH ESP, not original EBP.
     push   ebp
@@ -244,136 +209,95 @@ __declspec(naked) uint __cdecl CollectNetworkAdapterMacAddresses(void *stringVec
     push   edi
     // Cookie at A-14; query size A-150, zero fill A-155, vector A-14c, string A-13c, text A-118.
     mov    DWORD PTR [esp+0x154],eax
-    lea    eax,[esp+0x18]
-    xor    edi,edi
-    push   eax
-    push   edi
-    mov    DWORD PTR [esp+0x20],edi
-    call   R6GameServiceAddresses::GetAdaptersInfo
-    // Accept only initial API status 0 or 0x6f; any other status returns with low byte cleared.
-    cmp    eax,edi
-    je     Branch17
-    cmp    eax,0x6f
-    jne    Branch18
-  Branch17:
-    mov    edx,DWORD PTR [esp+0x18]
-    lea    ecx,[esp+0x13]
-    push   ecx
-    push   edx
-    lea    ecx,[esp+0x24]
-    // Vector construction has no outer ownership until it returns. Publish state 0 before the second API query.
-    mov    BYTE PTR [esp+0x1b],0x0
-    call   R6GameServiceAddresses::InitializeFilledByteVector
-    mov    esi,DWORD PTR [esp+0x20]
-    lea    eax,[esp+0x18]
-    push   eax
-    push   esi
-    mov    DWORD PTR [esp+0x16c],edi
-    call   R6GameServiceAddresses::GetAdaptersInfo
-    // On query failure free cached ESI if nonzero; leave state/fields live and clear only returned AL.
-    cmp    eax,edi
-    je     Branch19
-    cmp    esi,edi
-    je     Branch18
-    push   esi
-    call   R6GameServiceAddresses::FreeThroughGlobalAllocator
-    add    esp,0x4
-  Branch18:
-    xor    al,al
-    jmp    Branch26
-  Branch19:
-    cmp    esi,edi
-    mov    ebx,esi
-    je     Branch25
-    lea    ebx,[ebx+0x0]
-  Branch20:
-    // Zero the complete 256-byte address text plus selected byte scratch. No address-length/output-capacity guard.
-    xor    ecx,ecx
-    mov    DWORD PTR [esp+0x49],ecx
-    mov    BYTE PTR [esp+0x50],cl
-    mov    BYTE PTR [esp+0x4d],cl
-    xor    eax,eax
-    mov    ecx,0x3f
-    lea    edi,[esp+0x51]
-    rep stos DWORD PTR es:[edi],eax
-    stos   WORD PTR es:[edi],ax
-    mov    BYTE PTR [esp+0x48],0x0
-    stos   BYTE PTR es:[edi],al
-    mov    eax,DWORD PTR [ebx+0x190]
-    test   eax,eax
-    mov    DWORD PTR [esp+0x14],0x0
-    jbe    Branch24
-    jmp    Branch21
-    lea    esp,[esp+0x0]
-    mov    edi,edi
-  Branch21:
-    // Reload current address byte/length; sprintf uses exact literal "%.2X" and a zero-extended byte.
-    mov    edx,DWORD PTR [esp+0x14]
-    movzx  eax,BYTE PTR [ebx+edx*1+0x194]
-    push   eax
-    lea    ecx,[esp+0x4c]
-    push   R6GameServiceAddresses::Text2X
-    push   ecx
-    call   DWORD PTR ds:R6GameServiceAddresses::MSVCR71_sprintfSlot
-    // Scan formatted scratch including terminator, locate current text terminator, then copy DWORDs and trailing bytes.
-    lea    eax,[esp+0x54]
-    add    esp,0xc
-    mov    ecx,eax
-  Branch22:
-    mov    dl,BYTE PTR [eax]
-    inc    eax
-    test   dl,dl
-    jne    Branch22
-    lea    edi,[esp+0x50]
-    sub    eax,ecx
-    mov    esi,ecx
-    dec    edi
-  Branch23:
-    mov    cl,BYTE PTR [edi+0x1]
-    inc    edi
-    test   cl,cl
-    jne    Branch23
-    mov    ecx,eax
-    shr    ecx,0x2
-    rep movs DWORD PTR es:[edi],DWORD PTR ds:[esi]
-    mov    ecx,eax
-    mov    eax,DWORD PTR [esp+0x14]
-    and    ecx,0x3
-    rep movs BYTE PTR es:[edi],BYTE PTR ds:[esi]
-    mov    ecx,DWORD PTR [ebx+0x190]
-    inc    eax
-    cmp    eax,ecx
-    mov    DWORD PTR [esp+0x14],eax
-    jb     Branch21
-    // Only a nonempty formatted address reloads query-vector begin into ESI for eventual free.
-    mov    esi,DWORD PTR [esp+0x20]
-  Branch24:
-    // Construct temporary string from text before state 1; load current original-frame output argument after ctor.
-    lea    edx,[esp+0x50]
-    push   edx
-    lea    ecx,[esp+0x30]
-    call   DWORD PTR ds:R6GameServiceAddresses::MSVCP71_DU_char_traits_Construct_basic_stringSlot
-    mov    ecx,DWORD PTR [ebp+0x8]
-    lea    eax,[esp+0x2c]
-    push   eax
-    mov    BYTE PTR [esp+0x168],0x1
-    call   R6GameServiceAddresses::AppendStdStringToVector
-    // Lower state to 0 before destructor; read current adapter next only after destructor returns.
-    lea    ecx,[esp+0x2c]
-    mov    BYTE PTR [esp+0x164],0x0
-    call   DWORD PTR ds:R6GameServiceAddresses::MSVCP71_DU_char_traits_Destroy_basic_stringSlot
-    mov    ebx,DWORD PTR [ebx]
-    test   ebx,ebx
-    jne    Branch20
-    // Free retained ESI unconditionally after nonnull-list traversal, even if a current-begin reload changed it to null.
-    push   esi
-    call   R6GameServiceAddresses::FreeThroughGlobalAllocator
-    add    esp,0x4
-  Branch25:
-    // Only AL becomes success 1; retain upper EAX. Normal free leaves query vector state/fields live.
-    mov    al,0x1
-  Branch26:
-    // Restore saved FS before the actual security-cookie check; then restore original unaligned stack via EBP.
+    mov    nativeFrame,esp
+    mov    originalFrame,ebp
+  }
+  using QueryABI = uint (__stdcall *)(void *,uint *);
+  using FilledVectorABI = void (__thiscall *)(void *,uint,const byte *);
+  using FormatABI = int (__cdecl *)(char *,const char *,...);
+  using ConstructABI = void * (__thiscall *)(void *,const char *);
+  using AppendABI = void (__thiscall *)(void *,const void *);
+  using DestroyABI = void (__thiscall *)(void *);
+  using FreeABI = uint (__cdecl *)(void *); // Preserve the void free boundary's raw EAX residue.
+  *(uint *)(nativeFrame + 0x18) = 0;
+  uint residue = ((QueryABI)R6GameServiceAddresses::GetAdaptersInfo)(nullptr,(uint *)(nativeFrame + 0x18));
+  bool success = false;
+  if (residue == 0 || residue == 0x6f) {
+    uint required = *(uint *)(nativeFrame + 0x18);
+    *(byte *)(nativeFrame + 0x13) = 0;
+    ((FilledVectorABI)R6GameServiceAddresses::InitializeFilledByteVector)
+        (nativeFrame + 0x1c,required,nativeFrame + 0x13);
+    uint retainedBegin = *(uint *)(nativeFrame + 0x20);
+    *(uint *)(nativeFrame + 0x164) = 0;
+    residue = ((QueryABI)R6GameServiceAddresses::GetAdaptersInfo)((void *)retainedBegin,(uint *)(nativeFrame + 0x18));
+    if (residue != 0) {
+      if (retainedBegin != 0)
+        residue = ((FreeABI)R6GameServiceAddresses::FreeThroughGlobalAllocator)((void *)retainedBegin);
+    } else {
+      uint adapter = retainedBegin;
+      if (adapter != 0) {
+        do {
+          // Native unaligned zero stores preserve the scratch/text boundary and leave bytes +0x4e/+0x4f untouched.
+          *(uint *)(nativeFrame + 0x49) = 0;
+          *(byte *)(nativeFrame + 0x50) = 0;
+          *(byte *)(nativeFrame + 0x4d) = 0;
+          for (uint word = 0; word < 0x3f; ++word) *(uint *)(nativeFrame + 0x51 + word * 4) = 0;
+          *(ushort *)(nativeFrame + 0x14d) = 0;
+          *(byte *)(nativeFrame + 0x48) = 0;
+          *(byte *)(nativeFrame + 0x14f) = 0;
+          uint addressLength = *(uint *)(adapter + 0x190);
+          *(uint *)(nativeFrame + 0x14) = 0;
+          if (addressLength != 0) {
+            for (;;) {
+              uint index = *(uint *)(nativeFrame + 0x14);
+              uint value = *(byte *)(adapter + index + 0x194);
+              (*(FormatABI *)R6GameServiceAddresses::MSVCR71_sprintfSlot)
+                  ((char *)(nativeFrame + 0x48),(const char *)R6GameServiceAddresses::Text2X,value);
+              uint source = (uint)(nativeFrame + 0x48);
+              uint scan = source;
+              byte unit;
+              do { unit = *(byte *)scan; ++scan; } while (unit != 0);
+              uint count = scan - source;
+              uint destination = (uint)(nativeFrame + 0x4f);
+              do { unit = *(byte *)(destination + 1); ++destination; } while (unit != 0);
+              // Copy forwards in native DWORD/byte groups, including the terminator; do not bound or repair overlap.
+              for (uint words = count >> 2; words != 0; --words) {
+                uint copied = *(uint *)source;
+                *(uint *)destination = copied;
+                source += 4;
+                destination += 4;
+              }
+              index = *(uint *)(nativeFrame + 0x14);
+              for (uint bytes = count & 3; bytes != 0; --bytes) {
+                *(byte *)destination = *(byte *)source;
+                ++source;
+                ++destination;
+              }
+              addressLength = *(uint *)(adapter + 0x190);
+              ++index;
+              *(uint *)(nativeFrame + 0x14) = index;
+              if (index >= addressLength) break;
+            }
+            // Empty addresses retain the earlier allocation pointer; only a completed formatting loop reloads it.
+            retainedBegin = *(uint *)(nativeFrame + 0x20);
+          }
+          (*(ConstructABI *)R6GameServiceAddresses::MSVCP71_DU_char_traits_Construct_basic_stringSlot)
+              (nativeFrame + 0x2c,(const char *)(nativeFrame + 0x50));
+          void *currentOutput = *(void **)(originalFrame + 8);
+          *(byte *)(nativeFrame + 0x164) = 1;
+          ((AppendABI)R6GameServiceAddresses::AppendStdStringToVector)(currentOutput,nativeFrame + 0x2c);
+          *(byte *)(nativeFrame + 0x164) = 0;
+          (*(DestroyABI *)R6GameServiceAddresses::MSVCP71_DU_char_traits_Destroy_basic_stringSlot)(nativeFrame + 0x2c);
+          adapter = *(uint *)adapter;
+        } while (adapter != 0);
+        residue = ((FreeABI)R6GameServiceAddresses::FreeThroughGlobalAllocator)((void *)retainedBegin);
+      }
+      success = true;
+    }
+  }
+  uint output = (residue & 0xffffff00) | (success ? 1u : 0u);
+  __asm {
+    mov    eax,output
     mov    ecx,DWORD PTR [esp+0x15c]
     mov    DWORD PTR fs:0x0,ecx
     mov    ecx,DWORD PTR [esp+0x154]

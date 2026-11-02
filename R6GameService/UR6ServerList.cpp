@@ -14,7 +14,6 @@ const R6GameServiceNative::UnwindEntry UR6ServerList_UR6ServerListUnwindMap[8] =
   {6, R6GameServiceAddresses::UnwindServerListDestructorVersion},
 };
 // R6GameService.dll data @ 1007b144 : destructor includes the trailing version string as state7.
-// R6GameService.dll data @ 1007b104 : native storage identity retained.
 const R6GameServiceNative::FuncInfo UR6ServerList_UR6ServerListExceptionInfo = {
   0x19930520,
   8,
@@ -35,7 +34,6 @@ const R6GameServiceNative::UnwindEntry UR6ServerListSharedLifetimeUnwindMap[7] =
   {5, R6GameServiceAddresses::UnwindServerListConstructorCurrentServer},
 };
 // R6GameService.dll data @ 1007b198 : default/copy constructor share seven cleanup states.
-// R6GameService.dll data @ 1007b160 : native storage identity retained.
 const R6GameServiceNative::FuncInfo UR6ServerListSharedLifetimeExceptionInfo = {
   0x19930520,
   7,
@@ -159,9 +157,11 @@ __declspec(naked) UR6ServerList * __thiscall UR6ServerList::operator=(UR6ServerL
 }
 
 // Installs the class vtable, calls ConditionalDestroy, then destroys members and base under exact eight-state cleanup.
-// R6GameService.dll @ 10003ae0 : complete native control/access order and raw ABI retained.
-__declspec(naked) void __thiscall UR6ServerList::~UR6ServerList(UR6ServerList *object)
+// R6GameService.dll @ 10003ae0 : RET0; native saved receiver and staged subobject cleanup remain explicit.
+__declspec(naked) void __thiscall UR6ServerList::~UR6ServerList(void)
 {
+  byte *nativeStack,*receiver;
+  uint rawEax;
   __asm {
     // ConditionalDestroy result is ignored; cached object survives callbacks; final base destruction runs in state-1.
     push   0xffffffff
@@ -173,33 +173,31 @@ __declspec(naked) void __thiscall UR6ServerList::~UR6ServerList(UR6ServerList *o
     push   esi
     mov    esi,ecx
     mov    DWORD PTR [esp+0x4],esi
-    mov    DWORD PTR [esi],R6GameServiceAddresses::UR6ServerListDispatchTable
-    mov    DWORD PTR [esp+0x10],0x7
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_UObject_ConditionalDestroySlot
-    lea    ecx,[esi+0x168]
-    mov    BYTE PTR [esp+0x10],0x6
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringNoInitSlot
-    lea    ecx,[esi+0x8c]
-    mov    BYTE PTR [esp+0x10],0x5
-    call   R6GameServiceAddresses::DestroySTGameServer
-    lea    ecx,[esi+0x80]
-    mov    BYTE PTR [esp+0x10],0x4
-    call   R6GameServiceAddresses::DestroyArrayStorage
-    lea    ecx,[esi+0x74]
-    mov    BYTE PTR [esp+0x10],0x3
-    call   R6GameServiceAddresses::unreal_array_support_DestroyArrayStorage
-    lea    ecx,[esi+0x68]
-    mov    BYTE PTR [esp+0x10],0x2
-    call   R6GameServiceAddresses::unreal_array_support_DestroyArrayStorage
-    lea    ecx,[esi+0x5c]
-    mov    BYTE PTR [esp+0x10],0x1
-    call   R6GameServiceAddresses::DestroyArrayDCByteElements
-    lea    ecx,[esi+0x50]
-    mov    BYTE PTR [esp+0x10],0x0
-    call   R6GameServiceAddresses::DestroyFStringArray
-    mov    ecx,esi
-    mov    DWORD PTR [esp+0x10],0xffffffff
-    call   DWORD PTR ds:R6GameServiceAddresses::R6Abstract__DestroyUR6AbstractGameServiceSlot
+    mov    nativeStack,esp
+    mov    receiver,esi
+  }
+  *(uint *)receiver = R6GameServiceAddresses::UR6ServerListDispatchTable;
+  *(uint *)(nativeStack + 0x10) = 7;
+  using DestroyABI = uint (__thiscall *)(void *);
+  (*(DestroyABI *)R6GameServiceAddresses::Core_UObject_ConditionalDestroySlot)(receiver);
+  *(byte *)(nativeStack + 0x10) = 6;
+  (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(receiver + 0x168);
+  *(byte *)(nativeStack + 0x10) = 5;
+  ((DestroyABI)R6GameServiceAddresses::DestroySTGameServer)(receiver + 0x8c);
+  *(byte *)(nativeStack + 0x10) = 4;
+  ((DestroyABI)R6GameServiceAddresses::DestroyArrayStorage)(receiver + 0x80);
+  *(byte *)(nativeStack + 0x10) = 3;
+  ((DestroyABI)R6GameServiceAddresses::unreal_array_support_DestroyArrayStorage)(receiver + 0x74);
+  *(byte *)(nativeStack + 0x10) = 2;
+  ((DestroyABI)R6GameServiceAddresses::unreal_array_support_DestroyArrayStorage)(receiver + 0x68);
+  *(byte *)(nativeStack + 0x10) = 1;
+  ((DestroyABI)R6GameServiceAddresses::DestroyArrayDCByteElements)(receiver + 0x5c);
+  *(byte *)(nativeStack + 0x10) = 0;
+  ((DestroyABI)R6GameServiceAddresses::DestroyFStringArray)(receiver + 0x50);
+  *(uint *)(nativeStack + 0x10) = 0xffffffff;
+  rawEax = (*(DestroyABI *)R6GameServiceAddresses::R6Abstract__DestroyUR6AbstractGameServiceSlot)(receiver);
+  __asm {
+    mov    eax,rawEax
     mov    ecx,DWORD PTR [esp+0x8]
     pop    esi
     mov    DWORD PTR fs:0x0,ecx
@@ -209,9 +207,10 @@ __declspec(naked) void __thiscall UR6ServerList::~UR6ServerList(UR6ServerList *o
 }
 
 // Constructs the base, installs the class vtable, then constructs the embedded server and trailing no-init version string.
-// R6GameService.dll @ 10003ba0 : complete native control/access order and raw ABI retained.
-__declspec(naked) UR6ServerList * __thiscall UR6ServerList::UR6ServerList(UR6ServerList *object)
+// R6GameService.dll @ 10003ba0 : RET0; native saved receiver and staged subobject cleanup remain explicit.
+__declspec(naked) UR6ServerList * __thiscall UR6ServerList::UR6ServerList(void)
 {
+  byte *nativeStack,*receiver;
   __asm {
     // State0 precedes the vtable store, then byte state5 arms untouched arrays; no scalar/array initialization is invented.
     push   0xffffffff
@@ -223,15 +222,18 @@ __declspec(naked) UR6ServerList * __thiscall UR6ServerList::UR6ServerList(UR6Ser
     push   esi
     mov    esi,ecx
     mov    DWORD PTR [esp+0x4],esi
-    call   DWORD PTR ds:R6GameServiceAddresses::R6Abstract__ConstructUR6AbstractGameServiceSlot2
-    mov    DWORD PTR [esp+0x10],0x0
-    mov    DWORD PTR [esi],R6GameServiceAddresses::UR6ServerListDispatchTable
-    lea    ecx,[esi+0x8c]
-    mov    BYTE PTR [esp+0x10],0x5
-    call   R6GameServiceAddresses::ConstructServerInfo
-    lea    ecx,[esi+0x168]
-    mov    BYTE PTR [esp+0x10],0x6
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringNoInitSlot
+    mov    nativeStack,esp
+    mov    receiver,esi
+  }
+  using ConstructABI = void * (__thiscall *)(void *);
+  (*(ConstructABI *)R6GameServiceAddresses::R6Abstract__ConstructUR6AbstractGameServiceSlot2)(receiver);
+  *(uint *)(nativeStack + 0x10) = 0;
+  *(uint *)receiver = R6GameServiceAddresses::UR6ServerListDispatchTable;
+  *(byte *)(nativeStack + 0x10) = 5;
+  ((ConstructABI)R6GameServiceAddresses::ConstructServerInfo)(receiver + 0x8c);
+  *(byte *)(nativeStack + 0x10) = 6;
+  (*(ConstructABI *)R6GameServiceAddresses::Core__ConstructFStringNoInitSlot)(receiver + 0x168);
+  __asm {
     mov    ecx,DWORD PTR [esp+0x8]
     mov    eax,esi
     pop    esi
@@ -340,9 +342,11 @@ __declspec(naked) UR6ServerList * __thiscall UR6ServerList::UR6ServerList(UR6Ser
 }
 
 // Destroys one object or a cookie-counted array and optionally frees it, returning object or array-cookie address.
-// R6GameService.dll @ 10003d40 : complete native control/access order and raw ABI retained.
+// R6GameService.dll @ 10003d40 : RET4; cached low flag bits select vector/scalar destruction and optional free.
 __declspec(naked) void * __thiscall DeleteUR6ServerList(UR6ServerList *object,uint flags)
 {
+  byte captured;
+  byte *receiver;
   __asm {
     // Caches low flag byte first: mask2 selects vector path, mask1 selects free; iterator/allocator failure has no local rollback.
     push   ebx
@@ -350,38 +354,40 @@ __declspec(naked) void * __thiscall DeleteUR6ServerList(UR6ServerList *object,ui
     test   bl,0x2
     push   esi
     mov    esi,ecx
-    je    Branch2
-    mov    eax,DWORD PTR [esi-0x4]
-    push   edi
-    push   R6GameServiceAddresses::UR6ServerList__UR6ServerList
-    lea    edi,[esi-0x4]
-    push   eax
-    push   0x174
-    push   esi
-    call   R6GameServiceAddresses::_eh_vector_destructor_iterator_
-    test   bl,0x1
-    je    Branch1
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::Core__GMallocSlot
-    mov    ecx,DWORD PTR [ecx]
-    mov    edx,DWORD PTR [ecx]
-    push   edi
-    call   DWORD PTR [edx+0x8]
-  Branch1:
-    mov    eax,edi
-    pop    edi
-    pop    esi
-    pop    ebx
-    ret    0x4
-  Branch2:
-    mov    ecx,esi
-    call   R6GameServiceAddresses::UR6ServerList__UR6ServerList
-    test   bl,0x1
-    je    Branch3
-    push   0x174
-    push   esi
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__3UObjectSlot
-    add    esp,0x8
-  Branch3:
+    mov    captured,bl
+    mov    receiver,esi
+  }
+  if ((captured & 2) != 0) {
+    uint count = *(uint *)(receiver - 4);
+    __asm {
+      push   edi
+    }
+    byte *cookie = receiver - 4;
+    using DestroyABI = void (__thiscall *)(void *);
+    using IteratorABI = void (__stdcall *)(void *,uint,uint,DestroyABI);
+    ((IteratorABI)R6GameServiceAddresses::_eh_vector_destructor_iterator_)
+        (receiver,0x174,count,(DestroyABI)R6GameServiceAddresses::UR6ServerList__UR6ServerList);
+    if ((captured & 1) != 0) {
+      void *allocator = **(void ***)R6GameServiceAddresses::Core__GMallocSlot;
+      byte *table = *(byte **)allocator;
+      (*(uint (__thiscall **)(void *,void *))(table + 8))(allocator,cookie);
+    }
+    __asm {
+      mov    edi,cookie
+      mov    eax,edi
+      pop    edi
+      pop    esi
+      pop    ebx
+      ret    0x4
+    }
+  }
+  using DestroyABI = void (__thiscall *)(void *);
+  ((DestroyABI)R6GameServiceAddresses::UR6ServerList__UR6ServerList)(receiver);
+  if ((captured & 1) != 0) {
+    using DeleteABI = void (__cdecl *)(void *,uint);
+    (*(DeleteABI *)R6GameServiceAddresses::Core__3UObjectSlot)(receiver,0x174);
+  }
+  __asm {
     mov    eax,esi
     pop    esi
     pop    ebx
@@ -603,56 +609,59 @@ __declspec(naked) void SelectServerListConstructorInfo(void)
 }
 
 // Dispatches a two-int event through the cached object table and copies both current parameter values back in order.
-// R6GameService.dll @ 10001320 : complete native access/frame/register order and raw ABI retained.
-__declspec(naked) void __thiscall UR6ServerList::eventGetLobbyAndGroupID(UR6ServerList *object,int *lobbyID,int *groupID)
+// R6GameService.dll @ 10001320 : C++ event packing/copy-back with native stack aliases and dispatcher residue.
+__declspec(naked) void __thiscall UR6ServerList::eventGetLobbyAndGroupID(int& lobbyID,int& groupID)
 {
+  byte *nativeFrame;
+  UR6ServerList *receiver;
   __asm {
-    // Local parameter words at entry-8/-4; group pointer caches before lobby pointer, both values load before lookup.
     sub    esp,0x8
     push   ebx
-    mov    ebx,DWORD PTR [esp+0x14]
+    mov    nativeFrame,esp
+    mov    receiver,ecx
+  }
+  int *group = *(int **)(nativeFrame + 0x14);
+  __asm {
     push   ebp
     push   esi
     push   edi
-    mov    edi,DWORD PTR [esp+0x1c]
-    mov    eax,DWORD PTR [edi]
-    push   0x0
-    mov    esi,ecx
-    // Cache original object table before FindFunctionChecked; later object-table changes do not redirect this dispatch.
-    mov    ecx,DWORD PTR [ebx]
-    mov    ebp,DWORD PTR [esi]
-    lea    edx,[esp+0x14]
-    push   edx
-    mov    DWORD PTR [esp+0x18],eax
-    mov    eax,ds:0x10091e84
-    push   0x0
-    mov    DWORD PTR [esp+0x20],ecx
-    push   eax
-    mov    ecx,esi
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_UObject_FindFunctionCheckedSlot
-    // Use function result with staged parameter buffer/null result; preserve dispatcher raw EAX while copying outputs.
-    push   eax
-    mov    ecx,esi
-    call   DWORD PTR [ebp+0x10]
-    // Load both result words before either copy-back; lobby store precedes group store, including aliased references.
-    mov    ecx,DWORD PTR [esp+0x10]
-    mov    edx,DWORD PTR [esp+0x14]
-    mov    DWORD PTR [edi],ecx
+  }
+  int *lobby = *(int **)(nativeFrame + 0x10);
+  int lobbyValue = *lobby;
+  int groupValue = *group;
+  byte *table = *(byte **)receiver;
+  *(int *)(nativeFrame + 4) = lobbyValue;
+  uint eventName = *(uint *)0x10091e84;
+  *(int *)(nativeFrame + 8) = groupValue;
+  using FindABI = UFunction * (__thiscall *)(UR6ServerList *,uint,int);
+  using EventABI = uint (__thiscall *)(UR6ServerList *,UFunction *,void *,void *);
+  UFunction *function = (*(FindABI *)R6GameServiceAddresses::Core_UObject_FindFunctionCheckedSlot)
+      (receiver,eventName,0);
+  uint residue = (*(EventABI *)(table + 0x10))(receiver,function,nativeFrame + 4,nullptr);
+  // Both values are captured before the first store, preserving reference/packet aliases.
+  int newLobby = *(int *)(nativeFrame + 4);
+  int newGroup = *(int *)(nativeFrame + 8);
+  *lobby = newLobby;
+  __asm {
     pop    edi
     pop    esi
     pop    ebp
-    mov    DWORD PTR [ebx],edx
+  }
+  *group = newGroup;
+  __asm {
+    mov    eax,residue
     pop    ebx
     add    esp,0x8
     ret    0x8
   }
 }
 
-// Consumes the optional script bool token and writes the raw 32-bit GetTickCount result.
+// Finish the parameter list, consume optional DebugInfo, and write the raw 32-bit GetTickCount result.
 // Consume end token/optional DebugInfo42 through current VM object/table; preserve current result/global and exact guard/access order.
-// R6GameService.dll @ 10005f20 : complete native control/access order and raw ABI retained.
-__declspec(naked) void __thiscall UR6ServerList::execNativeGetMilliSeconds(UR6ServerList *this,FFrame *stack,void *result)
+// R6GameService.dll @ 10005f20 : exported FFrame/result bridge; native frame retains result/link alias effects.
+__declspec(naked) void __thiscall UR6ServerList::execNativeGetMilliSeconds(FFrame &Stack,void *const Result)
 {
+  byte *nativeFrame;
   __asm {
     push   ebp
     mov    ebp,esp
@@ -662,29 +671,36 @@ __declspec(naked) void __thiscall UR6ServerList::execNativeGetMilliSeconds(UR6Se
     push   eax
     mov    DWORD PTR fs:0x0,esp
     sub    esp,0xc
-    mov    eax,DWORD PTR [ebp+0x8]
-    mov    edx,DWORD PTR [eax+0xc]
-    inc    edx
+    mov    nativeFrame,ebp
+  }
+  FFrame *frame = *(FFrame **)(nativeFrame + 8);
+  byte *code = *(byte **)((byte *)frame + 0xc) + 1;
+  __asm {
     push   ebx
     push   esi
-    mov    DWORD PTR [eax+0xc],edx
-    cmp    BYTE PTR [edx],0x42
+  }
+  *(byte **)((byte *)frame + 0xc) = code;
+  bool hasDebugInfo = *code == 0x42;
+  __asm {
     push   edi
     mov    DWORD PTR [ebp-0x10],esp
-    mov    DWORD PTR [ebp-0x4],0x0
-    jne    Branch5
-    mov    ecx,DWORD PTR [eax+0x8]
-    inc    edx
-    push   0x0
-    mov    DWORD PTR [eax+0xc],edx
-    push   eax
-    mov    eax,ds:R6GameServiceAddresses::Core__GNativesSlot
-    call   DWORD PTR [eax+0x108]
-  Branch5:
-    call   DWORD PTR ds:R6GameServiceAddresses::KERNEL32_GetTickCountSlot
-    mov    ecx,DWORD PTR [ebp+0xc]
+  }
+  *(uint *)(nativeFrame - 4) = 0;
+  if (hasDebugInfo) {
+    UObject *object = *(UObject **)((byte *)frame + 8);
+    *(byte **)((byte *)frame + 0xc) = code + 1;
+    uint *natives = *(uint **)R6GameServiceAddresses::Core__GNativesSlot;
+    using DebugABI = void (__thiscall *)(UObject *,FFrame *,void *);
+    ((DebugABI)natives[0x42])(object,frame,0);
+  }
+  using TickABI = uint (__stdcall *)(void);
+  uint milliseconds = (*(TickABI *)R6GameServiceAddresses::KERNEL32_GetTickCountSlot)();
+  uint *output = *(uint **)(nativeFrame + 0xc);
+  __asm {
     pop    edi
-    mov    DWORD PTR [ecx],eax
+  }
+  *output = milliseconds;
+  __asm {
     mov    ecx,DWORD PTR [ebp-0xc]
     pop    esi
     mov    DWORD PTR fs:0x0,ecx
@@ -959,9 +975,10 @@ __declspec(naked) void __cdecl UR6ServerList_UR6ServerListCatch8(void)
 // Reset public then current private shared store, ignoring both native status words.
 // Exported nonvirtual void(void), incoming ECX unused, RET0; public owner loads before state0 publication.
 // Private owner reloads after the first reset returns. The guard owns no resource action or rollback.
-// R6GameService.dll @ 10007710 : complete native control/access order and raw ABI retained.
+// R6GameService.dll @ 10007710 : current private store is read only after resetting the captured public store.
 __declspec(naked) void __thiscall UR6ServerList::ResetSvrContainer(void)
 {
+  void *publicStore;
   __asm {
     push   ebp
     mov    ebp,esp
@@ -977,9 +994,14 @@ __declspec(naked) void __thiscall UR6ServerList::ResetSvrContainer(void)
     push   edi
     mov    DWORD PTR [ebp-0x10],esp
     mov    DWORD PTR [ebp-0x4],0x0
-    call   R6GameServiceAddresses::ResetSerializedByteStore
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GPrivateSerializedStore
-    call   R6GameServiceAddresses::ResetSerializedByteStore
+    mov    publicStore,ecx
+  }
+  using ResetABI = uint (__thiscall *)(void *);
+  ((ResetABI)R6GameServiceAddresses::ResetSerializedByteStore)(publicStore);
+  void *privateStore = *(void **)R6GameServiceAddresses::GPrivateSerializedStore;
+  uint rawEax = ((ResetABI)R6GameServiceAddresses::ResetSerializedByteStore)(privateStore);
+  __asm {
+    mov    eax,rawEax
     mov    ecx,DWORD PTR [ebp-0xc]
     pop    edi
     pop    esi
@@ -1045,13 +1067,13 @@ const R6GameServiceNative::CatchHandler GResetSvrContainerHandlers[2] = {
 };
 
 // Native lobby-registration/reset try record; addresses and states are literal.
-// R6GameService.dll data @ 1007c198 : native storage identity retained.
+// R6GameService.dll data @ 1007c1b8 : native storage identity retained.
 const R6GameServiceNative::TryBlock UR6ServerList_ResetSvrContainerTryMap[1] = {
   {0x0, 0x0, 0x1, 0x2, R6GameServiceAddresses::GResetSvrContainerHandlers},
 };
 
 // Native lobby-registration/reset info record; addresses and states are literal.
-// R6GameService.dll data @ 1007c188 : native storage identity retained.
+// R6GameService.dll data @ 1007c1cc : native storage identity retained.
 const R6GameServiceNative::FuncInfo UR6ServerList_ResetSvrContainerExceptionInfo = {
   0x19930520,
   0x2,
@@ -1684,9 +1706,11 @@ __declspec(naked) void execGetDisplayListSizeSelectExceptionInfo(void)
 // Publish mod/server fields and current map/player arrays into the two current stored-data containers.
 // Preserve full four-byte flag expressions, signed live counts, per-field pointer reloads and ignored write statuses.
 // Keyword/format share EBP-0x30; mod name uses EBP-0x24. ANSI target is cached only before array iteration.
-// R6GameService.dll @ 1000a3b0 : complete native control/access order and raw ABI retained.
+// R6GameService.dll @ 1000a3b0 : native temporary slots, full flag words and live store/array reads are preserved.
 __declspec(naked) void __thiscall UR6ServerList::FillSvrContainer(void)
 {
+  byte *nativeFrame,*receiver;
+  FString *keywordResult;
   __asm {
     push    ebp
     mov    ebp,esp
@@ -1707,314 +1731,199 @@ __declspec(naked) void __thiscall UR6ServerList::FillSvrContainer(void)
     push    eax
     mov    DWORD PTR [ebp-0x4],0x0
     call    DWORD PTR ds:R6GameServiceAddresses::Engine_UR6ModMgr_eventGetModKeywordSlot
-    mov    ecx,eax
-    mov    BYTE PTR [ebp-0x4],0x1
-    call    DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    mov    edi,DWORD PTR ds:R6GameServiceAddresses::Core__appToAnsiSlot
-    push    eax
-    call    edi
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GPublicSerializedStore
-    add    esp,0x4
-    push    eax
-    push    0xfd
-    call    R6GameServiceAddresses::WriteStoredAnsiText
-    lea    ecx,[ebp-0x30]
-    mov    BYTE PTR [ebp-0x4],0x0
-    call    DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringSlot
-    mov    eax,ds:R6GameServiceAddresses::Engine__GModMgrSlot
-    mov    ecx,DWORD PTR [eax]
-    lea    edx,[ebp-0x24]
-    push    edx
-    call    DWORD PTR ds:R6GameServiceAddresses::Engine_UR6ModMgr_eventGetModNameSlot
-    mov    bl,0x2
-    mov    ecx,R6GameServiceAddresses::GServiceString3
-    mov    BYTE PTR [ebp-0x4],bl
-    call    DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    push    R6GameServiceAddresses::WideTextR6RSCUSTOM
-    push    eax
-    call    DWORD PTR ds:R6GameServiceAddresses::Core__appStricmpSlot
-    add    esp,0x8
-    test    eax,eax
-    jne    Branch85
-    push    R6GameServiceAddresses::WideTextSpace
-    lea    ecx,[ebp-0x24]
-    call    DWORD PTR ds:R6GameServiceAddresses::Core__YFStringSlot2
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::Engine__GModMgrSlot
-    mov    edx,DWORD PTR [ecx]
-    mov    eax,DWORD PTR [edx+0x34]
-    mov    ecx,DWORD PTR [eax+0x34]
-    mov    edx,DWORD PTR [eax+0x30]
-    mov    eax,DWORD PTR [eax+0x2c]
-    push    ecx
-    push    edx
-    push    eax
-    lea    ecx,[ebp-0x30]
-    push    R6GameServiceAddresses::WideTextD02dBuildD
-    push    ecx
-    call    DWORD PTR ds:R6GameServiceAddresses::Core_FString_PrintfSlot
-    add    esp,0x14
-    push    eax
-    lea    ecx,[ebp-0x24]
-    mov    BYTE PTR [ebp-0x4],0x3
-    call    DWORD PTR ds:R6GameServiceAddresses::Core__YFStringSlot
-    lea    ecx,[ebp-0x30]
-    mov    BYTE PTR [ebp-0x4],bl
-    call    DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringSlot
-  Branch85:
-    lea    ecx,[ebp-0x24]
-    call    DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    push    eax
-    call    edi
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GPublicSerializedStore
-    add    esp,0x4
-    push    eax
-    push    0xfe
-    call    R6GameServiceAddresses::WriteStoredAnsiText
-    lea    ecx,[esi+0x120]
-    call    DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    push    eax
-    call    edi
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GPublicSerializedStore
-    add    esp,0x4
-    push    eax
-    push    0x64
-    call    R6GameServiceAddresses::WriteStoredAnsiText
-    mov    edx,DWORD PTR [esi+0x100]
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GPublicSerializedStore
-    push    edx
-    push    0x6d
-    call    R6GameServiceAddresses::WriteStoredWordType3
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GPublicSerializedStore
-    xor    eax,eax
-    mov    al,BYTE PTR [esi+0xc4]
-    and    eax,0xffffff01
-    push    eax
-    push    0x66
-    call    R6GameServiceAddresses::WriteStoredWordType5
-    mov    ecx,DWORD PTR [esi+0xc4]
-    shr    ecx,1
-    and    ecx,0xffffff01
-    push    ecx
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GPublicSerializedStore
-    push    0x67
-    call    R6GameServiceAddresses::WriteStoredWordType5
-    mov    eax,DWORD PTR [esi+0xd8]
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GPublicSerializedStore
-    shr    eax,0x6
-    not    eax
-    and    eax,0x1
-    push    eax
-    push    0x68
-    call    R6GameServiceAddresses::WriteStoredWordType3
-    mov    edx,DWORD PTR [esi+0xc8]
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GPublicSerializedStore
-    push    edx
-    push    0x69
-    call    R6GameServiceAddresses::WriteStoredWordType3
-    mov    eax,DWORD PTR [esi+0xd8]
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GPublicSerializedStore
-    shr    eax,0x2
-    and    eax,0xffffff01
-    push    eax
-    push    0x6a
-    call    R6GameServiceAddresses::WriteStoredWordType5
-    lea    ecx,[esi+0x114]
-    call    DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    push    eax
-    call    edi
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GPublicSerializedStore
-    add    esp,0x4
-    push    eax
-    push    0x65
-    call    R6GameServiceAddresses::WriteStoredAnsiText
-    mov    ecx,DWORD PTR [esi+0xe4]
-    push    ecx
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GPublicSerializedStore
-    push    0x6b
-    call    R6GameServiceAddresses::WriteStoredWordType3
-    mov    eax,ds:R6GameServiceAddresses::Engine__GModMgrSlot
-    mov    ecx,DWORD PTR [eax]
-    lea    edx,[esi+0x108]
-    push    edx
-    call    DWORD PTR ds:R6GameServiceAddresses::Engine_UR6ModMgr_eventGetGameTypeIndexSlot
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GPublicSerializedStore
-    push    eax
-    push    0x6c
-    call    R6GameServiceAddresses::WriteStoredWordType3
-    mov    ecx,DWORD PTR [esi+0x94]
-    push    ecx
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GPublicSerializedStore
-    push    0xfc
-    call    R6GameServiceAddresses::WriteStoredWordType3
-    mov    edx,DWORD PTR [esi+0xd8]
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GPublicSerializedStore
-    shr    edx,0xa
-    and    edx,0xffffff01
-    push    edx
-    push    0xff
-    call    R6GameServiceAddresses::WriteStoredWordType5
-    mov    eax,DWORD PTR [esi+0xcc]
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GPrivateSerializedStore
-    push    eax
-    push    0x6f
-    call    R6GameServiceAddresses::WriteStoredWordType3
-    mov    ecx,DWORD PTR [esi+0xd0]
-    push    ecx
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GPrivateSerializedStore
-    push    0x70
-    call    R6GameServiceAddresses::WriteStoredWordType3
-    mov    edx,DWORD PTR [esi+0xd4]
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GPrivateSerializedStore
-    push    edx
-    push    0x71
-    call    R6GameServiceAddresses::WriteStoredWordType3
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GPrivateSerializedStore
-    xor    eax,eax
-    mov    al,BYTE PTR [esi+0xd8]
-    and    eax,0xffffff01
-    push    eax
-    push    0x72
-    call    R6GameServiceAddresses::WriteStoredWordType5
-    mov    ecx,DWORD PTR [esi+0xd8]
-    shr    ecx,1
-    and    ecx,0xffffff01
-    push    ecx
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GPrivateSerializedStore
-    push    0x73
-    call    R6GameServiceAddresses::WriteStoredWordType5
-    mov    edx,DWORD PTR [esi+0xd8]
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GPrivateSerializedStore
-    shr    edx,0x3
-    and    edx,0xffffff01
-    push    edx
-    push    0x74
-    call    R6GameServiceAddresses::WriteStoredWordType5
-    mov    eax,DWORD PTR [esi+0xd8]
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GPrivateSerializedStore
-    shr    eax,0x4
-    and    eax,0xffffff01
-    push    eax
-    push    0x75
-    call    R6GameServiceAddresses::WriteStoredWordType5
-    mov    ecx,DWORD PTR [esi+0xd8]
-    shr    ecx,0x5
-    and    ecx,0xffffff01
-    push    ecx
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GPrivateSerializedStore
-    push    0x76
-    call    R6GameServiceAddresses::WriteStoredWordType5
-    mov    edx,DWORD PTR [esi+0xdc]
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GPrivateSerializedStore
-    push    edx
-    push    0x77
-    call    R6GameServiceAddresses::WriteStoredWordType3
-    mov    eax,DWORD PTR [esi+0xe0]
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GPrivateSerializedStore
-    push    eax
-    push    0x78
-    call    R6GameServiceAddresses::WriteStoredWordType3
-    mov    ecx,DWORD PTR [esi+0xd8]
-    shr    ecx,0x8
-    and    ecx,0xffffff01
-    push    ecx
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GPrivateSerializedStore
-    push    0x79
-    call    R6GameServiceAddresses::WriteStoredWordType5
-    mov    edx,DWORD PTR [esi+0xd8]
-    shr    edx,0x7
-    and    edx,0xffffff01
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GPrivateSerializedStore
-    push    edx
-    push    0x7a
-    call    R6GameServiceAddresses::WriteStoredWordType5
-    mov    eax,DWORD PTR [esi+0xd8]
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GPrivateSerializedStore
-    shr    eax,0x9
-    and    eax,0xffffff01
-    push    eax
-    push    0x7b
-    call    R6GameServiceAddresses::WriteStoredWordType5
-    xor    ebx,ebx
-  Branch86:
-    cmp    ebx,DWORD PTR [esi+0x148]
-    jge    Branch87
-    mov    ecx,DWORD PTR [esi+0x144]
-    lea    edi,[ebx+ebx*2]
-    shl    edi,0x3
-    add    ecx,edi
-    call    DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    push    eax
-    call    DWORD PTR ds:R6GameServiceAddresses::Core__appToAnsiSlot
-    add    esp,0x4
-    push    eax
-    lea    ecx,[ebx+0x7c]
-    push    ecx
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GPrivateSerializedStore
-    call    R6GameServiceAddresses::WriteStoredAnsiText
-    mov    edx,DWORD PTR [esi+0x144]
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::Engine__GModMgrSlot
-    mov    ecx,DWORD PTR [ecx]
-    lea    eax,[edi+edx*1+0xc]
-    push    eax
-    call    DWORD PTR ds:R6GameServiceAddresses::Engine_UR6ModMgr_eventGetGameTypeIndexSlot
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GPrivateSerializedStore
-    push    eax
-    lea    edx,[ebx+0x9c]
-    push    edx
-    call    R6GameServiceAddresses::WriteStoredWordType3
-    inc    ebx
-    jmp    Branch86
-  Branch87:
-    xor    ebx,ebx
-    jmp    Branch88
-    lea    ecx,[ecx+0x0]
-  Branch88:
-    cmp    ebx,DWORD PTR [esi+0x154]
-    jge    Branch89
-    mov    ecx,DWORD PTR [esi+0x150]
-    mov    edi,ebx
-    imul    edi,edi,0x2c
-    add    ecx,edi
-    call    DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    push    eax
-    call    DWORD PTR ds:R6GameServiceAddresses::Core__appToAnsiSlot
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GPrivateSerializedStore
-    add    esp,0x4
-    push    eax
-    lea    eax,[ebx+0xbc]
-    push    eax
-    call    R6GameServiceAddresses::WriteStoredAnsiText
-    mov    ecx,DWORD PTR [esi+0x150]
-    lea    ecx,[edi+ecx*1+0x20]
-    call    DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    push    eax
-    call    DWORD PTR ds:R6GameServiceAddresses::Core__appToAnsiSlot
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GPrivateSerializedStore
-    add    esp,0x4
-    push    eax
-    lea    edx,[ebx+0xcc]
-    push    edx
-    call    R6GameServiceAddresses::WriteStoredAnsiText
-    mov    eax,DWORD PTR [esi+0x150]
-    mov    ecx,DWORD PTR [edi+eax*1+0xc]
-    push    ecx
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GPrivateSerializedStore
-    lea    edx,[ebx+0xdc]
-    push    edx
-    call    R6GameServiceAddresses::WriteStoredWordType3
-    mov    eax,DWORD PTR [esi+0x150]
-    mov    ecx,DWORD PTR [edi+eax*1+0x18]
-    push    ecx
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GPrivateSerializedStore
-    lea    edx,[ebx+0xec]
-    push    edx
-    call    R6GameServiceAddresses::WriteStoredWordType3
-    inc    ebx
-    jmp    Branch88
-  Branch89:
-    lea    ecx,[ebp-0x24]
-    mov    BYTE PTR [ebp-0x4],0x0
-    call    DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringSlot
+    mov     nativeFrame,ebp
+    mov     receiver,esi
+    mov     keywordResult,eax
+  }
+  FString *scratch = (FString *)(nativeFrame - 0x30);
+  FString *modName = (FString *)(nativeFrame - 0x24);
+  using DereferenceABI = const TCHAR * (__thiscall *)(FString *);
+  using AnsiABI = const char * (__cdecl *)(const TCHAR *);
+  using TextABI = uint (__thiscall *)(void *,uint,const char *);
+  using WordABI = uint (__thiscall *)(void *,uint,uint);
+  using DestroyABI = uint (__thiscall *)(FString *);
+  *(byte *)(nativeFrame - 4) = 1;
+  const TCHAR *wide = (*(DereferenceABI *)R6GameServiceAddresses::Core__DFStringSlot)(keywordResult);
+  AnsiABI convert = *(AnsiABI *)R6GameServiceAddresses::Core__appToAnsiSlot;
+  const char *ansi = convert(wide);
+  void *store = *(void **)R6GameServiceAddresses::GPublicSerializedStore;
+  ((TextABI)R6GameServiceAddresses::WriteStoredAnsiText)(store,0xfd,ansi);
+  *(byte *)(nativeFrame - 4) = 0;
+  (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringSlot)(scratch);
+  void *manager = **(void ***)R6GameServiceAddresses::Engine__GModMgrSlot;
+  using NameABI = FString * (__thiscall *)(void *,FString *);
+  (*(NameABI *)R6GameServiceAddresses::Engine_UR6ModMgr_eventGetModNameSlot)(manager,modName);
+  *(byte *)(nativeFrame - 4) = 2;
+  wide = (*(DereferenceABI *)R6GameServiceAddresses::Core__DFStringSlot)
+      ((FString *)R6GameServiceAddresses::GServiceString3);
+  using CompareABI = int (__cdecl *)(const TCHAR *,const TCHAR *);
+  int comparison = (*(CompareABI *)R6GameServiceAddresses::Core__appStricmpSlot)
+      (wide,(const TCHAR *)R6GameServiceAddresses::WideTextR6RSCUSTOM);
+  if (comparison == 0) {
+    using AppendWideABI = FString& (__thiscall *)(FString *,const TCHAR *);
+    (*(AppendWideABI *)R6GameServiceAddresses::Core__YFStringSlot2)
+        (modName,(const TCHAR *)R6GameServiceAddresses::WideTextSpace);
+    manager = **(void ***)R6GameServiceAddresses::Engine__GModMgrSlot;
+    byte *mod = *(byte **)((byte *)manager + 0x34);
+    int thirdVersion = *(int *)(mod + 0x34);
+    int secondVersion = *(int *)(mod + 0x30);
+    int firstVersion = *(int *)(mod + 0x2c);
+    using FormatABI = FString * (__cdecl *)(FString *,const TCHAR *,...);
+    FString *formatted = (*(FormatABI *)R6GameServiceAddresses::Core_FString_PrintfSlot)
+        (scratch,(const TCHAR *)R6GameServiceAddresses::WideTextD02dBuildD,firstVersion,secondVersion,thirdVersion);
+    *(byte *)(nativeFrame - 4) = 3;
+    using AppendABI = FString& (__thiscall *)(FString *,const FString&);
+    (*(AppendABI *)R6GameServiceAddresses::Core__YFStringSlot)(modName,*formatted);
+    *(byte *)(nativeFrame - 4) = 2;
+    (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringSlot)(scratch);
+  }
+  wide = (*(DereferenceABI *)R6GameServiceAddresses::Core__DFStringSlot)(modName);
+  ansi = convert(wide);
+  store = *(void **)R6GameServiceAddresses::GPublicSerializedStore;
+  ((TextABI)R6GameServiceAddresses::WriteStoredAnsiText)(store,0xfe,ansi);
+  wide = (*(DereferenceABI *)R6GameServiceAddresses::Core__DFStringSlot)((FString *)(receiver + 0x120));
+  ansi = convert(wide);
+  store = *(void **)R6GameServiceAddresses::GPublicSerializedStore;
+  ((TextABI)R6GameServiceAddresses::WriteStoredAnsiText)(store,0x64,ansi);
+  uint value = *(uint *)(receiver + 0x100);
+  store = *(void **)R6GameServiceAddresses::GPublicSerializedStore;
+  ((WordABI)R6GameServiceAddresses::WriteStoredWordType3)(store,0x6d,value);
+  store = *(void **)R6GameServiceAddresses::GPublicSerializedStore;
+  value = *(byte *)(receiver + 0xc4);
+  value = value & 0xffffff01;
+  ((WordABI)R6GameServiceAddresses::WriteStoredWordType5)(store,0x66,value);
+  value = *(uint *)(receiver + 0xc4);
+  value = (value >> 1) & 0xffffff01;
+  store = *(void **)R6GameServiceAddresses::GPublicSerializedStore;
+  ((WordABI)R6GameServiceAddresses::WriteStoredWordType5)(store,0x67,value);
+  value = *(uint *)(receiver + 0xd8);
+  store = *(void **)R6GameServiceAddresses::GPublicSerializedStore;
+  value = ~(value >> 6) & 1;
+  ((WordABI)R6GameServiceAddresses::WriteStoredWordType3)(store,0x68,value);
+  value = *(uint *)(receiver + 0xc8);
+  store = *(void **)R6GameServiceAddresses::GPublicSerializedStore;
+  ((WordABI)R6GameServiceAddresses::WriteStoredWordType3)(store,0x69,value);
+  value = *(uint *)(receiver + 0xd8);
+  store = *(void **)R6GameServiceAddresses::GPublicSerializedStore;
+  value = (value >> 2) & 0xffffff01;
+  ((WordABI)R6GameServiceAddresses::WriteStoredWordType5)(store,0x6a,value);
+  wide = (*(DereferenceABI *)R6GameServiceAddresses::Core__DFStringSlot)((FString *)(receiver + 0x114));
+  ansi = convert(wide);
+  store = *(void **)R6GameServiceAddresses::GPublicSerializedStore;
+  ((TextABI)R6GameServiceAddresses::WriteStoredAnsiText)(store,0x65,ansi);
+  value = *(uint *)(receiver + 0xe4);
+  store = *(void **)R6GameServiceAddresses::GPublicSerializedStore;
+  ((WordABI)R6GameServiceAddresses::WriteStoredWordType3)(store,0x6b,value);
+  manager = **(void ***)R6GameServiceAddresses::Engine__GModMgrSlot;
+  using IndexABI = int (__thiscall *)(void *,const FString&);
+  value = (*(IndexABI *)R6GameServiceAddresses::Engine_UR6ModMgr_eventGetGameTypeIndexSlot)
+      (manager,*(FString *)(receiver + 0x108));
+  store = *(void **)R6GameServiceAddresses::GPublicSerializedStore;
+  ((WordABI)R6GameServiceAddresses::WriteStoredWordType3)(store,0x6c,value);
+  value = *(uint *)(receiver + 0x94);
+  store = *(void **)R6GameServiceAddresses::GPublicSerializedStore;
+  ((WordABI)R6GameServiceAddresses::WriteStoredWordType3)(store,0xfc,value);
+  value = *(uint *)(receiver + 0xd8);
+  store = *(void **)R6GameServiceAddresses::GPublicSerializedStore;
+  value = (value >> 10) & 0xffffff01;
+  ((WordABI)R6GameServiceAddresses::WriteStoredWordType5)(store,0xff,value);
+  value = *(uint *)(receiver + 0xcc);
+  store = *(void **)R6GameServiceAddresses::GPrivateSerializedStore;
+  ((WordABI)R6GameServiceAddresses::WriteStoredWordType3)(store,0x6f,value);
+  value = *(uint *)(receiver + 0xd0);
+  store = *(void **)R6GameServiceAddresses::GPrivateSerializedStore;
+  ((WordABI)R6GameServiceAddresses::WriteStoredWordType3)(store,0x70,value);
+  value = *(uint *)(receiver + 0xd4);
+  store = *(void **)R6GameServiceAddresses::GPrivateSerializedStore;
+  ((WordABI)R6GameServiceAddresses::WriteStoredWordType3)(store,0x71,value);
+  store = *(void **)R6GameServiceAddresses::GPrivateSerializedStore;
+  value = *(byte *)(receiver + 0xd8);
+  value = value & 0xffffff01;
+  ((WordABI)R6GameServiceAddresses::WriteStoredWordType5)(store,0x72,value);
+  value = *(uint *)(receiver + 0xd8);
+  value = (value >> 1) & 0xffffff01;
+  store = *(void **)R6GameServiceAddresses::GPrivateSerializedStore;
+  ((WordABI)R6GameServiceAddresses::WriteStoredWordType5)(store,0x73,value);
+  value = *(uint *)(receiver + 0xd8);
+  store = *(void **)R6GameServiceAddresses::GPrivateSerializedStore;
+  value = (value >> 3) & 0xffffff01;
+  ((WordABI)R6GameServiceAddresses::WriteStoredWordType5)(store,0x74,value);
+  value = *(uint *)(receiver + 0xd8);
+  store = *(void **)R6GameServiceAddresses::GPrivateSerializedStore;
+  value = (value >> 4) & 0xffffff01;
+  ((WordABI)R6GameServiceAddresses::WriteStoredWordType5)(store,0x75,value);
+  value = *(uint *)(receiver + 0xd8);
+  value = (value >> 5) & 0xffffff01;
+  store = *(void **)R6GameServiceAddresses::GPrivateSerializedStore;
+  ((WordABI)R6GameServiceAddresses::WriteStoredWordType5)(store,0x76,value);
+  value = *(uint *)(receiver + 0xdc);
+  store = *(void **)R6GameServiceAddresses::GPrivateSerializedStore;
+  ((WordABI)R6GameServiceAddresses::WriteStoredWordType3)(store,0x77,value);
+  value = *(uint *)(receiver + 0xe0);
+  store = *(void **)R6GameServiceAddresses::GPrivateSerializedStore;
+  ((WordABI)R6GameServiceAddresses::WriteStoredWordType3)(store,0x78,value);
+  value = *(uint *)(receiver + 0xd8);
+  value = (value >> 8) & 0xffffff01;
+  store = *(void **)R6GameServiceAddresses::GPrivateSerializedStore;
+  ((WordABI)R6GameServiceAddresses::WriteStoredWordType5)(store,0x79,value);
+  value = *(uint *)(receiver + 0xd8);
+  value = (value >> 7) & 0xffffff01;
+  store = *(void **)R6GameServiceAddresses::GPrivateSerializedStore;
+  ((WordABI)R6GameServiceAddresses::WriteStoredWordType5)(store,0x7a,value);
+  value = *(uint *)(receiver + 0xd8);
+  store = *(void **)R6GameServiceAddresses::GPrivateSerializedStore;
+  value = (value >> 9) & 0xffffff01;
+  ((WordABI)R6GameServiceAddresses::WriteStoredWordType5)(store,0x7b,value);
+  // Map iteration overwrites the native cached converter register; both array loops read the current converter import.
+  uint index = 0;
+  while ((int)index < *(int *)(receiver + 0x148)) {
+    uint base = *(uint *)(receiver + 0x144);
+    uint stride = index * 0x18;
+    wide = (*(DereferenceABI *)R6GameServiceAddresses::Core__DFStringSlot)((FString *)(base + stride));
+    ansi = (*(AnsiABI *)R6GameServiceAddresses::Core__appToAnsiSlot)(wide);
+    uint key = index + 0x7c;
+    store = *(void **)R6GameServiceAddresses::GPrivateSerializedStore;
+    ((TextABI)R6GameServiceAddresses::WriteStoredAnsiText)(store,key,ansi);
+    base = *(uint *)(receiver + 0x144);
+    manager = **(void ***)R6GameServiceAddresses::Engine__GModMgrSlot;
+    value = (*(IndexABI *)R6GameServiceAddresses::Engine_UR6ModMgr_eventGetGameTypeIndexSlot)
+        (manager,*(FString *)(base + stride + 0xc));
+    store = *(void **)R6GameServiceAddresses::GPrivateSerializedStore;
+    key = index + 0x9c;
+    ((WordABI)R6GameServiceAddresses::WriteStoredWordType3)(store,key,value);
+    ++index;
+  }
+  index = 0;
+  while ((int)index < *(int *)(receiver + 0x154)) {
+    uint base = *(uint *)(receiver + 0x150);
+    uint stride = index * 0x2c;
+    wide = (*(DereferenceABI *)R6GameServiceAddresses::Core__DFStringSlot)((FString *)(base + stride));
+    ansi = (*(AnsiABI *)R6GameServiceAddresses::Core__appToAnsiSlot)(wide);
+    store = *(void **)R6GameServiceAddresses::GPrivateSerializedStore;
+    uint key = index + 0xbc;
+    ((TextABI)R6GameServiceAddresses::WriteStoredAnsiText)(store,key,ansi);
+    base = *(uint *)(receiver + 0x150);
+    wide = (*(DereferenceABI *)R6GameServiceAddresses::Core__DFStringSlot)((FString *)(base + stride + 0x20));
+    ansi = (*(AnsiABI *)R6GameServiceAddresses::Core__appToAnsiSlot)(wide);
+    store = *(void **)R6GameServiceAddresses::GPrivateSerializedStore;
+    key = index + 0xcc;
+    ((TextABI)R6GameServiceAddresses::WriteStoredAnsiText)(store,key,ansi);
+    base = *(uint *)(receiver + 0x150);
+    value = *(uint *)(base + stride + 0xc);
+    store = *(void **)R6GameServiceAddresses::GPrivateSerializedStore;
+    key = index + 0xdc;
+    ((WordABI)R6GameServiceAddresses::WriteStoredWordType3)(store,key,value);
+    base = *(uint *)(receiver + 0x150);
+    value = *(uint *)(base + stride + 0x18);
+    store = *(void **)R6GameServiceAddresses::GPrivateSerializedStore;
+    key = index + 0xec;
+    ((WordABI)R6GameServiceAddresses::WriteStoredWordType3)(store,key,value);
+    ++index;
+  }
+  *(byte *)(nativeFrame - 4) = 0;
+  uint rawEax = (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringSlot)(modName);
+  __asm {
+    mov    eax,rawEax
     mov    ecx,DWORD PTR [ebp-0xc]
     pop    edi
     pop    esi
@@ -2296,9 +2205,10 @@ const R6GameServiceNative::FuncInfo UR6ServerList_execNativeGetPingTimeException
 };
 
 // Parses an address, runs the actual exchange and stores its full result before destroying its temporary string.
-// R6GameService.dll @ 10005af0 : complete native control/access order and raw ABI retained.
-__declspec(naked) void __thiscall UR6ServerList::execNativeGetPingTime(UR6ServerList *this,FFrame *frame,void *result)
+// R6GameService.dll @ 10005af0 : exported FFrame/result bridge; native frame preserves late ownership and result aliases.
+__declspec(naked) void __thiscall UR6ServerList::execNativeGetPingTime(FFrame &Stack,void *const Result)
 {
+  byte *nativeFrame;
   __asm {
     push   ebp
     mov    ebp,esp
@@ -2313,47 +2223,40 @@ __declspec(naked) void __thiscall UR6ServerList::execNativeGetPingTime(UR6Server
     push   edi
     lea    ecx,[ebp-0x24]
     mov    DWORD PTR [ebp-0x10],esp
-    mov    DWORD PTR [ebp-0x4],0x0
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot
-    mov    esi,DWORD PTR [ebp+0x8]
-    mov    eax,DWORD PTR [esi+0xc]
-    movzx  edx,BYTE PTR [eax]
-    mov    ecx,DWORD PTR [esi+0x8]
-    inc    eax
-    mov    DWORD PTR [esi+0xc],eax
-    lea    eax,[ebp-0x24]
-    push   eax
-    mov    eax,ds:R6GameServiceAddresses::Core__GNativesSlot
-    push   esi
-    mov    BYTE PTR [ebp-0x4],0x1
-    call   DWORD PTR [eax+edx*4]
-    mov    edx,DWORD PTR [esi+0xc]
-    inc    edx
-    mov    eax,edx
-    mov    DWORD PTR [esi+0xc],edx
-    cmp    BYTE PTR [eax],0x42
-    jne    Branch90
-    mov    ecx,DWORD PTR [esi+0x8]
-    inc    eax
-    push   0x0
-    mov    DWORD PTR [esi+0xc],eax
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::Core__GNativesSlot
-    push   esi
-    call   DWORD PTR [edx+0x108]
-  Branch90:
-    lea    ecx,[ebp-0x24]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    push   eax
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appToAnsiSlot
-    add    esp,0x4
-    push   eax
-    call   R6GameServiceAddresses::ServerPing_GetPingTime
-    mov    ecx,DWORD PTR [ebp+0xc]
-    mov    DWORD PTR [ecx],eax
-    add    esp,0x4
-    lea    ecx,[ebp-0x24]
-    mov    BYTE PTR [ebp-0x4],0x0
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringSlot
+    mov    nativeFrame,ebp
+  }
+  using EmptyABI = FString * (__thiscall *)(FString *);
+  using NativeABI = void (__thiscall *)(UObject *,FFrame *,void *);
+  using DereferenceABI = const TCHAR * (__thiscall *)(const FString *);
+  using AnsiABI = const char * (__cdecl *)(const TCHAR *);
+  using DestroyABI = void (__thiscall *)(FString *);
+  *(uint *)(nativeFrame - 4) = 0;
+  FString *address = (FString *)(nativeFrame - 0x24);
+  (*(EmptyABI *)R6GameServiceAddresses::Core__ConstructFStringSlot)(address);
+  FFrame *frame = *(FFrame **)(nativeFrame + 8);
+  byte *code = *(byte **)((byte *)frame + 0xc);
+  uint opcode = *code;
+  UObject *object = *(UObject **)((byte *)frame + 8);
+  *(byte **)((byte *)frame + 0xc) = code + 1;
+  uint *natives = *(uint **)R6GameServiceAddresses::Core__GNativesSlot;
+  *(byte *)(nativeFrame - 4) = 1;
+  ((NativeABI)natives[opcode])(object,frame,address);
+  code = *(byte **)((byte *)frame + 0xc) + 1;
+  *(byte **)((byte *)frame + 0xc) = code;
+  if (*code == 0x42) {
+    object = *(UObject **)((byte *)frame + 8);
+    *(byte **)((byte *)frame + 0xc) = code + 1;
+    natives = *(uint **)R6GameServiceAddresses::Core__GNativesSlot;
+    ((NativeABI)natives[0x42])(object,frame,0);
+  }
+  const TCHAR *wideAddress = (*(DereferenceABI *)R6GameServiceAddresses::Core__DFStringSlot)(address);
+  const char *ansiAddress = (*(AnsiABI *)R6GameServiceAddresses::Core__appToAnsiSlot)(wideAddress);
+  uint ping = ServerPing::GetPingTime(ansiAddress);
+  uint *output = *(uint **)(nativeFrame + 0xc);
+  *output = ping;
+  *(byte *)(nativeFrame - 4) = 0;
+  (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringSlot)(address);
+  __asm {
     mov    ecx,DWORD PTR [ebp-0xc]
     pop    edi
     pop    esi
@@ -2439,9 +2342,10 @@ const R6GameServiceNative::FuncInfo UR6ServerList_execNativeGetPingTimeOutExcept
 };
 
 // Advances parameter-finish/debug tokens and writes the fixed integer timeout 1000 through the current result slot.
-// R6GameService.dll @ 10005be0 : complete native control/access order and raw ABI retained.
-__declspec(naked) void __thiscall UR6ServerList::execNativeGetPingTimeOut(UR6ServerList *this,FFrame *frame,void *result)
+// R6GameService.dll @ 10005be0 : exported FFrame/result bridge; native frame retains result/link alias effects.
+__declspec(naked) void __thiscall UR6ServerList::execNativeGetPingTimeOut(FFrame &Stack,void *const Result)
 {
+  byte *nativeFrame;
   __asm {
     push   ebp
     mov    ebp,esp
@@ -2451,30 +2355,37 @@ __declspec(naked) void __thiscall UR6ServerList::execNativeGetPingTimeOut(UR6Ser
     push   eax
     mov    DWORD PTR fs:0x0,esp
     sub    esp,0xc
-    mov    eax,DWORD PTR [ebp+0x8]
-    mov    edx,DWORD PTR [eax+0xc]
-    inc    edx
+    mov    nativeFrame,ebp
+  }
+  FFrame *frame = *(FFrame **)(nativeFrame + 8);
+  byte *code = *(byte **)((byte *)frame + 0xc) + 1;
+  __asm {
     push   ebx
     push   esi
-    mov    DWORD PTR [eax+0xc],edx
-    cmp    BYTE PTR [edx],0x42
+  }
+  *(byte **)((byte *)frame + 0xc) = code;
+  bool hasDebugInfo = *code == 0x42;
+  __asm {
     push   edi
     mov    DWORD PTR [ebp-0x10],esp
-    mov    DWORD PTR [ebp-0x4],0x0
-    jne    Branch91
-    mov    ecx,DWORD PTR [eax+0x8]
-    inc    edx
-    push   0x0
-    mov    DWORD PTR [eax+0xc],edx
-    push   eax
-    mov    eax,ds:R6GameServiceAddresses::Core__GNativesSlot
-    call   DWORD PTR [eax+0x108]
-  Branch91:
-    mov    eax,DWORD PTR [ebp+0xc]
-    mov    ecx,DWORD PTR [ebp-0xc]
+  }
+  *(uint *)(nativeFrame - 4) = 0;
+  if (hasDebugInfo) {
+    UObject *object = *(UObject **)((byte *)frame + 8);
+    *(byte **)((byte *)frame + 0xc) = code + 1;
+    uint *natives = *(uint **)R6GameServiceAddresses::Core__GNativesSlot;
+    using DebugABI = void (__thiscall *)(UObject *,FFrame *,void *);
+    ((DebugABI)natives[0x42])(object,frame,0);
+  }
+  uint *output = *(uint **)(nativeFrame + 0xc);
+  uint predecessor = *(uint *)(nativeFrame - 0xc);
+  __asm {
     pop    edi
     pop    esi
-    mov    DWORD PTR [eax],0x3e8
+  }
+  *output = 1000;
+  __asm {
+    mov    ecx,predecessor
     mov    DWORD PTR fs:0x0,ecx
     pop    ebx
     mov    esp,ebp

@@ -289,45 +289,50 @@ __declspec(naked) uint __stdcall MatchMSClientStoredRequest(uint firstWord, uint
 }
 
 // Matches both stored request words, dispatches payload, frees the current record, clears it and sends selector0x5c.
-// R6GameService.dll @ 10033730 : raw EAX/AL boundary; original free/member declaration and client class unassigned.
-__declspec(naked) uint __thiscall CompleteStoredRequestIfMatched(void *client, uint firstWord, uint secondWord)
+// R6GameService.dll @ 10033730 : C++ request matching, callback/current-record cleanup and raw AL result.
+__declspec(naked) uint __thiscall CompleteStoredRequestIfMatched(void *client,uint firstWord,uint secondWord)
 {
+  byte *nativeFrame;
+  byte *receiver;
   __asm {
     push   esi
     mov    esi,ecx
-    mov    eax,DWORD PTR [esi+0x104]
-    test   eax,eax
-    je     Branch19
-    mov    ecx,DWORD PTR [esp+0x8]
-    mov    edx,DWORD PTR [eax+0x4]
-    cmp    edx,ecx
-    jne    Branch19
-    mov    edx,DWORD PTR [eax+0x8]
-    push   edi
-    mov    edi,DWORD PTR [esp+0x10]
-    cmp    edx,edi
-    pop    edi
-    jne    Branch19
-    mov    BYTE PTR [esi+0x115],0x0
-    mov    eax,DWORD PTR [eax+0xc]
-    push   ecx
-    push   eax
-    mov    ecx,esi
-    call   R6GameServiceAddresses::ForwardTwoArgumentBooleanViaNestedOffsets
-    mov    eax,DWORD PTR [esi+0x104]
-    test   eax,eax
-    je     Branch18
-    push   eax
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch18:
-    mov    ecx,esi
-    mov    DWORD PTR [esi+0x104],0x0
-    call   R6GameServiceAddresses::SendSelector5cViaNestedOffsets
-    mov    al,0x1
-    pop    esi
-    ret    0x8
-  Branch19:
-    xor    al,al
+    mov    nativeFrame,esp
+    mov    receiver,esi
+  }
+  uint request = *(uint *)(receiver + 0x104);
+  uint output = request & 0xffffff00;
+  if (request != 0) {
+    uint first = *(uint *)(nativeFrame + 8);
+    uint storedFirst = *(uint *)(request + 4);
+    if (storedFirst == first) {
+      uint storedSecond = *(uint *)(request + 8);
+      __asm {
+        push   edi
+      }
+      uint second = *(uint *)(nativeFrame + 0xc);
+      bool matched = storedSecond == second;
+      __asm {
+        pop    edi
+      }
+      if (matched) {
+        *(byte *)(receiver + 0x115) = 0;
+        uint payload = *(uint *)(request + 0xc);
+        using PayloadABI = uint (__thiscall *)(void *,uint,uint);
+        using FreeABI = uint (__stdcall *)(void *);
+        using SendABI = uint (__fastcall *)(void *);
+        ((PayloadABI)R6GameServiceAddresses::ForwardTwoArgumentBooleanViaNestedOffsets)(receiver,payload,first);
+        void *current = *(void **)(receiver + 0x104);
+        if (current != nullptr)
+          ((FreeABI)R6GameServiceAddresses::TailFreeThroughGlobalAllocator)(current);
+        *(uint *)(receiver + 0x104) = 0;
+        uint sent = ((SendABI)R6GameServiceAddresses::SendSelector5cViaNestedOffsets)(receiver);
+        output = (sent & 0xffffff00) | 1;
+      }
+    }
+  }
+  __asm {
+    mov    eax,output
     pop    esi
     ret    0x8
   }

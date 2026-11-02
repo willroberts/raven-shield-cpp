@@ -17,7 +17,6 @@ const R6GameServiceNative::UnwindEntry stGameDataSharedLifetimeUnwindMap[9] = {
   {7, R6GameServiceAddresses::UnwindGameDataPlayerArray},
 };
 // R6GameService.dll data @ 1007b004 : shared by default/copy construction and destruction.
-// R6GameService.dll data @ 1007afbc : native storage identity retained.
 const R6GameServiceNative::FuncInfo stGameDataSharedLifetimeExceptionInfo = {
   0x19930520,
   9,
@@ -172,9 +171,10 @@ __declspec(naked) void * __thiscall AssignSTGameData(void *destination,const voi
 }
 
 // Destroys password, player/map arrays and remaining strings in reverse lifetime order with staged cleanup.
-// R6GameService.dll @ 10003020 : complete native control/access order and raw ABI retained.
+// R6GameService.dll @ 10003020 : RET0; exact member order and partial-construction cleanup states.
 __declspec(naked) void __thiscall DestroySTGameData(void *gameData)
 {
+  byte *nativeStack,*receiver;
   __asm {
     // Initial state8 and byte-only intermediate decrements retain exact parent frame; final first-string call runs in state-1.
     push   0xffffffff
@@ -186,36 +186,32 @@ __declspec(naked) void __thiscall DestroySTGameData(void *gameData)
     push   esi
     mov    esi,ecx
     mov    DWORD PTR [esp+0x4],esi
-    lea    ecx,[esi+0x98]
-    mov    DWORD PTR [esp+0x10],0x8
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringNoInitSlot
-    lea    ecx,[esi+0x8c]
-    mov    BYTE PTR [esp+0x10],0x7
-    call   R6GameServiceAddresses::DestroyArray2CByteElements
-    lea    ecx,[esi+0x80]
-    mov    BYTE PTR [esp+0x10],0x6
-    call   R6GameServiceAddresses::DestroyArray18ByteElements
-    lea    ecx,[esi+0x74]
-    mov    BYTE PTR [esp+0x10],0x5
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringNoInitSlot
-    lea    ecx,[esi+0x68]
-    mov    BYTE PTR [esp+0x10],0x4
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringNoInitSlot
-    lea    ecx,[esi+0x5c]
-    mov    BYTE PTR [esp+0x10],0x3
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringNoInitSlot
-    lea    ecx,[esi+0x50]
-    mov    BYTE PTR [esp+0x10],0x2
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringNoInitSlot
-    lea    ecx,[esi+0x44]
-    mov    BYTE PTR [esp+0x10],0x1
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringNoInitSlot
-    lea    ecx,[esi+0x30]
-    mov    BYTE PTR [esp+0x10],0x0
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringNoInitSlot
-    lea    ecx,[esi+0x24]
-    mov    DWORD PTR [esp+0x10],0xffffffff
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringNoInitSlot
+    mov    nativeStack,esp
+    mov    receiver,esi
+  }
+  using MemberABI = uint (__thiscall *)(void *);
+  *(uint *)(nativeStack + 0x10) = 8;
+  (*(MemberABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(receiver + 0x98);
+  *(byte *)(nativeStack + 0x10) = 7;
+  ((MemberABI)R6GameServiceAddresses::DestroyArray2CByteElements)(receiver + 0x8c);
+  *(byte *)(nativeStack + 0x10) = 6;
+  ((MemberABI)R6GameServiceAddresses::DestroyArray18ByteElements)(receiver + 0x80);
+  *(byte *)(nativeStack + 0x10) = 5;
+  (*(MemberABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(receiver + 0x74);
+  *(byte *)(nativeStack + 0x10) = 4;
+  (*(MemberABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(receiver + 0x68);
+  *(byte *)(nativeStack + 0x10) = 3;
+  (*(MemberABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(receiver + 0x5c);
+  *(byte *)(nativeStack + 0x10) = 2;
+  (*(MemberABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(receiver + 0x50);
+  *(byte *)(nativeStack + 0x10) = 1;
+  (*(MemberABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(receiver + 0x44);
+  *(byte *)(nativeStack + 0x10) = 0;
+  (*(MemberABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(receiver + 0x30);
+  *(uint *)(nativeStack + 0x10) = 0xffffffff;
+  uint rawEax = (*(MemberABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(receiver + 0x24);
+  __asm {
+    mov    eax,rawEax
     mov    ecx,DWORD PTR [esp+0x8]
     pop    esi
     mov    DWORD PTR fs:0x0,ecx
@@ -225,9 +221,10 @@ __declspec(naked) void __thiscall DestroySTGameData(void *gameData)
 }
 
 // Constructs eight no-init strings and returns the original record without initializing scalar or array storage.
-// R6GameService.dll @ 100030f0 : complete native control/access order and raw ABI retained.
+// R6GameService.dll @ 100030f0 : RET0; exact member order and partial-construction cleanup states.
 __declspec(naked) void * __thiscall ConstructServerGameData(void *gameData)
 {
+  byte *nativeStack,*receiver;
   __asm {
     // State jumps5 to8 before password construction: failure can clean both untouched array headers; no zeroing is invented.
     push   0xffffffff
@@ -240,28 +237,26 @@ __declspec(naked) void * __thiscall ConstructServerGameData(void *gameData)
     mov    esi,ecx
     lea    ecx,[esi+0x24]
     mov    DWORD PTR [esp+0x4],esi
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringNoInitSlot
-    lea    ecx,[esi+0x30]
-    mov    DWORD PTR [esp+0x10],0x0
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringNoInitSlot
-    lea    ecx,[esi+0x44]
-    mov    BYTE PTR [esp+0x10],0x1
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringNoInitSlot
-    lea    ecx,[esi+0x50]
-    mov    BYTE PTR [esp+0x10],0x2
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringNoInitSlot
-    lea    ecx,[esi+0x5c]
-    mov    BYTE PTR [esp+0x10],0x3
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringNoInitSlot
-    lea    ecx,[esi+0x68]
-    mov    BYTE PTR [esp+0x10],0x4
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringNoInitSlot
-    lea    ecx,[esi+0x74]
-    mov    BYTE PTR [esp+0x10],0x5
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringNoInitSlot
-    lea    ecx,[esi+0x98]
-    mov    BYTE PTR [esp+0x10],0x8
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringNoInitSlot
+    mov    nativeStack,esp
+    mov    receiver,esi
+  }
+  using MemberABI = uint (__thiscall *)(void *);
+  (*(MemberABI *)R6GameServiceAddresses::Core__ConstructFStringNoInitSlot)(receiver + 0x24);
+  *(uint *)(nativeStack + 0x10) = 0;
+  (*(MemberABI *)R6GameServiceAddresses::Core__ConstructFStringNoInitSlot)(receiver + 0x30);
+  *(byte *)(nativeStack + 0x10) = 1;
+  (*(MemberABI *)R6GameServiceAddresses::Core__ConstructFStringNoInitSlot)(receiver + 0x44);
+  *(byte *)(nativeStack + 0x10) = 2;
+  (*(MemberABI *)R6GameServiceAddresses::Core__ConstructFStringNoInitSlot)(receiver + 0x50);
+  *(byte *)(nativeStack + 0x10) = 3;
+  (*(MemberABI *)R6GameServiceAddresses::Core__ConstructFStringNoInitSlot)(receiver + 0x5c);
+  *(byte *)(nativeStack + 0x10) = 4;
+  (*(MemberABI *)R6GameServiceAddresses::Core__ConstructFStringNoInitSlot)(receiver + 0x68);
+  *(byte *)(nativeStack + 0x10) = 5;
+  (*(MemberABI *)R6GameServiceAddresses::Core__ConstructFStringNoInitSlot)(receiver + 0x74);
+  *(byte *)(nativeStack + 0x10) = 8;
+  (*(MemberABI *)R6GameServiceAddresses::Core__ConstructFStringNoInitSlot)(receiver + 0x98);
+  __asm {
     mov    ecx,DWORD PTR [esp+0x8]
     mov    eax,esi
     pop    esi

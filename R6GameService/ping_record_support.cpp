@@ -19,9 +19,11 @@ const R6GameServiceNative::FuncInfo DestroyPingRecordExceptionInfo = {
 };
 
 // Destroys record strings at+0x10c then+0; socket ownership and original record class remain unassigned.
-// R6GameService.dll @ 10014050 : complete native control/access order and raw ABI retained.
+// R6GameService.dll @ 10014050 : ECX record; saved record remains live for the private unwind action.
 __declspec(naked) void __fastcall DestroyPingRecord(void *record)
 {
+  byte *nativeFrame;
+  void *receiver;
   __asm {
     push   0xffffffff
     push   R6GameServiceAddresses::DestroyPingRecordSelectExceptionInfo
@@ -32,12 +34,15 @@ __declspec(naked) void __fastcall DestroyPingRecord(void *record)
     push   esi
     mov    esi,ecx
     mov    DWORD PTR [esp+0x4],esi
-    lea    ecx,[esi+0x10c]
-    mov    DWORD PTR [esp+0x10],0x0
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringSlot
-    mov    ecx,esi
-    mov    DWORD PTR [esp+0x10],0xffffffff
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringSlot
+    mov    nativeFrame,esp
+    mov    receiver,esi
+  }
+  using DestroyABI = void (__thiscall *)(FString *);
+  *(uint *)(nativeFrame + 0x10) = 0;
+  (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringSlot)((FString *)((byte *)receiver + 0x10c));
+  *(uint *)(nativeFrame + 0x10) = 0xffffffff;
+  (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringSlot)((FString *)receiver);
+  __asm {
     mov    ecx,DWORD PTR [esp+0x8]
     pop    esi
     mov    DWORD PTR fs:0x0,ecx
@@ -67,69 +72,32 @@ __declspec(naked) void DestroyPingRecordSelectExceptionInfo(void)
 }
 
 // Checks a signed wrapped range, destroys records through live Data, then forwards late count to FArray::Remove.
-// R6GameService.dll @ 100143a0 : complete native control/access order and raw ABI retained.
-__declspec(naked) void __thiscall RemovePingRecordRange(FArray *records,int firstIndex,int count)
+// R6GameService.dll @ 100143a0 : ECX array/RET8; cached range and live Data/count match the native template body.
+void __thiscall RemovePingRecordRange(FArray *records,int firstIndex,int count)
 {
-  __asm {
-    push   ebx
-    mov    ebx,DWORD PTR [esp+0x8]
-    test   ebx,ebx
-    push   ebp
-    push   esi
-    mov    esi,DWORD PTR ds:R6GameServiceAddresses::Core__appFailAssertSlot
-    push   edi
-    mov    ebp,ecx
-    jge    Branch1
-    push   0x201
-    push   R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH
-    push   R6GameServiceAddresses::TextIndex0
-    call   esi
-    add    esp,0xc
-  Branch1:
-    cmp    ebx,DWORD PTR [ebp+0x4]
-    jle    Branch2
-    push   0x202
-    push   R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH
-    push   R6GameServiceAddresses::TextIndexArrayNum
-    call   esi
-    add    esp,0xc
-  Branch2:
-    mov    eax,DWORD PTR [esp+0x18]
-    lea    edi,[ebx+eax*1]
-    cmp    edi,DWORD PTR [ebp+0x4]
-    jle    Branch3
-    push   0x203
-    push   R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH
-    push   R6GameServiceAddresses::TextIndexCountArrayNum
-    call   esi
-    add    esp,0xc
-  Branch3:
-    cmp    ebx,edi
-    jge    Branch5
-    mov    esi,ebx
-    imul   esi,esi,0x12c
-    sub    edi,ebx
-    nop
-  Branch4:
-    mov    ecx,DWORD PTR [ebp+0x0]
-    add    ecx,esi
-    call   R6GameServiceAddresses::DestroyPingRecord
-    add    esi,0x12c
-    dec    edi
-    jne    Branch4
-  Branch5:
-    mov    ecx,DWORD PTR [esp+0x18]
-    push   0x12c
-    push   ecx
-    push   ebx
-    mov    ecx,ebp
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FArray_RemoveSlot
-    pop    edi
-    pop    esi
-    pop    ebp
-    pop    ebx
-    ret    0x8
+  int first = firstIndex;
+  using AssertABI = void (__cdecl *)(const char *,const char *,int);
+  AssertABI assertion = *(AssertABI *)R6GameServiceAddresses::Core__appFailAssertSlot;
+  if (first < 0)
+    assertion((const char *)R6GameServiceAddresses::TextIndex0,
+        (const char *)R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH,0x201);
+  if (first > *(int *)((byte *)records + 4))
+    assertion((const char *)R6GameServiceAddresses::TextIndexArrayNum,
+        (const char *)R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH,0x202);
+  uint end = (uint)first + (uint)count;
+  if ((int)end > *(int *)((byte *)records + 4))
+    assertion((const char *)R6GameServiceAddresses::TextIndexCountArrayNum,
+        (const char *)R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH,0x203);
+  if (first < (int)end) {
+    uint offset = (uint)first * 300;
+    uint remaining = end - (uint)first;
+    do {
+      DestroyPingRecord((void *)((uint)*(byte **)records + offset));
+      offset += 300;
+    } while (--remaining != 0);
   }
+  using RemoveABI = void (__thiscall *)(void *,int,int,int);
+  (*(RemoveABI *)R6GameServiceAddresses::Core_FArray_RemoveSlot)(records,first,count,300);
 }
 
 // R6GameService.dll data @ 1007e794 : native exception records.

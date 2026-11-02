@@ -522,259 +522,29 @@ __declspec(naked) int __cdecl ExtractLineValue(char *text,char *key,char *output
   }
 }
 
-// Compares one byte against0..9/a..f/A..F through cached strncmp target; returns nibble or zero for invalid input, ignoring trailing bytes.
-// R6GameService.dll @ 10005760 : native control/access order and raw ABI retained.
-__declspec(naked) int __cdecl HexDigitToValue(char *text)
+// Decode one hexadecimal byte through a cached strncmp target; invalid input returns zero.
+// R6GameService.dll @ 10005760 : cdecl int(char *); trailing bytes are ignored.
+int __cdecl HexDigitToValue(char *text)
 {
-  __asm {
-    push   esi
-    mov    esi,DWORD PTR [esp+0x8]
-    push   edi
-    mov    edi,DWORD PTR ds:R6GameServiceAddresses::MSVCR71_strncmpSlot
-    push   0x1
-    push   R6GameServiceAddresses::WideText0
-    push   esi
-    call   edi
-    add    esp,0xc
-    test   eax,eax
-    jne    Branch19
-    pop    edi
-    pop    esi
-    ret
-  Branch19:
-    push   0x1
-    push   R6GameServiceAddresses::WideText1
-    push   esi
-    call   edi
-    add    esp,0xc
-    test   eax,eax
-    jne    Branch20
-    pop    edi
-    mov    eax,0x1
-    pop    esi
-    ret
-  Branch20:
-    push   0x1
-    push   R6GameServiceAddresses::WideText2
-    push   esi
-    call   edi
-    add    esp,0xc
-    test   eax,eax
-    jne    Branch21
-    pop    edi
-    mov    eax,0x2
-    pop    esi
-    ret
-  Branch21:
-    push   0x1
-    push   R6GameServiceAddresses::WideText3
-    push   esi
-    call   edi
-    add    esp,0xc
-    test   eax,eax
-    jne    Branch22
-    pop    edi
-    mov    eax,0x3
-    pop    esi
-    ret
-  Branch22:
-    push   0x1
-    push   R6GameServiceAddresses::WideText4
-    push   esi
-    call   edi
-    add    esp,0xc
-    test   eax,eax
-    jne    Branch23
-    pop    edi
-    mov    eax,0x4
-    pop    esi
-    ret
-  Branch23:
-    push   0x1
-    push   R6GameServiceAddresses::WideText5
-    push   esi
-    call   edi
-    add    esp,0xc
-    test   eax,eax
-    jne    Branch24
-    pop    edi
-    mov    eax,0x5
-    pop    esi
-    ret
-  Branch24:
-    push   0x1
-    push   R6GameServiceAddresses::WideText6
-    push   esi
-    call   edi
-    add    esp,0xc
-    test   eax,eax
-    jne    Branch25
-    pop    edi
-    mov    eax,0x6
-    pop    esi
-    ret
-  Branch25:
-    push   0x1
-    push   R6GameServiceAddresses::WideText7
-    push   esi
-    call   edi
-    add    esp,0xc
-    test   eax,eax
-    jne    Branch26
-    pop    edi
-    mov    eax,0x7
-    pop    esi
-    ret
-  Branch26:
-    push   0x1
-    push   R6GameServiceAddresses::WideText8
-    push   esi
-    call   edi
-    add    esp,0xc
-    test   eax,eax
-    jne    Branch27
-    pop    edi
-    mov    eax,0x8
-    pop    esi
-    ret
-  Branch27:
-    push   0x1
-    push   R6GameServiceAddresses::WideText9
-    push   esi
-    call   edi
-    add    esp,0xc
-    test   eax,eax
-    jne    Branch28
-    pop    edi
-    mov    eax,0x9
-    pop    esi
-    ret
-  Branch28:
-    push   0x1
-    push   R6GameServiceAddresses::WideTextA2
-    push   esi
-    call   edi
-    add    esp,0xc
-    test   eax,eax
-    jne    Branch30
-  Branch29:
-    pop    edi
-    mov    eax,0xa
-    pop    esi
-    ret
-  Branch30:
-    push   0x1
-    push   R6GameServiceAddresses::WideTextB2
-    push   esi
-    call   edi
-    add    esp,0xc
-    test   eax,eax
-    jne    Branch32
-  Branch31:
-    pop    edi
-    mov    eax,0xb
-    pop    esi
-    ret
-  Branch32:
-    push   0x1
-    push   R6GameServiceAddresses::WideTextC2
-    push   esi
-    call   edi
-    add    esp,0xc
-    test   eax,eax
-    jne    Branch34
-  Branch33:
-    pop    edi
-    mov    eax,0xc
-    pop    esi
-    ret
-  Branch34:
-    push   0x1
-    push   R6GameServiceAddresses::WideTextD2
-    push   esi
-    call   edi
-    add    esp,0xc
-    test   eax,eax
-    jne    Branch36
-  Branch35:
-    pop    edi
-    mov    eax,0xd
-    pop    esi
-    ret
-  Branch36:
-    push   0x1
-    push   R6GameServiceAddresses::WideTextE2
-    push   esi
-    call   edi
-    add    esp,0xc
-    test   eax,eax
-    jne    Branch38
-  Branch37:
-    pop    edi
-    mov    eax,0xe
-    pop    esi
-    ret
-  Branch38:
-    push   0x1
-    push   R6GameServiceAddresses::WideTextF2
-    push   esi
-    call   edi
-    add    esp,0xc
-    test   eax,eax
-    jne    Branch39
-    pop    edi
-    mov    eax,0xf
-    pop    esi
-    ret
-  Branch39:
-    push   0x1
-    push   R6GameServiceAddresses::WideTextA
-    push   esi
-    call   edi
-    add    esp,0xc
-    test   eax,eax
-    je     Branch29
-    push   0x1
-    push   R6GameServiceAddresses::WideTextB
-    push   esi
-    call   edi
-    add    esp,0xc
-    test   eax,eax
-    je     Branch31
-    push   0x1
-    push   R6GameServiceAddresses::WideTextC
-    push   esi
-    call   edi
-    add    esp,0xc
-    test   eax,eax
-    je     Branch33
-    push   0x1
-    push   R6GameServiceAddresses::WideTextD
-    push   esi
-    call   edi
-    add    esp,0xc
-    test   eax,eax
-    je     Branch35
-    push   0x1
-    push   R6GameServiceAddresses::WideTextE
-    push   esi
-    call   edi
-    add    esp,0xc
-    test   eax,eax
-    je     Branch37
-    push   0x1
-    push   R6GameServiceAddresses::WideTextF
-    push   esi
-    call   edi
-    add    esp,0xc
-    neg    eax
-    sbb    eax,eax
-    and    eax,0xfffffff1
-    pop    edi
-    add    eax,0xf
-    pop    esi
-    ret
+  using CompareABI = int (__cdecl *)(const char *,const char *,uint);
+  CompareABI compare = *(CompareABI *)R6GameServiceAddresses::MSVCR71_strncmpSlot;
+  const uint digitText[22] = {
+    R6GameServiceAddresses::WideText0, R6GameServiceAddresses::WideText1,
+    R6GameServiceAddresses::WideText2, R6GameServiceAddresses::WideText3,
+    R6GameServiceAddresses::WideText4, R6GameServiceAddresses::WideText5,
+    R6GameServiceAddresses::WideText6, R6GameServiceAddresses::WideText7,
+    R6GameServiceAddresses::WideText8, R6GameServiceAddresses::WideText9,
+    R6GameServiceAddresses::WideTextA2, R6GameServiceAddresses::WideTextB2,
+    R6GameServiceAddresses::WideTextC2, R6GameServiceAddresses::WideTextD2,
+    R6GameServiceAddresses::WideTextE2, R6GameServiceAddresses::WideTextF2,
+    R6GameServiceAddresses::WideTextA, R6GameServiceAddresses::WideTextB,
+    R6GameServiceAddresses::WideTextC, R6GameServiceAddresses::WideTextD,
+    R6GameServiceAddresses::WideTextE, R6GameServiceAddresses::WideTextF,
+  };
+  for (uint index = 0; index != 22; ++index) {
+    if (compare(text,(const char *)digitText[index],1) == 0) return index < 16 ? index : index - 6;
   }
+  return 0;
 }
 
 // Queries wide length, allocates BSTR, converts using the late source argument and frees on length mismatch.
@@ -857,9 +627,10 @@ __declspec(naked) LPWSTR __cdecl ConvertAnsiToBstr(LPCSTR source,int byteCount)
 
 // Formats twenty bytes through cached overlapping sprintf calls, builds output string and releases its temporary.
 // Forty-byte text storage abuts saved FS link; native final terminator can change its low byte.
-// R6GameService.dll @ 1000d020 : complete native operations and raw ABI; descriptive helper name.
+// R6GameService.dll @ 1000d020 : C++ formatter with native frame/exception boundaries for saved-link overwrite.
 __declspec(naked) FString * __cdecl FormatAuthenticationIdHex(FString *result,const uchar *authenticationId)
 {
+  byte *nativeFrame;
   __asm {
     push   0xffffffff
     push   R6GameServiceAddresses::SelectAuthenticationFormatterLifetime
@@ -871,61 +642,39 @@ __declspec(naked) FString * __cdecl FormatAuthenticationIdHex(FString *result,co
     push   esi
     xor    esi,esi
     push   edi
-    lea    ecx,[esp+0x10]
-    mov    DWORD PTR [esp+0xc],esi
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot
-    mov    ebp,DWORD PTR [esp+0x58]
-    mov    edi,DWORD PTR ds:R6GameServiceAddresses::MSVCR71_sprintfSlot
-    xor    eax,eax
-    mov    DWORD PTR [esp+0x1c],eax
-    mov    DWORD PTR [esp+0x20],eax
-    mov    DWORD PTR [esp+0x24],eax
-    mov    DWORD PTR [esp+0x28],eax
-    mov    DWORD PTR [esp+0x2c],eax
-    mov    DWORD PTR [esp+0x30],eax
-    mov    DWORD PTR [esp+0x34],eax
-    mov    DWORD PTR [esp+0x38],eax
-    mov    DWORD PTR [esp+0x3c],eax
-    mov    DWORD PTR [esp+0x4c],0x1
-    mov    DWORD PTR [esp+0x40],eax
-    jmp    Branch43
-    lea    esp,[esp+0x0]
-  Branch43:
-    mov    al,BYTE PTR [esi+ebp*1]
-    movzx  ecx,al
-    lea    edx,[esp+0x1c]
-    push   ecx
-    cmp    al,0x10
-    push   edx
-    mov    eax,edx
-    jb     Branch44
-    push   R6GameServiceAddresses::TextS2x
-    jmp    Branch45
-  Branch44:
-    push   R6GameServiceAddresses::TextS0X
-  Branch45:
-    push   eax
-    call   edi
-    add    esp,0x10
-    inc    esi
-    cmp    esi,0x14
-    jb     Branch43
-    lea    ecx,[esp+0x1c]
-    push   ecx
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appFromAnsiSlot
-    add    esp,0x4
-    push   eax
-    lea    ecx,[esp+0x14]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__4FStringSlot2
-    mov    esi,DWORD PTR [esp+0x54]
-    lea    edx,[esp+0x10]
-    push   edx
-    mov    ecx,esi
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot3
-    lea    ecx,[esp+0x10]
-    mov    DWORD PTR [esp+0xc],0x1
-    mov    BYTE PTR [esp+0x4c],0x0
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringSlot
+    mov    nativeFrame,esp
+  }
+  using EmptyABI = FString * (__thiscall *)(FString *);
+  using FormatABI = int (__cdecl *)(char *,const char *,...);
+  using FromAnsiABI = const TCHAR * (__cdecl *)(const char *);
+  using AssignABI = FString * (__thiscall *)(FString *,const TCHAR *);
+  using CopyABI = FString * (__thiscall *)(FString *,const FString *);
+  using DestroyABI = void (__thiscall *)(FString *);
+  *(uint *)(nativeFrame + 0xc) = 0;
+  FString *temporary = (FString *)(nativeFrame + 0x10);
+  (*(EmptyABI *)R6GameServiceAddresses::Core__ConstructFStringSlot)(temporary);
+  const byte *source = *(const byte **)(nativeFrame + 0x58);
+  FormatABI format = *(FormatABI *)R6GameServiceAddresses::MSVCR71_sprintfSlot;
+  char *text = (char *)(nativeFrame + 0x1c);
+  for (uint index = 0; index != 9; ++index) *(uint *)(text + index * 4) = 0;
+  *(uint *)(nativeFrame + 0x4c) = 1;
+  *(uint *)(text + 36) = 0;
+  for (uint index = 0; index != 20; ++index) {
+    uint value = source[index];
+    const char *pattern = (const char *)(value < 16
+        ? R6GameServiceAddresses::TextS0X : R6GameServiceAddresses::TextS2x);
+    // Source and destination overlap; text[40] overwrites the low byte of the saved FS predecessor.
+    format(text,pattern,text,value);
+  }
+  const TCHAR *wideText = (*(FromAnsiABI *)R6GameServiceAddresses::Core__appFromAnsiSlot)(text);
+  (*(AssignABI *)R6GameServiceAddresses::Core__4FStringSlot2)(temporary,wideText);
+  FString *output = *(FString **)(nativeFrame + 0x54);
+  (*(CopyABI *)R6GameServiceAddresses::Core__ConstructFStringSlot3)(output,temporary);
+  *(uint *)(nativeFrame + 0xc) = 1;
+  *(byte *)(nativeFrame + 0x4c) = 0;
+  (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringSlot)(temporary);
+  __asm {
+    mov    esi,output
     mov    ecx,DWORD PTR [esp+0x44]
     pop    edi
     mov    eax,esi

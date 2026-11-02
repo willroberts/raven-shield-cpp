@@ -85,9 +85,10 @@ __declspec(naked) void * __thiscall AssignSTGameServer(void *destination,const v
 }
 
 // Destroys nested game data followed by options and address strings under three staged parent cleanup states.
-// R6GameService.dll @ 10003380 : complete native control/access order and raw ABI retained.
+// R6GameService.dll @ 10003380 : RET0; exact member order and partial-construction cleanup states.
 __declspec(naked) void __thiscall DestroySTGameServer(void *server)
 {
+  byte *nativeStack,*receiver;
   __asm {
     // The nested record owns its cleanup frame; parent state2 covers its call, then byte state1/0 precede the next strings.
     push   0xffffffff
@@ -99,18 +100,20 @@ __declspec(naked) void __thiscall DestroySTGameServer(void *server)
     push   esi
     mov    esi,ecx
     mov    DWORD PTR [esp+0x4],esi
-    lea    ecx,[esi+0x38]
-    mov    DWORD PTR [esp+0x10],0x2
-    call   R6GameServiceAddresses::DestroySTGameData
-    lea    ecx,[esi+0x2c]
-    mov    BYTE PTR [esp+0x10],0x1
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringNoInitSlot
-    lea    ecx,[esi+0x1c]
-    mov    BYTE PTR [esp+0x10],0x0
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringNoInitSlot
-    lea    ecx,[esi+0x10]
-    mov    DWORD PTR [esp+0x10],0xffffffff
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringNoInitSlot
+    mov    nativeStack,esp
+    mov    receiver,esi
+  }
+  using MemberABI = uint (__thiscall *)(void *);
+  *(uint *)(nativeStack + 0x10) = 2;
+  ((MemberABI)R6GameServiceAddresses::DestroySTGameData)(receiver + 0x38);
+  *(byte *)(nativeStack + 0x10) = 1;
+  (*(MemberABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(receiver + 0x2c);
+  *(byte *)(nativeStack + 0x10) = 0;
+  (*(MemberABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(receiver + 0x1c);
+  *(uint *)(nativeStack + 0x10) = 0xffffffff;
+  uint rawEax = (*(MemberABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(receiver + 0x10);
+  __asm {
+    mov    eax,rawEax
     mov    ecx,DWORD PTR [esp+0x8]
     pop    esi
     mov    DWORD PTR fs:0x0,ecx
@@ -120,9 +123,10 @@ __declspec(naked) void __thiscall DestroySTGameServer(void *server)
 }
 
 // Constructs three no-init server strings and nested game data, leaving other storage untouched.
-// R6GameService.dll @ 100033f0 : complete native control/access order and raw ABI retained.
+// R6GameService.dll @ 100033f0 : RET0; exact member order and partial-construction cleanup states.
 __declspec(naked) void * __thiscall ConstructServerInfo(void *server)
 {
+  byte *nativeStack,*receiver;
   __asm {
     // Parent state2 covers game-data construction, whose own map additionally accounts for its strings and untouched arrays.
     push   0xffffffff
@@ -135,16 +139,18 @@ __declspec(naked) void * __thiscall ConstructServerInfo(void *server)
     mov    esi,ecx
     lea    ecx,[esi+0x10]
     mov    DWORD PTR [esp+0x4],esi
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringNoInitSlot
-    lea    ecx,[esi+0x1c]
-    mov    DWORD PTR [esp+0x10],0x0
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringNoInitSlot
-    lea    ecx,[esi+0x2c]
-    mov    BYTE PTR [esp+0x10],0x1
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringNoInitSlot
-    lea    ecx,[esi+0x38]
-    mov    BYTE PTR [esp+0x10],0x2
-    call   R6GameServiceAddresses::ConstructServerGameData
+    mov    nativeStack,esp
+    mov    receiver,esi
+  }
+  using MemberABI = uint (__thiscall *)(void *);
+  (*(MemberABI *)R6GameServiceAddresses::Core__ConstructFStringNoInitSlot)(receiver + 0x10);
+  *(uint *)(nativeStack + 0x10) = 0;
+  (*(MemberABI *)R6GameServiceAddresses::Core__ConstructFStringNoInitSlot)(receiver + 0x1c);
+  *(byte *)(nativeStack + 0x10) = 1;
+  (*(MemberABI *)R6GameServiceAddresses::Core__ConstructFStringNoInitSlot)(receiver + 0x2c);
+  *(byte *)(nativeStack + 0x10) = 2;
+  ((MemberABI)R6GameServiceAddresses::ConstructServerGameData)(receiver + 0x38);
+  __asm {
     mov    ecx,DWORD PTR [esp+0x8]
     mov    eax,esi
     pop    esi

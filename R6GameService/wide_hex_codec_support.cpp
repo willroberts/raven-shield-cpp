@@ -3,8 +3,14 @@
 
 // R6GameService.dll data @ 10080890 : function metadata supplied by the exception selector.
 extern const R6GameServiceNative::FuncInfo WideHexEncoderExceptionHandlerFunctionInfo;
-// R6GameService.dll data @ 1008095c : function metadata supplied by the exception selector.
-extern const R6GameServiceNative::FuncInfo LocalByteVectorExceptionHandlerFunctionInfo;
+// R6GameService.dll data @ 10080954 : shared decoder/checksum local-vector cleanup.
+const R6GameServiceNative::UnwindEntry LocalByteVectorUnwindMap[1] = {
+  {-1, R6GameServiceAddresses::DestroySharedLocalByteVector},
+};
+// R6GameService.dll data @ 1008095c : one owned local vector, with no try/catch map.
+const R6GameServiceNative::FuncInfo LocalByteVectorExceptionHandlerFunctionInfo = {
+  0x19930520, 1, R6GameServiceAddresses::LocalByteVectorUnwindMap, 0, 0, 0, 0,
+};
 
 // Shared low-nibble-first wide-hex codec; original free-template declarations remain unresolved.
 
@@ -173,11 +179,12 @@ __declspec(naked) std::basic_string<unsigned short> * __cdecl ConvertByteRangeTo
 }
 
 // Decodes low-first wide hex pairs, maps invalid digits to zero, drops an odd digit and copy-constructs the result.
-// R6GameService.dll @ 10034710 : complete native control/access order and raw ABI retained.
-__declspec(naked) void * __cdecl DecodeWideHexToByteVector(void *outputVector,const std::basic_string<unsigned short> *encodedText)
+// R6GameService.dll @ 10034710 : C++ low-first hex decoding with native temporary/unwind and argument slots.
+__declspec(naked) void * __cdecl DecodeWideHexToByteVector
+    (void *outputVector,const std::basic_string<unsigned short> *encodedText)
 {
+  byte *nativeFrame;
   __asm {
-    // ESP-based EH: temporary vector-1c, byte local-21; state0 owns temporary even while result is copied/freed.
     push   0xffffffff
     push   R6GameServiceAddresses::LocalByteVectorExceptionHandler
     mov    eax,fs:0x0
@@ -188,145 +195,75 @@ __declspec(naked) void * __cdecl DecodeWideHexToByteVector(void *outputVector,co
     push   esi
     xor    esi,esi
     xor    ebp,ebp
-    mov    DWORD PTR [esp+0xc],esi
-    mov    DWORD PTR [esp+0x14],ebp
-    mov    DWORD PTR [esp+0x18],esi
-    mov    DWORD PTR [esp+0x1c],esi
-    // Cache unsigned length for each pair; empty/odd input reaches result construction without another character read.
-    mov    edx,DWORD PTR [esp+0x34]
-    mov    ecx,DWORD PTR [edx+0x14]
-    cmp    ecx,esi
-    mov    DWORD PTR [esp+0x28],esi
-    jbe    Branch25
-    push   ebx
-    push   edi
-    jmp    Branch9
-  Branch8:
-    mov    edx,DWORD PTR [esp+0x3c]
-    lea    esp,[esp+0x0]
-  Branch9:
-    cmp    esi,ecx
-    jae    Branch24
-    // Cache capacity in EDI for both digits, but reload heap pointer for second character; first digit is low nibble.
-    mov    edi,DWORD PTR [edx+0x18]
-    add    edx,0x4
-    cmp    edi,0x8
-    jb     Branch10
-    mov    eax,DWORD PTR [edx]
-    jmp    Branch11
-  Branch10:
-    mov    eax,edx
-  Branch11:
-    mov    ax,WORD PTR [eax+esi*2]
-    cmp    ax,0x30
-    jb     Branch12
-    cmp    ax,0x39
-    ja     Branch12
-    sub    al,0x30
-    jmp    Branch15
-  Branch12:
-    cmp    ax,0x41
-    jb     Branch13
-    cmp    ax,0x46
-    ja     Branch13
-    sub    al,0x37
-    jmp    Branch15
-  Branch13:
-    cmp    ax,0x61
-    jb     Branch14
-    cmp    ax,0x66
-    ja     Branch14
-    sub    al,0x57
-    jmp    Branch15
-  Branch14:
-    xor    al,al
-  Branch15:
-    // Invalid UTF16 digits become zero; drop unmatched final first digit without appending.
-    and    al,0xf
-    inc    esi
-    cmp    esi,ecx
-    mov    bl,al
-    jae    Branch24
-    cmp    edi,0x8
-    jb     Branch16
-    mov    eax,DWORD PTR [edx]
-    jmp    Branch17
-  Branch16:
-    mov    eax,edx
-  Branch17:
-    mov    ax,WORD PTR [eax+esi*2]
-    cmp    ax,0x30
-    jb     Branch18
-    cmp    ax,0x39
-    ja     Branch18
-    sub    al,0x30
-    jmp    Branch21
-  Branch18:
-    cmp    ax,0x41
-    jb     Branch19
-    cmp    ax,0x46
-    ja     Branch19
-    sub    al,0x37
-    jmp    Branch21
-  Branch19:
-    cmp    ax,0x61
-    jb     Branch20
-    cmp    ax,0x66
-    ja     Branch20
-    sub    al,0x57
-    jmp    Branch21
-  Branch20:
-    xor    al,al
-  Branch21:
-    // Second nibble goes high; form byte-local and advance source index by2.
-    mov    edx,DWORD PTR [esp+0x20]
-    shl    al,0x4
-    or     bl,al
-    inc    esi
-    test   ebp,ebp
-    mov    BYTE PTR [esp+0x13],bl
-    je     Branch22
-    mov    ecx,DWORD PTR [esp+0x24]
-    mov    eax,edx
-    sub    eax,ebp
-    sub    ecx,ebp
-    cmp    eax,ecx
-    jae    Branch22
-    mov    BYTE PTR [edx],bl
-    inc    edx
-    mov    DWORD PTR [esp+0x20],edx
-    jmp    Branch23
-  Branch22:
-    // Slow byte insertion reloads cached begin afterward; direct path retains existing cached begin.
-    lea    eax,[esp+0x13]
-    push   eax
-    push   0x1
-    push   edx
-    lea    ecx,[esp+0x24]
-    call   R6GameServiceAddresses::InsertRepeatedByte
-    mov    ebp,DWORD PTR [esp+0x1c]
-  Branch23:
-    // Reload original encoded-text argument and length after a completed pair.
-    mov    ecx,DWORD PTR [esp+0x3c]
-    mov    ecx,DWORD PTR [ecx+0x14]
-    cmp    esi,ecx
-    jb     Branch8
-  Branch24:
-    pop    edi
-    pop    ebx
-  Branch25:
-    // Late-load output, execute copy constructor34610, then free cached temporary begin EBP with state0 still live.
-    mov    esi,DWORD PTR [esp+0x30]
-    lea    edx,[esp+0x10]
-    push   edx
-    mov    ecx,esi
-    call   R6GameServiceAddresses::CopyByteVector
-    test   ebp,ebp
-    je     Branch26
-    push   ebp
-    call   R6GameServiceAddresses::FreeThroughGlobalAllocator
-    add    esp,0x4
-  Branch26:
+    mov    nativeFrame,esp
+  }
+  *(uint *)(nativeFrame + 0xc) = 0;
+  *(uint *)(nativeFrame + 0x14) = 0;
+  *(uint *)(nativeFrame + 0x18) = 0;
+  *(uint *)(nativeFrame + 0x1c) = 0;
+  uint index = 0;
+  uint cachedBegin = 0;
+  byte *input = *(byte **)(nativeFrame + 0x34);
+  uint length = *(uint *)(input + 0x14);
+  *(uint *)(nativeFrame + 0x28) = 0;
+  using InsertABI = void (__thiscall *)(void *,uint,uint,const byte *);
+  using CopyABI = void * (__thiscall *)(void *,const void *);
+  using FreeABI = void (__cdecl *)(void *);
+  // The same inline digit conversion is applied to both UTF-16 units; invalid units contribute zero.
+  auto nibble = [](ushort unit) -> byte {
+    if (unit >= '0' && unit <= '9') return (byte)(unit - '0');
+    if (unit >= 'A' && unit <= 'F') return (byte)(unit - 'A' + 10);
+    if (unit >= 'a' && unit <= 'f') return (byte)(unit - 'a' + 10);
+    return 0;
+  };
+  if (length != 0) {
+    __asm {
+      push   ebx
+      push   edi
+    }
+    while (index < length) {
+      uint capacity = *(uint *)(input + 0x18);
+      byte *storage = input + 4;
+      const ushort *characters = capacity < 8 ? (const ushort *)storage : *(const ushort **)storage;
+      byte low = nibble(characters[index]) & 0xf;
+      ++index;
+      if (index >= length) break;
+      // Capacity is cached for the pair, while the heap pointer is reloaded for the second unit.
+      characters = capacity < 8 ? (const ushort *)storage : *(const ushort **)storage;
+      byte high = nibble(characters[index]);
+      uint end = *(uint *)(nativeFrame + 0x18);
+      byte value = low | (byte)(high << 4);
+      ++index;
+      *(byte *)(nativeFrame + 0xb) = value;
+      bool direct = false;
+      if (cachedBegin != 0) {
+        uint limit = *(uint *)(nativeFrame + 0x1c);
+        direct = end - cachedBegin < limit - cachedBegin;
+      }
+      if (direct) {
+        *(byte *)end = value;
+        *(uint *)(nativeFrame + 0x18) = end + 1;
+      } else {
+        ((InsertABI)R6GameServiceAddresses::InsertRepeatedByte)
+            (nativeFrame + 0x10,end,1,nativeFrame + 0xb);
+        cachedBegin = *(uint *)(nativeFrame + 0x14);
+      }
+      byte *currentInput = *(byte **)(nativeFrame + 0x34);
+      length = *(uint *)(currentInput + 0x14);
+      if (index >= length) break;
+      input = *(byte **)(nativeFrame + 0x34);
+    }
+    __asm {
+      pop    edi
+      pop    ebx
+    }
+  }
+  void *output = *(void **)(nativeFrame + 0x30);
+  ((CopyABI)R6GameServiceAddresses::CopyByteVector)(output,nativeFrame + 0x10);
+  // Copy/free leave state0 and the temporary descriptor live; unwind may revisit a throwing free.
+  if (cachedBegin != 0) ((FreeABI)R6GameServiceAddresses::FreeThroughGlobalAllocator)((void *)cachedBegin);
+  __asm {
+    mov    esi,output
     mov    ecx,DWORD PTR [esp+0x20]
     mov    eax,esi
     pop    esi

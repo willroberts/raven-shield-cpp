@@ -1,133 +1,89 @@
 #include "native_addresses.h"
 
-// Shared service callbacks. Diagnostic spellings identify registration roles; physical uint return views expose EAX residue.
-// Original callback declarations and private reply layouts remain incomplete; retain explicit offsets and native widths.
+// Shared service callbacks. Pointer names/types are inferred from the observed fixed-width accesses.
+// The uint return views retain physical EAX residue; the original callback return declarations are unavailable.
 
-// For active activation, optionally log reply reason, then copy two16-byte result blocks on nonzero replyBYTE4 or store failure WORD6.
-// Inactive callbacks only optionally log. Success publishes state6 after copies; failure reason precedes state3. No own EH.
-// R6GameService.dll @ 1000dc00 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __stdcall ReceiveActivationReply(uint word0,uint word1,uint word2,uint word3)
+// Copies two 16-byte activation results before publishing success, or publishes the reply reason before failure.
+// R6GameService.dll @ 1000dc00 : stdcall/RET16; reply BYTE+4 is success, WORD+6 is reason; second word is unused.
+uint __stdcall ReceiveActivationReply(const byte *reply,uint unusedSecond,const uint *firstBlock,const uint *secondBlock)
 {
-  __asm {
-    mov    eax,ds:R6GameServiceAddresses::GActivationState
-    test   eax,eax
-    mov    eax,ds:R6GameServiceAddresses::GServiceVerboseLogging
-    jne    Branch1
-    test   eax,eax
-    je    Branch4
-    mov    eax,ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    ecx,DWORD PTR [eax]
-    push   R6GameServiceAddresses::WideTextCallbackIgnoreResultsFromRcvActivationID
-    push   ecx
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FOutputDevice_LogfSlot
-    add    esp,0x8
-    ret    0x10
-  Branch1:
-    test   eax,eax
-    push   esi
-    mov    esi,DWORD PTR [esp+0x8]
-    je    Branch2
-    movzx  edx,WORD PTR [esi+0x6]
-    mov    eax,ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    ecx,DWORD PTR [eax]
-    push   edx
-    push   R6GameServiceAddresses::WideTextCallbackRcvActivationIDErrorI
-    push   ecx
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FOutputDevice_LogfSlot
-    add    esp,0xc
-  Branch2:
-    mov    al,BYTE PTR [esi+0x4]
-    test   al,al
-    je    Branch3
-    mov    edx,DWORD PTR [esp+0x10]
-    mov    eax,DWORD PTR [edx]
-    mov    ds:0x100933e4,eax
-    mov    ecx,DWORD PTR [edx+0x4]
-    mov    DWORD PTR ds:0x100933e8,ecx
-    mov    eax,DWORD PTR [edx+0x8]
-    mov    ds:0x100933ec,eax
-    mov    ecx,DWORD PTR [edx+0xc]
-    mov    edx,DWORD PTR [esp+0x14]
-    mov    DWORD PTR ds:0x100933f0,ecx
-    mov    eax,DWORD PTR [edx]
-    mov    ds:0x10093418,eax
-    mov    ecx,DWORD PTR [edx+0x4]
-    mov    DWORD PTR ds:0x1009341c,ecx
-    mov    eax,DWORD PTR [edx+0x8]
-    mov    ds:0x10093420,eax
-    mov    ecx,DWORD PTR [edx+0xc]
-    mov    DWORD PTR ds:0x10093424,ecx
-    mov    DWORD PTR ds:R6GameServiceAddresses::GActivationState,0x6
-    pop    esi
-    ret    0x10
-  Branch3:
-    movzx  edx,WORD PTR [esi+0x6]
-    mov    DWORD PTR ds:0x100933f4,edx
-    mov    DWORD PTR ds:R6GameServiceAddresses::GActivationState,0x3
-    pop    esi
-  Branch4:
-    ret    0x10
+  uint active = *(uint *)R6GameServiceAddresses::GActivationState;
+  uint rawEax = *(uint *)R6GameServiceAddresses::GServiceVerboseLogging;
+  using LogABI = uint (__cdecl *)(FOutputDevice *,const TCHAR *,...); // Raw EAX view of the void Logf import.
+  if (active == 0) {
+    if (rawEax != 0)
+      return (*(LogABI *)R6GameServiceAddresses::Core_FOutputDevice_LogfSlot)
+          (GLog,(const TCHAR *)R6GameServiceAddresses::WideTextCallbackIgnoreResultsFromRcvActivationID);
+    return rawEax;
   }
+  const byte *response = reply;
+  if (rawEax != 0) {
+    uint reason = *(const ushort *)(response + 6);
+    rawEax = (*(LogABI *)R6GameServiceAddresses::Core_FOutputDevice_LogfSlot)
+        (GLog,(const TCHAR *)R6GameServiceAddresses::WideTextCallbackRcvActivationIDErrorI,reason);
+  }
+  // The native rereads success after diagnostics and replaces only AL, retaining the other EAX bytes on failure.
+  byte success = response[4];
+  rawEax = (rawEax & 0xffffff00) | success;
+  if (success != 0) {
+    const uint *source = firstBlock;
+    *(uint *)0x100933e4 = source[0];
+    *(uint *)0x100933e8 = source[1];
+    rawEax = source[2];
+    *(uint *)0x100933ec = rawEax;
+    uint lastFirstWord = source[3];
+    source = secondBlock;
+    *(uint *)0x100933f0 = lastFirstWord;
+    *(uint *)0x10093418 = source[0];
+    *(uint *)0x1009341c = source[1];
+    rawEax = source[2];
+    *(uint *)0x10093420 = rawEax;
+    *(uint *)0x10093424 = source[3];
+    *(uint *)R6GameServiceAddresses::GActivationState = 6;
+  } else {
+    uint reason = *(const ushort *)(response + 6);
+    *(uint *)0x100933f4 = reason;
+    *(uint *)R6GameServiceAddresses::GActivationState = 3;
+  }
+  return rawEax;
 }
 
-// For active authorization, optionally log current status/reason, then publish state6 before copying20-byte result or state7 before failure reason.
-// Preserve early activity/logging gates, late reply/pointer reads and raw return residue; no rollback or own EH.
-// R6GameService.dll @ 1000dcd0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __stdcall ReceiveAuthorizationReply(uint word0,uint word1,uint word2)
+// Publishes authorization success before its 20-byte copy, or failure before reading/storing the reason.
+// R6GameService.dll @ 1000dcd0 : stdcall/RET12; inactive calls never read the reply or result buffers.
+uint __stdcall ReceiveAuthorizationReply(const byte *reply,uint unusedSecond,const uint *result)
 {
-  __asm {
-    mov    eax,ds:R6GameServiceAddresses::GAuthorizationState
-    test   eax,eax
-    mov    eax,ds:R6GameServiceAddresses::GServiceVerboseLogging
-    jne    Branch5
-    test   eax,eax
-    je    Branch8
-    mov    eax,ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    ecx,DWORD PTR [eax]
-    push   R6GameServiceAddresses::WideTextCallbackIgnoreResultsFromRcvAuthorizationID
-    push   ecx
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FOutputDevice_LogfSlot
-    add    esp,0x8
-    ret    0xc
-  Branch5:
-    test   eax,eax
-    push   esi
-    mov    esi,DWORD PTR [esp+0x8]
-    je    Branch6
-    movzx  edx,WORD PTR [esi+0x6]
-    movzx  eax,BYTE PTR [esi+0x4]
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::Core__GLogSlot
-    push   edx
-    mov    edx,DWORD PTR [ecx]
-    push   eax
-    push   R6GameServiceAddresses::WideText1CallbackRcvAuthorizationIDSuccessXErrorIdD
-    push   edx
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FOutputDevice_LogfSlot
-    add    esp,0x10
-  Branch6:
-    mov    al,BYTE PTR [esi+0x4]
-    test   al,al
-    je    Branch7
-    mov    eax,DWORD PTR [esp+0x10]
-    mov    DWORD PTR ds:R6GameServiceAddresses::GAuthorizationState,0x6
-    mov    ecx,DWORD PTR [eax]
-    mov    DWORD PTR ds:0x10093428,ecx
-    mov    edx,DWORD PTR [eax+0x4]
-    mov    DWORD PTR ds:0x1009342c,edx
-    mov    ecx,DWORD PTR [eax+0x8]
-    mov    DWORD PTR ds:0x10093430,ecx
-    mov    edx,DWORD PTR [eax+0xc]
-    mov    DWORD PTR ds:0x10093434,edx
-    mov    eax,DWORD PTR [eax+0x10]
-    mov    ds:0x10093438,eax
-    pop    esi
-    ret    0xc
-  Branch7:
-    mov    DWORD PTR ds:R6GameServiceAddresses::GAuthorizationState,0x7
-    movzx  ecx,WORD PTR [esi+0x6]
-    mov    DWORD PTR ds:0x10093414,ecx
-    pop    esi
-  Branch8:
-    ret    0xc
+  uint active = *(uint *)R6GameServiceAddresses::GAuthorizationState;
+  uint rawEax = *(uint *)R6GameServiceAddresses::GServiceVerboseLogging;
+  using LogABI = uint (__cdecl *)(FOutputDevice *,const TCHAR *,...); // Raw EAX view of the void Logf import.
+  if (active == 0) {
+    if (rawEax != 0)
+      return (*(LogABI *)R6GameServiceAddresses::Core_FOutputDevice_LogfSlot)
+          (GLog,(const TCHAR *)R6GameServiceAddresses::WideTextCallbackIgnoreResultsFromRcvAuthorizationID);
+    return rawEax;
   }
+  const byte *response = reply;
+  if (rawEax != 0) {
+    uint reason = *(const ushort *)(response + 6);
+    uint loggedSuccess = response[4];
+    rawEax = (*(LogABI *)R6GameServiceAddresses::Core_FOutputDevice_LogfSlot)
+        (GLog,(const TCHAR *)R6GameServiceAddresses::WideText1CallbackRcvAuthorizationIDSuccessXErrorIdD,
+         loggedSuccess,reason);
+  }
+  byte success = response[4];
+  rawEax = (rawEax & 0xffffff00) | success;
+  if (success != 0) {
+    const uint *source = result;
+    *(uint *)R6GameServiceAddresses::GAuthorizationState = 6;
+    *(uint *)0x10093428 = source[0];
+    *(uint *)0x1009342c = source[1];
+    *(uint *)0x10093430 = source[2];
+    *(uint *)0x10093434 = source[3];
+    rawEax = source[4];
+    *(uint *)0x10093438 = rawEax;
+  } else {
+    *(uint *)R6GameServiceAddresses::GAuthorizationState = 7;
+    uint reason = *(const ushort *)(response + 6);
+    *(uint *)0x10093414 = reason;
+  }
+  return rawEax;
 }

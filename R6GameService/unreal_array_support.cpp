@@ -184,9 +184,10 @@ __declspec(naked) void * __thiscall ConstructDwordArray(void *destination,const 
 }
 
 // Removes the cached count of four-byte elements under storage cleanup, then disarms and destroys backing storage.
-// R6GameService.dll @ 100021a0 : complete native control/access order and raw ABI retained.
+// R6GameService.dll @ 100021a0 : RET0; cached removal count and separate backing-storage cleanup.
 __declspec(naked) void __thiscall DestroyArrayStorage(FArray *array)
 {
+  byte *nativeStack,*receiver;
   __asm {
     // Count read precedes state0; assertion target cached; the second range check reloads current count.
     push   0xffffffff
@@ -200,33 +201,24 @@ __declspec(naked) void __thiscall DestroyArrayStorage(FArray *array)
     mov    esi,ecx
     push   edi
     mov    DWORD PTR [esp+0xc],esi
-    mov    edi,DWORD PTR [esi+0x4]
-    test   edi,edi
-    mov    ebx,DWORD PTR ds:R6GameServiceAddresses::Core__appFailAssertSlot
-    mov    DWORD PTR [esp+0x18],0x0
-    jge    Branch9
-    push   0x202
-    push   R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH
-    push   R6GameServiceAddresses::TextIndexArrayNum
-    call   ebx
-    add    esp,0xc
-  Branch9:
-    cmp    edi,DWORD PTR [esi+0x4]
-    jle    Branch10
-    push   0x203
-    push   R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH
-    push   R6GameServiceAddresses::TextIndexCountArrayNum
-    call   ebx
-    add    esp,0xc
-  Branch10:
-    push   0x4
-    push   edi
-    push   0x0
-    mov    ecx,esi
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FArray_RemoveSlot
-    mov    ecx,esi
-    mov    DWORD PTR [esp+0x18],0xffffffff
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFArraySlot
+    mov    nativeStack,esp
+    mov    receiver,esi
+  }
+  int count = *(int *)(receiver + 4);
+  using AssertABI = void (__cdecl *)(const char *,const char *,int);
+  AssertABI fail = *(AssertABI *)R6GameServiceAddresses::Core__appFailAssertSlot;
+  *(uint *)(nativeStack + 0x18) = 0;
+  if (count < 0) fail((const char *)R6GameServiceAddresses::TextIndexArrayNum,
+      (const char *)R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH,0x202);
+  if (count > *(int *)(receiver + 4)) fail((const char *)R6GameServiceAddresses::TextIndexCountArrayNum,
+      (const char *)R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH,0x203);
+  using RemoveABI = void (__thiscall *)(void *,int,int,int);
+  (*(RemoveABI *)R6GameServiceAddresses::Core_FArray_RemoveSlot)(receiver,0,count,4);
+  *(uint *)(nativeStack + 0x18) = 0xffffffff;
+  using DestroyABI = uint (__thiscall *)(void *);
+  uint rawEax = (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFArraySlot)(receiver);
+  __asm {
+    mov    eax,rawEax
     mov    ecx,DWORD PTR [esp+0x10]
     pop    edi
     pop    esi
@@ -434,9 +426,10 @@ __declspec(naked) void * __thiscall ConstructSevenWordRecordArray(void *destinat
 }
 
 // Removes all cached-count string elements under storage cleanup, then disarms and destroys backing storage.
-// R6GameService.dll @ 10002a10 : complete native control/access order and raw ABI retained.
+// R6GameService.dll @ 10002a10 : RET0; cached removal count and separate backing-storage cleanup.
 __declspec(naked) void __thiscall DestroyFStringArray(FArray *array)
 {
+  byte *nativeStack,*receiver;
   __asm {
     // Child range removal and final FArray destruction have distinct active states; final imported EAX survives.
     push   0xffffffff
@@ -448,14 +441,18 @@ __declspec(naked) void __thiscall DestroyFStringArray(FArray *array)
     push   esi
     mov    esi,ecx
     mov    DWORD PTR [esp+0x4],esi
-    mov    eax,DWORD PTR [esi+0x4]
-    push   eax
-    push   0x0
-    mov    DWORD PTR [esp+0x18],0x0
-    call   R6GameServiceAddresses::RemoveFStringRange12
-    mov    ecx,esi
-    mov    DWORD PTR [esp+0x10],0xffffffff
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFArraySlot
+    mov    nativeStack,esp
+    mov    receiver,esi
+  }
+  int count = *(int *)(receiver + 4);
+  *(uint *)(nativeStack + 0x10) = 0;
+  using RemoveABI = void (__thiscall *)(void *,int,int);
+  ((RemoveABI)R6GameServiceAddresses::RemoveFStringRange12)(receiver,0,count);
+  *(uint *)(nativeStack + 0x10) = 0xffffffff;
+  using DestroyABI = uint (__thiscall *)(void *);
+  uint rawEax = (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFArraySlot)(receiver);
+  __asm {
+    mov    eax,rawEax
     mov    ecx,DWORD PTR [esp+0x8]
     pop    esi
     mov    DWORD PTR fs:0x0,ecx
@@ -465,9 +462,10 @@ __declspec(naked) void __thiscall DestroyFStringArray(FArray *array)
 }
 
 // Removes the cached count of 0x1c-byte records under storage cleanup, then disarms and destroys backing storage.
-// R6GameService.dll @ 10002a60 : complete native control/access order and raw ABI retained.
+// R6GameService.dll @ 10002a60 : RET0; cached removal count and separate backing-storage cleanup.
 __declspec(naked) void __thiscall unreal_array_support_DestroyArrayStorage(FArray *array)
 {
+  byte *nativeStack,*receiver;
   __asm {
     // Assertions may return; cached count is forwarded even when their callbacks change the current array count.
     push   0xffffffff
@@ -481,33 +479,24 @@ __declspec(naked) void __thiscall unreal_array_support_DestroyArrayStorage(FArra
     mov    esi,ecx
     push   edi
     mov    DWORD PTR [esp+0xc],esi
-    mov    edi,DWORD PTR [esi+0x4]
-    test   edi,edi
-    mov    ebx,DWORD PTR ds:R6GameServiceAddresses::Core__appFailAssertSlot
-    mov    DWORD PTR [esp+0x18],0x0
-    jge    Branch20
-    push   0x202
-    push   R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH
-    push   R6GameServiceAddresses::TextIndexArrayNum
-    call   ebx
-    add    esp,0xc
-  Branch20:
-    cmp    edi,DWORD PTR [esi+0x4]
-    jle    Branch21
-    push   0x203
-    push   R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH
-    push   R6GameServiceAddresses::TextIndexCountArrayNum
-    call   ebx
-    add    esp,0xc
-  Branch21:
-    push   0x1c
-    push   edi
-    push   0x0
-    mov    ecx,esi
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FArray_RemoveSlot
-    mov    ecx,esi
-    mov    DWORD PTR [esp+0x18],0xffffffff
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFArraySlot
+    mov    nativeStack,esp
+    mov    receiver,esi
+  }
+  int count = *(int *)(receiver + 4);
+  using AssertABI = void (__cdecl *)(const char *,const char *,int);
+  AssertABI fail = *(AssertABI *)R6GameServiceAddresses::Core__appFailAssertSlot;
+  *(uint *)(nativeStack + 0x18) = 0;
+  if (count < 0) fail((const char *)R6GameServiceAddresses::TextIndexArrayNum,
+      (const char *)R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH,0x202);
+  if (count > *(int *)(receiver + 4)) fail((const char *)R6GameServiceAddresses::TextIndexCountArrayNum,
+      (const char *)R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH,0x203);
+  using RemoveABI = void (__thiscall *)(void *,int,int,int);
+  (*(RemoveABI *)R6GameServiceAddresses::Core_FArray_RemoveSlot)(receiver,0,count,28);
+  *(uint *)(nativeStack + 0x18) = 0xffffffff;
+  using DestroyABI = uint (__thiscall *)(void *);
+  uint rawEax = (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFArraySlot)(receiver);
+  __asm {
+    mov    eax,rawEax
     mov    ecx,DWORD PTR [esp+0x10]
     pop    edi
     pop    esi
@@ -519,9 +508,10 @@ __declspec(naked) void __thiscall unreal_array_support_DestroyArrayStorage(FArra
 }
 
 // Destroys/removes 0x18-byte records under storage cleanup, then disarms and destroys backing storage.
-// R6GameService.dll @ 10002d30 : complete native control/access order and raw ABI retained.
+// R6GameService.dll @ 10002d30 : RET0; cached removal count and separate backing-storage cleanup.
 __declspec(naked) void __thiscall DestroyArray18ByteElements(FArray *array)
 {
+  byte *nativeStack,*receiver;
   __asm {
     // Record/range failures retain the independent outer storage action; a final storage failure does not repeat it.
     push   0xffffffff
@@ -533,14 +523,18 @@ __declspec(naked) void __thiscall DestroyArray18ByteElements(FArray *array)
     push   esi
     mov    esi,ecx
     mov    DWORD PTR [esp+0x4],esi
-    mov    eax,DWORD PTR [esi+0x4]
-    push   eax
-    push   0x0
-    mov    DWORD PTR [esp+0x18],0x0
-    call   R6GameServiceAddresses::RemoveStringPairRange18
-    mov    ecx,esi
-    mov    DWORD PTR [esp+0x10],0xffffffff
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFArraySlot
+    mov    nativeStack,esp
+    mov    receiver,esi
+  }
+  int count = *(int *)(receiver + 4);
+  *(uint *)(nativeStack + 0x10) = 0;
+  using RemoveABI = void (__thiscall *)(void *,int,int);
+  ((RemoveABI)R6GameServiceAddresses::RemoveStringPairRange18)(receiver,0,count);
+  *(uint *)(nativeStack + 0x10) = 0xffffffff;
+  using DestroyABI = uint (__thiscall *)(void *);
+  uint rawEax = (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFArraySlot)(receiver);
+  __asm {
+    mov    eax,rawEax
     mov    ecx,DWORD PTR [esp+0x8]
     pop    esi
     mov    DWORD PTR fs:0x0,ecx
@@ -550,9 +544,10 @@ __declspec(naked) void __thiscall DestroyArray18ByteElements(FArray *array)
 }
 
 // Destroys/removes 0x2c-byte records under storage cleanup, then disarms and destroys backing storage.
-// R6GameService.dll @ 10002d80 : complete native control/access order and raw ABI retained.
+// R6GameService.dll @ 10002d80 : RET0; cached removal count and separate backing-storage cleanup.
 __declspec(naked) void __thiscall DestroyArray2CByteElements(FArray *array)
 {
+  byte *nativeStack,*receiver;
   __asm {
     // Record/range failures retain the independent outer storage action; a final storage failure does not repeat it.
     push   0xffffffff
@@ -564,14 +559,18 @@ __declspec(naked) void __thiscall DestroyArray2CByteElements(FArray *array)
     push   esi
     mov    esi,ecx
     mov    DWORD PTR [esp+0x4],esi
-    mov    eax,DWORD PTR [esi+0x4]
-    push   eax
-    push   0x0
-    mov    DWORD PTR [esp+0x18],0x0
-    call   R6GameServiceAddresses::RemoveStringRecordRange2C
-    mov    ecx,esi
-    mov    DWORD PTR [esp+0x10],0xffffffff
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFArraySlot
+    mov    nativeStack,esp
+    mov    receiver,esi
+  }
+  int count = *(int *)(receiver + 4);
+  *(uint *)(nativeStack + 0x10) = 0;
+  using RemoveABI = void (__thiscall *)(void *,int,int);
+  ((RemoveABI)R6GameServiceAddresses::RemoveStringRecordRange2C)(receiver,0,count);
+  *(uint *)(nativeStack + 0x10) = 0xffffffff;
+  using DestroyABI = uint (__thiscall *)(void *);
+  uint rawEax = (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFArraySlot)(receiver);
+  __asm {
+    mov    eax,rawEax
     mov    ecx,DWORD PTR [esp+0x8]
     pop    esi
     mov    DWORD PTR fs:0x0,ecx
@@ -645,9 +644,10 @@ __declspec(naked) void * __thiscall CopyConstructSTGameServerArray(void *destina
 }
 
 // Destroys/removes server records under storage cleanup, then disarms and destroys backing storage.
-// R6GameService.dll @ 10003730 : complete native control/access order and raw ABI retained.
+// R6GameService.dll @ 10003730 : RET0; cached removal count and separate backing-storage cleanup.
 __declspec(naked) void __thiscall DestroyArrayDCByteElements(FArray *array)
 {
+  byte *nativeStack,*receiver;
   __asm {
     // The cached count reaches range removal while outer state0 is active; final FArray destructor runs in state-1.
     push   0xffffffff
@@ -659,14 +659,18 @@ __declspec(naked) void __thiscall DestroyArrayDCByteElements(FArray *array)
     push   esi
     mov    esi,ecx
     mov    DWORD PTR [esp+0x4],esi
-    mov    eax,DWORD PTR [esi+0x4]
-    push   eax
-    push   0x0
-    mov    DWORD PTR [esp+0x18],0x0
-    call   R6GameServiceAddresses::RemoveSTGameServerRange
-    mov    ecx,esi
-    mov    DWORD PTR [esp+0x10],0xffffffff
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFArraySlot
+    mov    nativeStack,esp
+    mov    receiver,esi
+  }
+  int count = *(int *)(receiver + 4);
+  *(uint *)(nativeStack + 0x10) = 0;
+  using RemoveABI = void (__thiscall *)(void *,int,int);
+  ((RemoveABI)R6GameServiceAddresses::RemoveSTGameServerRange)(receiver,0,count);
+  *(uint *)(nativeStack + 0x10) = 0xffffffff;
+  using DestroyABI = uint (__thiscall *)(void *);
+  uint rawEax = (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFArraySlot)(receiver);
+  __asm {
+    mov    eax,rawEax
     mov    ecx,DWORD PTR [esp+0x8]
     pop    esi
     mov    DWORD PTR fs:0x0,ecx
@@ -805,73 +809,36 @@ __declspec(naked) void * __thiscall CopyDwordArray(FArray *destination,const FAr
   }
 }
 
-// Checks a signed wrapped range, destroys its cached FString extent with live data reloads and forwards late count.
-// R6GameService.dll @ 10002570 : complete native control/access order and raw ABI retained.
-__declspec(naked) void __thiscall RemoveFStringRange12(void *array,int firstIndex,int count)
+// Checks signed wrapped bounds, destroys a cached extent through live data, then compacts using the current count.
+// R6GameService.dll @ 10002570 : thiscall/RET8; firstIndex and assertion target are cached, count is sampled twice.
+void __thiscall RemoveFStringRange12(void *array,int firstIndex,int count)
 {
-  __asm {
-    // Assertion target/index cached; count read after second check and again after element destruction; no local EH frame.
-    push   ebx
-    mov    ebx,DWORD PTR [esp+0x8]
-    test   ebx,ebx
-    push   ebp
-    push   esi
-    mov    esi,DWORD PTR ds:R6GameServiceAddresses::Core__appFailAssertSlot
-    push   edi
-    mov    ebp,ecx
-    jge    Branch29
-    push   0x201
-    push   R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH
-    push   R6GameServiceAddresses::TextIndex0
-    call   esi
-    add    esp,0xc
-  Branch29:
-    cmp    ebx,DWORD PTR [ebp+0x4]
-    jle    Branch30
-    push   0x202
-    push   R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH
-    push   R6GameServiceAddresses::TextIndexArrayNum
-    call   esi
-    add    esp,0xc
-  Branch30:
-    mov    eax,DWORD PTR [esp+0x18]
-    lea    edi,[ebx+eax*1]
-    cmp    edi,DWORD PTR [ebp+0x4]
-    jle    Branch31
-    push   0x203
-    push   R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH
-    push   R6GameServiceAddresses::TextIndexCountArrayNum
-    call   esi
-    add    esp,0xc
-  Branch31:
-    cmp    ebx,edi
-    jge    Branch33
-    lea    esi,[ebx+ebx*2]
-    shl    esi,0x2
-    sub    edi,ebx
-    lea    ecx,[ecx+0x0]
-  Branch32:
-    mov    ecx,DWORD PTR [ebp+0x0]
-    add    ecx,esi
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringSlot
-    add    esi,0xc
-    dec    edi
-    jne    Branch32
-  Branch33:
-    mov    ecx,DWORD PTR [esp+0x18]
-    push   0xc
-    push   ecx
-    push   ebx
-    mov    ecx,ebp
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FArray_RemoveSlot
-    pop    edi
-    pop    esi
-    pop    ebp
-    pop    ebx
-    ret    0x8
+  int first = firstIndex;
+  using AssertABI = void (__cdecl *)(const char *,const char *,int);
+  AssertABI assertion = *(AssertABI *)R6GameServiceAddresses::Core__appFailAssertSlot;
+  if (first < 0)
+    assertion((const char *)R6GameServiceAddresses::TextIndex0,
+        (const char *)R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH,0x201);
+  if (first > *(int *)((byte *)array + 4))
+    assertion((const char *)R6GameServiceAddresses::TextIndexArrayNum,
+        (const char *)R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH,0x202);
+  uint end = (uint)first + (uint)count;
+  if ((int)end > *(int *)((byte *)array + 4))
+    assertion((const char *)R6GameServiceAddresses::TextIndexCountArrayNum,
+        (const char *)R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH,0x203);
+  if (first < (int)end) {
+    uint recordOffset = (uint)first * 0xc;
+    uint remaining = end - (uint)first;
+    do {
+      using DestroyABI = void (__thiscall *)(FString *);
+      (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringSlot)
+          ((FString *)((uint)*(void **)array + recordOffset));
+      recordOffset += 0xc;
+    } while (--remaining != 0);
   }
+  using RemoveABI = void (__thiscall *)(void *,int,int,int);
+  (*(RemoveABI *)R6GameServiceAddresses::Core_FArray_RemoveSlot)(array,first,count,0xc);
 }
-
 // Destroys forward through live string-array data/count, then clears count and reallocates using the late hint.
 // R6GameService.dll @ 10002610 : complete native control/access order and raw ABI retained.
 __declspec(naked) void __thiscall ResetFStringArray(void *array,uint capacityHint)
@@ -1083,9 +1050,13 @@ __declspec(naked) void __thiscall EmptySTGameServerArray(void *array,int capacit
 }
 
 // Checks a signed wrapped range, destroys its cached server-record extent and forwards the late original count.
-// R6GameService.dll @ 10003620 : complete native control/access order and raw ABI retained.
+// R6GameService.dll @ 10003620 : RET8; signed wrapped bounds, cached extent and current per-element storage.
 __declspec(naked) void __thiscall RemoveSTGameServerRange(void *array,int firstIndex,int count)
 {
+  byte *nativeStack,*receiver;
+  int first;
+  using AssertABI = void (__cdecl *)(const char *,const char *,int);
+  AssertABI fail;
   __asm {
     // Cached assertion target/index and loop extent coexist with live data reloads; no local EH frame.
     push   ebx
@@ -1096,51 +1067,33 @@ __declspec(naked) void __thiscall RemoveSTGameServerRange(void *array,int firstI
     mov    esi,DWORD PTR ds:R6GameServiceAddresses::Core__appFailAssertSlot
     push   edi
     mov    ebp,ecx
-    jge    Branch46
-    push   0x201
-    push   R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH
-    push   R6GameServiceAddresses::TextIndex0
-    call   esi
-    add    esp,0xc
-  Branch46:
-    cmp    ebx,DWORD PTR [ebp+0x4]
-    jle    Branch47
-    push   0x202
-    push   R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH
-    push   R6GameServiceAddresses::TextIndexArrayNum
-    call   esi
-    add    esp,0xc
-  Branch47:
-    mov    eax,DWORD PTR [esp+0x18]
-    lea    edi,[ebx+eax*1]
-    cmp    edi,DWORD PTR [ebp+0x4]
-    jle    Branch48
-    push   0x203
-    push   R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH
-    push   R6GameServiceAddresses::TextIndexCountArrayNum
-    call   esi
-    add    esp,0xc
-  Branch48:
-    cmp    ebx,edi
-    jge    Branch50
-    mov    esi,ebx
-    imul   esi,esi,0xdc
-    sub    edi,ebx
-    nop
-  Branch49:
-    mov    ecx,DWORD PTR [ebp+0x0]
-    add    ecx,esi
-    call   R6GameServiceAddresses::DestroySTGameServer
-    add    esi,0xdc
-    dec    edi
-    jne    Branch49
-  Branch50:
-    mov    ecx,DWORD PTR [esp+0x18]
-    push   0xdc
-    push   ecx
-    push   ebx
-    mov    ecx,ebp
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FArray_RemoveSlot
+    mov    nativeStack,esp
+    mov    receiver,ebp
+    mov    first,ebx
+    mov    fail,esi
+  }
+  if (first < 0) fail((const char *)R6GameServiceAddresses::TextIndex0,
+      (const char *)R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH,0x201);
+  if (first > *(int *)(receiver + 4)) fail((const char *)R6GameServiceAddresses::TextIndexArrayNum,
+      (const char *)R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH,0x202);
+  uint end = (uint)first + *(uint *)(nativeStack + 0x18);
+  if ((int)end > *(int *)(receiver + 4)) fail((const char *)R6GameServiceAddresses::TextIndexCountArrayNum,
+      (const char *)R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH,0x203);
+  if (first < (int)end) {
+    uint offset = (uint)first * 220;
+    uint remaining = end - (uint)first;
+    using DestroyABI = void (__thiscall *)(void *);
+    do {
+      byte *data = *(byte **)receiver;
+      ((DestroyABI)R6GameServiceAddresses::DestroySTGameServer)(data + offset);
+      offset += 220;
+    } while (--remaining != 0);
+  }
+  int count = *(int *)(nativeStack + 0x18);
+  using RemoveABI = uint (__thiscall *)(void *,int,int,int);
+  uint rawEax = (*(RemoveABI *)R6GameServiceAddresses::Core_FArray_RemoveSlot)(receiver,first,count,220);
+  __asm {
+    mov    eax,rawEax
     pop    edi
     pop    esi
     pop    ebp
@@ -1210,38 +1163,31 @@ __declspec(naked) void * __thiscall AssignSTGameServerArray(void *destination,co
   }
 }
 
-// Destroys four strings at24/18/c/0 in reverse order with three-state remaining-member unwind; returns raw destructor EAX.
-// R6GameService.dll @ 10007d90 : complete native operations and raw ABI; descriptive helper name.
-__declspec(naked) uint __fastcall DestroyFourStrings(void *record)
+// Destroys four no-init strings at +24/+18/+c/+0, unwinding remaining members after a destructor failure.
+// R6GameService.dll @ 10007d90 : fastcall receiver in ECX, no stack arguments; return is the last destructor's raw EAX.
+uint __fastcall DestroyFourStrings(void *record)
 {
-  __asm {
-    push   0xffffffff
-    push   R6GameServiceAddresses::SelectFourStringDestruction
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    push   ecx
-    push   esi
-    mov    esi,ecx
-    mov    DWORD PTR [esp+0x4],esi
-    lea    ecx,[esi+0x24]
-    mov    DWORD PTR [esp+0x10],0x2
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringNoInitSlot
-    lea    ecx,[esi+0x18]
-    mov    BYTE PTR [esp+0x10],0x1
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringNoInitSlot
-    lea    ecx,[esi+0xc]
-    mov    BYTE PTR [esp+0x10],0x0
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringNoInitSlot
-    mov    ecx,esi
-    mov    DWORD PTR [esp+0x10],0xffffffff
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringNoInitSlot
-    mov    ecx,DWORD PTR [esp+0x8]
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x10
-    ret
-  }
+  using DestroyABI = uint (__thiscall *)(void *);
+  // Reconstruction-only scope owner for the three remaining-member unwind states; not a recovered class layout.
+  struct RemainingMembers {
+    byte *record;
+    int next;
+    // Lower the remaining-member index before each call so a failing destructor is never retried.
+    ~RemainingMembers() noexcept(false) {
+      while (next >= 0) {
+        uint fieldOffset = (uint)next-- * 0xc;
+        (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(record + fieldOffset);
+      }
+    }
+  };
+  RemainingMembers remaining = {(byte *)record,2};
+  (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)((byte *)record + 0x24);
+  remaining.next = 1;
+  (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)((byte *)record + 0x18);
+  remaining.next = 0;
+  (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)((byte *)record + 0xc);
+  remaining.next = -1;
+  return (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(record);
 }
 
 // Removes the cached element count with stride838, then disarms storage unwind before array destruction.
@@ -1403,72 +1349,34 @@ __declspec(naked) uint __thiscall unreal_array_support_DestroyArrayStorage4(FArr
   }
 }
 
-// Checks signed wrapped bounds, destroys records using each current data pointer, then removes with the late count argument.
-// R6GameService.dll @ 1000b5a0 : complete native operations and raw ABI; descriptive helper name.
-__declspec(naked) uint __thiscall RemoveStringRecordRange30(FArray *array,int firstIndex,int count)
+// Checks signed wrapped bounds, destroys a cached extent through live data, then compacts using the current count.
+// R6GameService.dll @ 1000b5a0 : thiscall/RET8; firstIndex and assertion target are cached, count is sampled twice.
+uint __thiscall RemoveStringRecordRange30(FArray *array,int firstIndex,int count)
 {
-  __asm {
-    push   ebx
-    mov    ebx,DWORD PTR [esp+0x8]
-    test   ebx,ebx
-    push   ebp
-    push   esi
-    mov    esi,DWORD PTR ds:R6GameServiceAddresses::Core__appFailAssertSlot
-    push   edi
-    mov    ebp,ecx
-    jge    Branch61
-    push   0x201
-    push   R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH
-    push   R6GameServiceAddresses::TextIndex0
-    call   esi
-    add    esp,0xc
-  Branch61:
-    cmp    ebx,DWORD PTR [ebp+0x4]
-    jle    Branch62
-    push   0x202
-    push   R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH
-    push   R6GameServiceAddresses::TextIndexArrayNum
-    call   esi
-    add    esp,0xc
-  Branch62:
-    mov    eax,DWORD PTR [esp+0x18]
-    lea    edi,[ebx+eax*1]
-    cmp    edi,DWORD PTR [ebp+0x4]
-    jle    Branch63
-    push   0x203
-    push   R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH
-    push   R6GameServiceAddresses::TextIndexCountArrayNum
-    call   esi
-    add    esp,0xc
-  Branch63:
-    cmp    ebx,edi
-    jge    Branch65
-    lea    esi,[ebx+ebx*2]
-    shl    esi,0x4
-    sub    edi,ebx
-    lea    ecx,[ecx+0x0]
-  Branch64:
-    mov    ecx,DWORD PTR [ebp+0x0]
-    add    ecx,esi
-    call   R6GameServiceAddresses::DestroyFourStrings
-    add    esi,0x30
-    dec    edi
-    jne    Branch64
-  Branch65:
-    mov    ecx,DWORD PTR [esp+0x18]
-    push   0x30
-    push   ecx
-    push   ebx
-    mov    ecx,ebp
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FArray_RemoveSlot
-    pop    edi
-    pop    esi
-    pop    ebp
-    pop    ebx
-    ret    0x8
+  int first = firstIndex;
+  using AssertABI = void (__cdecl *)(const char *,const char *,int);
+  AssertABI assertion = *(AssertABI *)R6GameServiceAddresses::Core__appFailAssertSlot;
+  if (first < 0)
+    assertion((const char *)R6GameServiceAddresses::TextIndex0,
+        (const char *)R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH,0x201);
+  if (first > *(int *)((byte *)array + 4))
+    assertion((const char *)R6GameServiceAddresses::TextIndexArrayNum,
+        (const char *)R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH,0x202);
+  uint end = (uint)first + (uint)count;
+  if ((int)end > *(int *)((byte *)array + 4))
+    assertion((const char *)R6GameServiceAddresses::TextIndexCountArrayNum,
+        (const char *)R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH,0x203);
+  if (first < (int)end) {
+    uint recordOffset = (uint)first * 0x30;
+    uint remaining = end - (uint)first;
+    do {
+      DestroyFourStrings((void *)((uint)*(void **)array + recordOffset));
+      recordOffset += 0x30;
+    } while (--remaining != 0);
   }
+  using RemoveABI = uint (__thiscall *)(void *,int,int,int);
+  return (*(RemoveABI *)R6GameServiceAddresses::Core_FArray_RemoveSlot)(array,first,count,0x30);
 }
-
 // Reads count at receiver byte offset4, destroys/removes records, then disarms unwind before array storage destruction.
 // R6GameService.dll @ 1000c080 : complete native operations and raw ABI; descriptive helper name.
 __declspec(naked) uint __fastcall DestroyStringRecordArray30(FArray *array)

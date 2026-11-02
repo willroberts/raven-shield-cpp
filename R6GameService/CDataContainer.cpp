@@ -881,104 +881,125 @@ __declspec(naked) uint __thiscall LoadSerializedByteStore(void *owner,byte *inpu
 
 // Clears/initializes a variant, prepares bytes, accesses an array and forward-copies current source fields.
 // Array creation size precedes late mode/count reload; access failures leak the array and unaccess status is ignored.
-// R6GameService.dll @ 10018c20 : native control/access order and raw ABI retained.
+// R6GameService.dll @ 10018c20 : RET8; VARIANT output pointer stays cached while its argument slot becomes AccessData output.
 __declspec(naked) uint __thiscall CopyStoredBytesToVariant(void *owner,void *variant,uint mode)
 {
+  byte *nativeFrame,*receiver;
+  uint backing;
   __asm {
     push   ebx
     push   ebp
     push   esi
     mov    esi,ecx
     mov    eax,DWORD PTR [esi+0x4]
-    test   eax,eax
-    jne    Branch50
-    pop    esi
-    pop    ebp
-    mov    eax,0x82135001
-    pop    ebx
-    ret    0x8
-  Branch50:
-    mov    ebx,DWORD PTR [esp+0x10]
-    test   ebx,ebx
-    jne    Branch51
-    pop    esi
-    pop    ebp
-    mov    eax,0x82170057
-    pop    ebx
-    ret    0x8
-  Branch51:
-    push   ebx
-    call   DWORD PTR ds:R6GameServiceAddresses::OLEAUT32_VariantClearSlot
-    push   ebx
-    call   DWORD PTR ds:R6GameServiceAddresses::OLEAUT32_VariantInitSlot
-    mov    al,BYTE PTR [esi+0x10]
-    test   al,al
-    jne    Branch52
-    mov    ecx,esi
-    call   R6GameServiceAddresses::ResetStoreBufferAt08
-    mov    ecx,esi
-    call   R6GameServiceAddresses::SerializeStoredValuesToBuffer
-    test   eax,eax
-    jl     Branch59
-  Branch52:
-    mov    al,BYTE PTR [esp+0x14]
-    test   al,al
-    je     Branch53
-    mov    ecx,esi
-    call   R6GameServiceAddresses::PrepareAlternateStoreBuffer
-    test   eax,eax
-    jl     Branch59
-    mov    eax,DWORD PTR [esi+0x18]
-    mov    edx,DWORD PTR [esi+0x1c]
-    mov    ecx,DWORD PTR [esi+0x14]
-    sub    eax,edx
-    add    eax,ecx
-    jmp    Branch54
-  Branch53:
-    mov    eax,DWORD PTR [esi+0xc]
-  Branch54:
-    push   eax
-    push   0x0
-    push   0x11
-    call   DWORD PTR ds:R6GameServiceAddresses::OLEAUT32_SafeArrayCreateVectorSlot
-    mov    ebp,eax
-    test   ebp,ebp
-    jne    Branch55
-    pop    esi
-    pop    ebp
-    mov    eax,0x8217000e
-    pop    ebx
-    ret    0x8
-  Branch55:
-    lea    eax,[esp+0x10]
-    mov    DWORD PTR [esp+0x10],0x0
-    push   eax
-    push   ebp
-    call   DWORD PTR ds:R6GameServiceAddresses::OLEAUT32_SafeArrayAccessDataSlot
-    test   eax,eax
-    jge    Branch56
-    pop    esi
-    pop    ebp
-    or     eax,0x2120000
-    pop    ebx
-    ret    0x8
-  Branch56:
-    mov    al,BYTE PTR [esp+0x14]
+    mov    backing,eax
+    mov    receiver,esi
+    mov    nativeFrame,esp
+  }
+  uint rawEax;
+  if (backing == 0) {
+    rawEax = 0x82135001;
+    __asm {
+      pop    esi
+      pop    ebp
+      mov    eax,rawEax
+      pop    ebx
+      ret    0x8
+    }
+  }
+  void *output = *(void **)(nativeFrame + 0x10);
+  if (output == nullptr) {
+    rawEax = 0x82170057;
+    __asm {
+      pop    esi
+      pop    ebp
+      mov    eax,rawEax
+      pop    ebx
+      ret    0x8
+    }
+  }
+  using ClearABI = uint (__stdcall *)(void *);
+  using InitABI = void (__stdcall *)(void *);
+  (*(ClearABI *)R6GameServiceAddresses::OLEAUT32_VariantClearSlot)(output);
+  (*(InitABI *)R6GameServiceAddresses::OLEAUT32_VariantInitSlot)(output);
+  if (*(byte *)(receiver + 0x10) == 0) {
+    ((uint (__thiscall *)(void *))R6GameServiceAddresses::ResetStoreBufferAt08)(receiver);
+    rawEax = ((uint (__thiscall *)(void *))R6GameServiceAddresses::SerializeStoredValuesToBuffer)(receiver);
+    if ((int)rawEax < 0) {
+      __asm {
+        mov    eax,rawEax
+        pop    esi
+        pop    ebp
+        pop    ebx
+        ret    0x8
+      }
+    }
+  }
+  uint length;
+  if (*(byte *)(nativeFrame + 0x14) != 0) {
+    rawEax = ((uint (__thiscall *)(void *))R6GameServiceAddresses::PrepareAlternateStoreBuffer)(receiver);
+    if ((int)rawEax < 0) {
+      __asm {
+        mov    eax,rawEax
+        pop    esi
+        pop    ebp
+        pop    ebx
+        ret    0x8
+      }
+    }
+    uint end = *(uint *)(receiver + 0x18);
+    uint start = *(uint *)(receiver + 0x1c);
+    uint origin = *(uint *)(receiver + 0x14);
+    length = end - start + origin;
+  } else length = *(uint *)(receiver + 0xc);
+  using CreateABI = void * (__stdcall *)(uint,int,uint);
+  void *array = (*(CreateABI *)R6GameServiceAddresses::OLEAUT32_SafeArrayCreateVectorSlot)(0x11,0,length);
+  if (array == nullptr) {
+    rawEax = 0x8217000e;
+    __asm {
+      pop    esi
+      pop    ebp
+      mov    eax,rawEax
+      pop    ebx
+      ret    0x8
+    }
+  }
+  *(uint *)(nativeFrame + 0x10) = 0;
+  using AccessABI = uint (__stdcall *)(void *,void **);
+  rawEax = (*(AccessABI *)R6GameServiceAddresses::OLEAUT32_SafeArrayAccessDataSlot)
+      (array,(void **)(nativeFrame + 0x10));
+  if ((int)rawEax < 0) {
+    rawEax |= 0x02120000;
+    __asm {
+      pop    esi
+      pop    ebp
+      mov    eax,rawEax
+      pop    ebx
+      ret    0x8
+    }
+  }
+  byte currentMode = *(byte *)(nativeFrame + 0x14);
+  __asm {
     push   edi
-    test   al,al
-    je     Branch57
-    mov    ecx,DWORD PTR [esi+0x18]
-    mov    edi,DWORD PTR [esi+0x14]
-    mov    eax,DWORD PTR [esi+0x1c]
-    add    ecx,edi
-    sub    ecx,eax
-    mov    esi,eax
-    jmp    Branch58
-  Branch57:
-    mov    ecx,DWORD PTR [esi+0xc]
-    mov    esi,DWORD PTR [esi+0x8]
-  Branch58:
-    mov    edi,DWORD PTR [esp+0x14]
+  }
+  uint source;
+  if (currentMode != 0) {
+    uint end = *(uint *)(receiver + 0x18);
+    uint origin = *(uint *)(receiver + 0x14);
+    uint start = *(uint *)(receiver + 0x1c);
+    length = end + origin - start;
+    source = start;
+  } else {
+    length = *(uint *)(receiver + 0xc);
+    source = *(uint *)(receiver + 8);
+  }
+  void *destination = *(void **)(nativeFrame + 0x10);
+  // Preserve DWORD-then-byte copying, inherited DF and the array argument push before the remainder copy.
+  __asm {
+    mov    ecx,length
+    mov    esi,source
+    mov    edi,destination
+    mov    ebp,array
     mov    edx,ecx
     shr    ecx,0x2
     rep    movs DWORD PTR es:[edi],DWORD PTR ds:[esi]
@@ -987,11 +1008,13 @@ __declspec(naked) uint __thiscall CopyStoredBytesToVariant(void *owner,void *var
     and    ecx,0x3
     rep    movs BYTE PTR es:[edi],BYTE PTR ds:[esi]
     call   DWORD PTR ds:R6GameServiceAddresses::OLEAUT32_SafeArrayUnaccessDataSlot
-    mov    WORD PTR [ebx],0x2011
-    mov    DWORD PTR [ebx+0x8],ebp
-    mov    eax,0x2120000
+  }
+  *(ushort *)output = 0x2011;
+  *(void **)((byte *)output + 8) = array;
+  rawEax = 0x02120000;
+  __asm {
+    mov    eax,rawEax
     pop    edi
-  Branch59:
     pop    esi
     pop    ebp
     pop    ebx

@@ -1041,9 +1041,9 @@ constexpr unsigned int UR6GSServers_UR6GSServersCatch122 = 0x1000f797;
 constexpr unsigned int UR6GSServers_UR6GSServersCatch123 = 0x1000f7ab;
 // R6GameService.dll code @ 1000f7e0
 constexpr unsigned int UR6GSServers_CDKeyDisconnecUser = 0x1000f7e0;
-// R6GameService.dll interior-code @ 1000f8fa
+// R6GameService.dll interior-code @ 1000f8fa : historical alias for CDKeyDisconnecUser after RS decoding.
 constexpr unsigned int ActivationFailureContinuation = 0x1000f8fa;
-// R6GameService.dll interior-code @ 1000f9bf
+// R6GameService.dll interior-code @ 1000f9bf : historical alias for CDKeyDisconnecUser after Mod decoding.
 constexpr unsigned int AuthorizationFailureContinuation = 0x1000f9bf;
 // R6GameService.dll code @ 1000faac
 constexpr unsigned int UR6GSServers_UR6GSServersCatch124 = 0x1000faac;
@@ -15677,8 +15677,9 @@ constexpr unsigned int GMSClientInitialized = 0x10091e60;
 constexpr unsigned int GServiceVerboseLogging = 0x10091e70;
 // R6GameService.dll data @ 10091e74
 constexpr unsigned int GCreateLobbyRequested = 0x10091e74;
-// R6GameService.dll scalar @ 10091e78
-constexpr unsigned int NativeFloat0_02 = 0x10091e78;
+// R6GameService.dll data @ 10091e78
+// Live last-request tick in the asynchronous ICMP wrapper; role inferred from reads/writes.
+constexpr unsigned int GLastIcmpRequestTick = 0x10091e78;
 // R6GameService.dll data @ 1009239c
 constexpr unsigned int GServiceArray1 = 0x1009239c;
 // R6GameService.dll data @ 100923ac
@@ -15833,9 +15834,9 @@ constexpr unsigned int GLoadedGSClientMsgGetCopySlot = 0x10093bec;
 constexpr unsigned int PatchServiceDestructionExceptionHandlerFunctionInfo = 0x1007a8cc;
 // R6GameService.dll external-function-metadata @ 1007aa14
 constexpr unsigned int EncryptWrapperExceptionHandlerFunctionInfo = 0x1007aa14;
-// R6GameService.dll external-function-metadata @ 1007aa8c
+// R6GameService.dll data @ 1007aa8c : defined beside the key conversion body
 constexpr unsigned int DecryptWrapperExceptionHandlerFunctionInfo = 0x1007aa8c;
-// R6GameService.dll external-function-metadata @ 1007aaf4
+// R6GameService.dll data @ 1007aaf4 : defined beside the key conversion body
 constexpr unsigned int MachineValidationExceptionHandlerFunctionInfo = 0x1007aaf4;
 // R6GameService.dll external-function-metadata @ 1007ade8
 constexpr unsigned int StreamSentryExceptionHandlerFunctionInfo = 0x1007ade8;
@@ -15949,15 +15950,15 @@ constexpr unsigned int VectorLengthThrowExceptionHandlerFunctionInfo = 0x1008081
 constexpr unsigned int WideHexEncoderExceptionHandlerFunctionInfo = 0x10080890;
 // R6GameService.dll external-function-metadata @ 100808e0
 constexpr unsigned int ByteVectorCopyExceptionHandlerFunctionInfo = 0x100808e0;
-// R6GameService.dll external-function-metadata @ 10080938
+// R6GameService.dll data @ 10080938 : defined beside the collected-data bodies
 constexpr unsigned int CollectedByteBuilderExceptionHandlerFunctionInfo = 0x10080938;
-// R6GameService.dll external-function-metadata @ 1008095c
+// R6GameService.dll data @ 1008095c : defined beside the wide-hex decoder
 constexpr unsigned int LocalByteVectorExceptionHandlerFunctionInfo = 0x1008095c;
 // R6GameService.dll external-function-metadata @ 10080988
 constexpr unsigned int EncryptWideHexExceptionHandlerFunctionInfo = 0x10080988;
-// R6GameService.dll external-function-metadata @ 100809cc
+// R6GameService.dll data @ 100809cc : defined beside the key conversion body
 constexpr unsigned int DecryptWideHexExceptionHandlerFunctionInfo = 0x100809cc;
-// R6GameService.dll external-function-metadata @ 100809f8
+// R6GameService.dll data @ 100809f8 : defined beside the key conversion body
 constexpr unsigned int ValidateWideHexExceptionHandlerFunctionInfo = 0x100809f8;
 // R6GameService.dll external-function-metadata @ 10080af4
 constexpr unsigned int DirectoryProbeExceptionHandlerFunctionInfo = 0x10080af4;
@@ -15967,7 +15968,7 @@ constexpr unsigned int StringRangeConstructionExceptionHandlerFunctionInfo = 0x1
 constexpr unsigned int RepeatedStringConstructionExceptionHandlerFunctionInfo = 0x10080ba4;
 // R6GameService.dll external-function-metadata @ 10080c30
 constexpr unsigned int StringVectorInsertionExceptionHandlerFunctionInfo = 0x10080c30;
-// R6GameService.dll external-function-metadata @ 10080c5c
+// R6GameService.dll data @ 10080c5c : defined beside the collected-data bodies
 constexpr unsigned int AdapterAddressCollectorExceptionHandlerFunctionInfo = 0x10080c5c;
 // R6GameService.dll external-function-metadata @ 10080d24
 constexpr unsigned int CipherModuleBlowfishConstructExceptionHandlerFunctionInfo = 0x10080d24;
@@ -16033,4 +16034,41 @@ constexpr unsigned int PayloadRecordCopyExceptionHandlerFunctionInfo = 0x10082be
 constexpr unsigned int TransportRecordDecodeExceptionHandlerFunctionInfo = 0x10083ddc;
 // R6GameService.dll external-function-metadata @ 10083ffc
 constexpr unsigned int QueuedTransportDecodeExceptionHandlerFunctionInfo = 0x10083ffc;
+
+// R6GameService.dll data @ 1007aa30 : key conversion exception metadata.
+constexpr unsigned int DecryptWrapperUnwindMap = 0x1007aa30;
+
+// R6GameService.dll data @ 1007aa58 : key conversion exception metadata.
+constexpr unsigned int DecryptWrapperCatchHandlers = 0x1007aa58;
+
+// R6GameService.dll data @ 1007aa78 : key conversion exception metadata.
+constexpr unsigned int DecryptWrapperTryMap = 0x1007aa78;
+
+// R6GameService.dll data @ 1007aaa8 : key conversion exception metadata.
+constexpr unsigned int MachineValidationUnwindMap = 0x1007aaa8;
+
+// R6GameService.dll data @ 1007aac0 : key conversion exception metadata.
+constexpr unsigned int MachineValidationCatchHandlers = 0x1007aac0;
+
+// R6GameService.dll data @ 1007aae0 : key conversion exception metadata.
+constexpr unsigned int MachineValidationTryMap = 0x1007aae0;
+
+// R6GameService.dll data @ 100809a4 : key conversion exception metadata.
+constexpr unsigned int DecryptWideHexUnwindMap = 0x100809a4;
+
+// R6GameService.dll data @ 100809e8 : key conversion exception metadata.
+constexpr unsigned int ValidateWideHexUnwindMap = 0x100809e8;
+
+// R6GameService.dll data @ 10080954 : pooled local-vector unwind entries.
+constexpr unsigned int LocalByteVectorUnwindMap = 0x10080954;
+
+// R6GameService.dll data @ 10080920 : collected-byte builder cleanup states.
+constexpr unsigned int CollectedByteBuilderUnwindMap = 0x10080920;
+// R6GameService.dll data @ 10080c4c : adapter collector aligned-frame cleanup states.
+constexpr unsigned int AdapterAddressCollectorUnwindMap = 0x10080c4c;
+// UTF-16 registration diagnostics; descriptive identifiers follow the selected binary text.
+constexpr unsigned int WideTextCallbackRegServerRcvLobbyServerLoginResultsILobbyServerIDI = 0x10075268;
+constexpr unsigned int WideTextCallbackRegServerRcvLobbyServerLoginResultsIGroupIDI = 0x100751e8;
+constexpr unsigned int WideTextCallbackRegServerRcvLobbyServerLoginResultsFailedReasonI = 0x10075160;
+
 }
