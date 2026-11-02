@@ -764,26 +764,30 @@ void __thiscall AR6PlanningCtrl::execGetXYPoint(AR6PlanningCtrl* this, FFrame* s
     __asm {
         lea edx,direction
         mov ecx,cameraPosition
-        lea esi,rayEnd
-        lea edi,planePoint
         fld dword ptr [edx+0x8]
         fadd dword ptr [ecx+0x8]
-        mov eax,Height
+    }
+    uint heightWord = *(uint*)&Height;
+    __asm {
+        lea edx,direction
+        mov ecx,cameraPosition
         fld dword ptr [edx+0x4]
         fadd dword ptr [ecx+0x4]
         fld dword ptr [edx]
         fadd dword ptr [ecx]
-        mov dword ptr [edi+0x8],eax
+    }
+    *(uint*)&planePoint.Z = heightWord;
+    __asm {
+        lea esi,rayEnd
         fstp dword ptr [esi]
         fstp dword ptr [esi+0x4]
         fstp dword ptr [esi+0x8]
-        lea eax,planeNormal
-        mov dword ptr [eax],0x0
-        mov dword ptr [eax+0x4],0x0
-        mov dword ptr [eax+0x8],0x3f800000
-        mov dword ptr [edi],0x0
-        mov dword ptr [edi+0x4],0x0
     }
+    *(uint*)&planeNormal.X = 0;
+    *(uint*)&planeNormal.Y = 0;
+    *(uint*)&planeNormal.Z = 0x3f800000;
+    *(uint*)&planePoint.X = 0;
+    *(uint*)&planePoint.Y = 0;
     FVector intersectionStorage;
     FVector* intersection = IntersectLineWithPlane(&intersectionStorage, cameraPosition,
         &rayEnd, &planePoint, &planeNormal);
@@ -1107,13 +1111,11 @@ void __thiscall AR6PlanningCtrl::execGetClickResult(AR6PlanningCtrl* this, FFram
     UViewport* rectangleViewport;
     int viewportSize;
     uint convertedCoordinate;
+    __asm { fld dword ptr X }
+    rectangleViewport = (UViewport*)rectangleController->Player;
+    viewportSize = *(int*)((byte*)rectangleViewport + 0xa4);
+    // Conversion consumes ST(0), returns the low signed-64 result word in EAX, and obeys x87 control state.
     __asm {
-        fld dword ptr X
-        mov eax,rectangleController
-        mov esi,dword ptr [eax+0x5b4]
-        mov rectangleViewport,esi
-        mov ebx,dword ptr [esi+0xa4]
-        mov viewportSize,ebx
         call ConvertX87ToSigned64
         mov convertedCoordinate,eax
     }
@@ -1123,13 +1125,11 @@ void __thiscall AR6PlanningCtrl::execGetClickResult(AR6PlanningCtrl* this, FFram
     else if (rectangleEdge >= viewportSize)
         rectangleEdge = viewportSize;
     *(int*)((byte*)rectangleViewport + 0x174) = rectangleEdge;
+    __asm { fld dword ptr Y }
+    rectangleViewport = (UViewport*)rectangleController->Player;
+    viewportSize = *(int*)((byte*)rectangleViewport + 0xa8);
+    // Conversion consumes ST(0), returns the low signed-64 result word in EAX, and obeys x87 control state.
     __asm {
-        fld dword ptr Y
-        mov eax,rectangleController
-        mov esi,dword ptr [eax+0x5b4]
-        mov rectangleViewport,esi
-        mov ebx,dword ptr [esi+0xa8]
-        mov viewportSize,ebx
         call ConvertX87ToSigned64
         mov convertedCoordinate,eax
     }
@@ -1139,13 +1139,11 @@ void __thiscall AR6PlanningCtrl::execGetClickResult(AR6PlanningCtrl* this, FFram
     else if (rectangleEdge >= viewportSize)
         rectangleEdge = viewportSize;
     *(int*)((byte*)rectangleViewport + 0x178) = rectangleEdge;
+    __asm { fld dword ptr X }
+    rectangleViewport = (UViewport*)rectangleController->Player;
+    viewportSize = *(int*)((byte*)rectangleViewport + 0xa4);
+    // Conversion consumes ST(0), returns the low signed-64 result word in EAX, and obeys x87 control state.
     __asm {
-        fld dword ptr X
-        mov eax,rectangleController
-        mov esi,dword ptr [eax+0x5b4]
-        mov rectangleViewport,esi
-        mov ebx,dword ptr [esi+0xa4]
-        mov viewportSize,ebx
         call ConvertX87ToSigned64
         mov convertedCoordinate,eax
     }
@@ -1156,13 +1154,11 @@ void __thiscall AR6PlanningCtrl::execGetClickResult(AR6PlanningCtrl* this, FFram
         rectangleEdge = viewportSize;
     *(int*)((byte*)rectangleViewport + 0x17c) =
         (int)((uint)rectangleEdge - *(uint*)((byte*)rectangleViewport + 0x174));
+    __asm { fld dword ptr Y }
+    rectangleViewport = (UViewport*)rectangleController->Player;
+    viewportSize = *(int*)((byte*)rectangleViewport + 0xa8);
+    // Conversion consumes ST(0), returns the low signed-64 result word in EAX, and obeys x87 control state.
     __asm {
-        fld dword ptr Y
-        mov eax,rectangleController
-        mov esi,dword ptr [eax+0x5b4]
-        mov rectangleViewport,esi
-        mov ebx,dword ptr [esi+0xa8]
-        mov viewportSize,ebx
         call ConvertX87ToSigned64
         mov convertedCoordinate,eax
     }

@@ -2820,36 +2820,31 @@ void __thiscall AR6HUD::execDrawNativeHUD(AR6HUD* this, FFrame* stack, void* res
     }
     UCanvas* scaleCanvas = C;
     // Initialize both scales before signed size reads, retaining one canvas through the raw SetClip packet.
+    this->m_fScaleX = 1.0f;
+    this->m_fScaleY = 1.0f;
+    int canvasWidth = *(int*)((byte*)scaleCanvas + 0x6c);
+    float* scaleXOutput = &this->m_fScaleX;
     __asm {
-        mov ecx,scaleCanvas
-        mov edx,this
-        mov dword ptr [edx+0x530],0x3f800000
-        mov dword ptr [edx+0x534],0x3f800000
-        fild dword ptr [ecx+0x6c]
-        push 600
-        push 800
+        fild dword ptr canvasWidth
         fmul dword ptr HudCanvasInverseReferenceWidth
-        push 0
-        push 0
-        fstp dword ptr [edx+0x530]
-        fild dword ptr [ecx+0x70]
-        fmul dword ptr HudCanvasInverseReferenceHeight
-        fstp dword ptr [edx+0x534]
-        mov eax,dword ptr [ecx]
-        call dword ptr [eax+0x88]
+        mov edx,scaleXOutput
+        fstp dword ptr [edx]
     }
+    int canvasHeight = *(int*)((byte*)scaleCanvas + 0x70);
+    float* scaleYOutput = &this->m_fScaleY;
+    __asm {
+        fild dword ptr canvasHeight
+        fmul dword ptr HudCanvasInverseReferenceHeight
+        mov edx,scaleYOutput
+        fstp dword ptr [edx]
+    }
+    byte* clipVtable = *(byte**)scaleCanvas;
+    (*(ClipCall*)(clipVtable + 0x88))(scaleCanvas, 0, 0, 800, 600);
     uint stretchYWord = *(uint*)&this->m_fScaleY;
     uint stretchXWord = *(uint*)&this->m_fScaleX;
     uint stretchSlotAddress = R6GameImports::Engine_UCanvas_SetStretchSlot;
-    __asm {
-        mov eax,stretchYWord
-        push eax
-        mov ecx,C
-        mov edx,stretchXWord
-        push edx
-        mov eax,stretchSlotAddress
-        call dword ptr [eax]
-    }
+    using StretchCall = void (__thiscall *)(UCanvas*, float, float);
+    (*(StretchCall*)stretchSlotAddress)(C, *(float*)&stretchXWord, *(float*)&stretchYWord);
     byte* whiteColors = (byte*)this->Colors;
     uint whiteColorWord = *(uint*)(whiteColors + 0x84);
     UCanvas* whiteCanvas = C;
@@ -2890,19 +2885,10 @@ void __thiscall AR6HUD::execDrawNativeHUD(AR6HUD* this, FFrame* stack, void* res
     alignas(4) byte canvasStorage[0xca8];
     FCanvasUtil* canvas = (FCanvasUtil*)canvasStorage;
     uint canvasConstructorSlotAddress = R6GameImports::Engine_FCanvasUtil_ConstructorSlot;
-    __asm {
-        mov eax,constructorViewport
-        mov edx,constructorRenderInterface
-        push 1
-        push 0
-        push edx
-        mov initialRenderInterface,edx
-        push eax
-        lea ecx,canvasStorage
-        mov initialViewport,eax
-        mov edx,canvasConstructorSlotAddress
-        call dword ptr [edx]
-    }
+    initialRenderInterface = constructorRenderInterface;
+    initialViewport = constructorViewport;
+    using CanvasConstructor = void (__thiscall *)(FCanvasUtil*, UViewport*, FRenderInterface*, int, int);
+    (*(CanvasConstructor*)canvasConstructorSlotAddress)(canvas, constructorViewport, constructorRenderInterface, 0, 1);
     APlayerController* spectatorOwner = this->PlayerOwner;
     uint spectatorFlags = *(uint*)((byte*)spectatorOwner + 0x524);
     *(byte*)&exceptionRegistration.state = 2;
@@ -2928,21 +2914,7 @@ void __thiscall AR6HUD::execDrawNativeHUD(AR6HUD* this, FFrame* stack, void* res
             if (member != nullptr) {
                 FColor* rowColor = viewedRainbow == member ? &teamColor : &this->Colors->HUDGrey;
                 // Pass the saved X word directly after the canvas/color words, without a float conversion.
-                __asm {
-                    mov eax,C
-                    push eax
-                    lea edx,canvasStorage
-                    push edx
-                    mov eax,rowColor
-                    push eax
-                    mov eax,dword ptr memberX
-                    push 0
-                    push eax
-                    mov edx,member
-                    push edx
-                    mov ecx,this
-                    call DrawCharacterInfo
-                }
+                DrawCharacterInfo(this, member, memberX, 0.0f, rowColor, canvas, C);
             }
             __asm { fld dword ptr memberX }
             memberIndex = (int)((uint)memberIndex + 1U);
@@ -2958,20 +2930,7 @@ void __thiscall AR6HUD::execDrawNativeHUD(AR6HUD* this, FFrame* stack, void* res
             showCharacter = (*(byte*)((byte*)panelController + 0x83c) & 0x20U) != 0;
         }
         if (showCharacter) {
-            __asm {
-                mov edx,C
-                push edx
-                mov edx,viewedRainbow
-                lea eax,canvasStorage
-                push eax
-                lea ecx,teamColor
-                push ecx
-                push 0
-                push 0
-                push edx
-                mov ecx,this
-                call DrawSingleCharacterInfo
-            }
+            DrawSingleCharacterInfo(this, viewedRainbow, 0.0f, 0.0f, &teamColor, canvas, C);
         }
     }
     AR6PlayerController* postPanelController = (AR6PlayerController*)stack;
@@ -3002,26 +2961,10 @@ void __thiscall AR6HUD::execDrawNativeHUD(AR6HUD* this, FFrame* stack, void* res
                 const ushort* movementSection = OtherTeamLocalizeSection;
                 FStringNoInit* movementString = (FStringNoInit*)&this->m_szMovementMode;
                 // Capture Localize between the key and section pushes, retaining it after assignment.
-                __asm {
-                    push 0
-                    push 0
-                    push 0
-                    mov eax,movementPackage
-                    push eax
-                    mov eax,movementKey
-                    push eax
-                    mov eax,movementLocalizeSlotAddress
-                    mov esi,dword ptr [eax]
-                    mov teamLocalize,esi
-                    mov eax,movementSection
-                    push eax
-                    call esi
-                    add esp,0x18
-                    push eax
-                    mov ecx,movementString
-                    mov edx,movementAssignSlotAddress
-                    call dword ptr [edx]
-                }
+                teamLocalize = *(LocalizeCall*)movementLocalizeSlotAddress;
+                const ushort* localized = teamLocalize(movementSection, movementKey, movementPackage, nullptr, 0, 0);
+                using AssignTextCall = FStringNoInit* (__thiscall *)(FStringNoInit*, const ushort*);
+                (*(AssignTextCall*)movementAssignSlotAddress)(movementString, localized);
             } else {
                 teamLocalize = *(LocalizeCall*)R6GameImports::Core_LocalizeSlot;
             }
@@ -3030,8 +2973,12 @@ void __thiscall AR6HUD::execDrawNativeHUD(AR6HUD* this, FFrame* stack, void* res
             uint movementColorSlotAddress = R6GameImports::Engine_FColor_ConversionOperatorSlot;
             uint movementDataSlotAddress = R6GameImports::Core_FString_OperatorMultiplySlot;
             // The color conversion writes directly into the outgoing DrawString plane, not a separate local copy.
+            UCanvas* movementStyleCanvas = C;
+            FColor* movementColor = (FColor*)((byte*)this + 0x668);
+            *movementUnwindState = 4;
+            movementStyleCanvas->Style = 5;
+            // Retained ABI packet: ColorPlane writes directly into the outgoing DrawString plane.
             __asm {
-                mov eax,C
                 push 0
                 push 0
                 push 0
@@ -3039,23 +2986,25 @@ void __thiscall AR6HUD::execDrawNativeHUD(AR6HUD* this, FFrame* stack, void* res
                 mov ecx,esp
                 mov movementPlaneAddress,esp
                 push ecx
-                mov ebx,this
-                lea ecx,[ebx+0x668]
-                mov edx,movementUnwindState
-                mov dword ptr [edx],4
-                mov byte ptr [eax+0x5c],5
+                mov ecx,movementColor
                 mov edx,movementColorSlotAddress
                 call dword ptr [edx]
-                lea ecx,[ebx+0x6a8]
-                mov edx,movementDataSlotAddress
-                call dword ptr [edx]
-                mov ecx,C
-                mov edx,dword ptr [ecx]
+            }
+            using MovementDataCall = const ushort* (__thiscall *)(const FString*);
+            const ushort* movementText = (*(MovementDataCall*)movementDataSlotAddress)((FString*)&this->m_szMovementMode);
+            UCanvas* movementDrawCanvas = C;
+            byte* movementVtable = *(byte**)movementDrawCanvas;
+            UFont* movementFont = this->m_FontRainbow6_14pt;
+            // The already-built plane and three zero words stay on the native outgoing stack.
+            __asm {
+                mov eax,movementText
                 push eax
-                mov eax,dword ptr [ebx+0x3ec]
+                mov eax,movementFont
                 push 21
                 push 49
                 push eax
+                mov ecx,movementDrawCanvas
+                mov edx,movementVtable
                 call dword ptr [edx+0x78]
             }
         } else {
@@ -3072,130 +3021,145 @@ void __thiscall AR6HUD::execDrawNativeHUD(AR6HUD* this, FFrame* stack, void* res
         if (showTeamPanel && *savedMemberCount > 1 && this->m_pLastRainbowTeam != nullptr) {
             uint teamTileSlotAddress = R6GameImports::Engine_FCanvasUtil_DrawTileSlot;
             // Retain one DrawTile target; each packet refreshes its color/material/scales in native order.
-            __asm {
-                mov ebx,this
-                mov edx,dword ptr [ebx+0x5d0]
-                fld dword ptr [ebx+0x534]
-                mov eax,dword ptr [ebx+0x57c]
-                fmul dword ptr HudRadarZero
-                push edx
-                push eax
-                push 0x3f800000
-                push 0x43e48000
-                mov eax,teamTileSlotAddress
-                mov edi,dword ptr [eax]
-                push 0x430a0000
-                push 0x43d00000
-                push 0x43060000
-                sub esp,0x10
-                fstp dword ptr [esp+0xc]
-                lea ecx,canvasStorage
-                fld dword ptr [ebx+0x530]
-                fmul dword ptr HudOtherPanelRight
-                fstp dword ptr [esp+0x8]
-                fld dword ptr [ebx+0x534]
-                fmul dword ptr HudSinglePanelHeight
-                fstp dword ptr [esp+0x4]
-                fld dword ptr [ebx+0x530]
-                fmul dword ptr HudOtherPanelLeft
-                fstp dword ptr [esp]
-                call edi
-                mov ecx,dword ptr [ebx+0x5d0]
-                fld dword ptr [ebx+0x534]
-                mov edx,dword ptr [ebx+0x57c]
-                fmul dword ptr HudRadarZero
-                push ecx
-                push edx
-                push 0x3f800000
-                push 0x43e48000
-                push 0x43060000
-                push 0x43d00000
-                push 0x43000000
-                sub esp,0x10
-                fstp dword ptr [esp+0xc]
-                lea ecx,canvasStorage
-                fld dword ptr [ebx+0x530]
-                fmul dword ptr HudOtherPanelLeft
-                fstp dword ptr [esp+0x8]
-                fld dword ptr [ebx+0x534]
-                fmul dword ptr HudSinglePanelHeight
-                fstp dword ptr [esp+0x4]
-                fld dword ptr [ebx+0x530]
-                fmul dword ptr HudOtherPanelOuterLeft
-                fstp dword ptr [esp]
-                call edi
-                mov eax,dword ptr [ebx+0x5d4]
-                fld dword ptr [ebx+0x534]
-                mov ecx,dword ptr [ebx+0x57c]
-                fmul dword ptr HudRadarZero
-                push eax
-                push ecx
-                push 0x3f800000
-                push 0x43f90000
-                push 0x430a0000
-                push 0x43e48000
-                push 0x43060000
-                sub esp,0x10
-                fstp dword ptr [esp+0xc]
-                lea ecx,canvasStorage
-                fld dword ptr [ebx+0x530]
-                fmul dword ptr HudOtherPanelInnerRight
-                fstp dword ptr [esp+0x8]
-                fld dword ptr [ebx+0x534]
-                fmul dword ptr HudSinglePanelHeight
-                fstp dword ptr [esp+0x4]
-                fld dword ptr [ebx+0x530]
-                fmul dword ptr HudOtherPanelLeft
-                fstp dword ptr [esp]
-                call edi
-                mov edx,dword ptr [ebx+0x5d4]
-                mov eax,dword ptr [ebx+0x57c]
-                push edx
-                push eax
-                push 0x3f800000
-                push 0x43f90000
-                push 0x43060000
-                push 0x43e48000
-                fld dword ptr [ebx+0x534]
-                push 0x43000000
-                fmul dword ptr HudRadarZero
-                sub esp,0x10
-                lea ecx,canvasStorage
-                fstp dword ptr [esp+0xc]
-                fld dword ptr [ebx+0x530]
-                fmul dword ptr HudOtherPanelLeft
-                fstp dword ptr [esp+0x8]
-                fld dword ptr [ebx+0x534]
-                fmul dword ptr HudSinglePanelHeight
-                fstp dword ptr [esp+0x4]
-                fld dword ptr [ebx+0x530]
-                fmul dword ptr HudOtherPanelOuterLeft
-                fstp dword ptr [esp]
-                call edi
-                mov ecx,dword ptr [ebx+0x5d4]
-                fld dword ptr [ebx+0x534]
-                mov edx,dword ptr [ebx+0x57c]
-                fmul dword ptr HudRadarZero
-                push ecx
-                push edx
-                push 0x3f800000
-                push 0x43f90000
-                push 0x430e0000
-                push 0x43e48000
-                push 0x430a0000
-                sub esp,0x10
-                fstp dword ptr [esp+0xc]
-                lea ecx,canvasStorage
-                fld dword ptr [ebx+0x530]
-                fmul dword ptr HudOtherPanelRight
-                fstp dword ptr [esp+0x8]
-                fld dword ptr [ebx+0x534]
-                fmul dword ptr HudSinglePanelHeight
-                fstp dword ptr [esp+0x4]
-                fld dword ptr [ebx+0x530]
-                fmul dword ptr HudOtherPanelInnerRight
-                fstp dword ptr [esp]
-                call edi
+            using PanelTileCall = void (__thiscall *)(FCanvasUtil*, uint, uint, uint, uint,
+                uint, uint, uint, uint, uint, UMaterial*, uint);
+            AR6HUD* panelHud = this;
+            PanelTileCall panelDraw;
+            {
+                uint coordinates[4];
+                uint color1 = *(uint*)((byte*)panelHud + 0x5d0);
+                __asm {
+                    mov ebx,panelHud
+                    lea edx,coordinates
+                    fld dword ptr [ebx+0x534]
+                }
+                UMaterial* material1 = panelHud->m_pCurrentMaterial;
+                __asm {
+                    mov ebx,panelHud
+                    lea edx,coordinates
+                    fmul dword ptr HudRadarZero
+                }
+                panelDraw = *(PanelTileCall*)teamTileSlotAddress;
+                __asm {
+                    mov ebx,panelHud
+                    lea edx,coordinates
+                    fstp dword ptr [edx+0xc]
+                    fld dword ptr [ebx+0x530]
+                    fmul dword ptr HudOtherPanelRight
+                    fstp dword ptr [edx+0x8]
+                    fld dword ptr [ebx+0x534]
+                    fmul dword ptr HudSinglePanelHeight
+                    fstp dword ptr [edx+0x4]
+                    fld dword ptr [ebx+0x530]
+                    fmul dword ptr HudOtherPanelLeft
+                    fstp dword ptr [edx]
+                }
+                panelDraw(canvas, coordinates[0], coordinates[1], coordinates[2], coordinates[3],
+                    0x43060000, 0x43d00000, 0x430a0000, 0x43e48000, 0x3f800000, material1, color1);
+            }
+            {
+                uint coordinates[4];
+                uint color2 = *(uint*)((byte*)panelHud + 0x5d0);
+                __asm {
+                    mov ebx,panelHud
+                    lea edx,coordinates
+                    fld dword ptr [ebx+0x534]
+                }
+                UMaterial* material2 = panelHud->m_pCurrentMaterial;
+                __asm {
+                    mov ebx,panelHud
+                    lea edx,coordinates
+                    fmul dword ptr HudRadarZero
+                    fstp dword ptr [edx+0xc]
+                    fld dword ptr [ebx+0x530]
+                    fmul dword ptr HudOtherPanelLeft
+                    fstp dword ptr [edx+0x8]
+                    fld dword ptr [ebx+0x534]
+                    fmul dword ptr HudSinglePanelHeight
+                    fstp dword ptr [edx+0x4]
+                    fld dword ptr [ebx+0x530]
+                    fmul dword ptr HudOtherPanelOuterLeft
+                    fstp dword ptr [edx]
+                }
+                panelDraw(canvas, coordinates[0], coordinates[1], coordinates[2], coordinates[3],
+                    0x43000000, 0x43d00000, 0x43060000, 0x43e48000, 0x3f800000, material2, color2);
+            }
+            {
+                uint coordinates[4];
+                uint color3 = *(uint*)((byte*)panelHud + 0x5d4);
+                __asm {
+                    mov ebx,panelHud
+                    lea edx,coordinates
+                    fld dword ptr [ebx+0x534]
+                }
+                UMaterial* material3 = panelHud->m_pCurrentMaterial;
+                __asm {
+                    mov ebx,panelHud
+                    lea edx,coordinates
+                    fmul dword ptr HudRadarZero
+                    fstp dword ptr [edx+0xc]
+                    fld dword ptr [ebx+0x530]
+                    fmul dword ptr HudOtherPanelInnerRight
+                    fstp dword ptr [edx+0x8]
+                    fld dword ptr [ebx+0x534]
+                    fmul dword ptr HudSinglePanelHeight
+                    fstp dword ptr [edx+0x4]
+                    fld dword ptr [ebx+0x530]
+                    fmul dword ptr HudOtherPanelLeft
+                    fstp dword ptr [edx]
+                }
+                panelDraw(canvas, coordinates[0], coordinates[1], coordinates[2], coordinates[3],
+                    0x43060000, 0x43e48000, 0x430a0000, 0x43f90000, 0x3f800000, material3, color3);
+            }
+            {
+                uint coordinates[4];
+                uint color4 = *(uint*)((byte*)panelHud + 0x5d4);
+                UMaterial* material4 = panelHud->m_pCurrentMaterial;
+                __asm {
+                    mov ebx,panelHud
+                    lea edx,coordinates
+                    fld dword ptr [ebx+0x534]
+                    fmul dword ptr HudRadarZero
+                    fstp dword ptr [edx+0xc]
+                    fld dword ptr [ebx+0x530]
+                    fmul dword ptr HudOtherPanelLeft
+                    fstp dword ptr [edx+0x8]
+                    fld dword ptr [ebx+0x534]
+                    fmul dword ptr HudSinglePanelHeight
+                    fstp dword ptr [edx+0x4]
+                    fld dword ptr [ebx+0x530]
+                    fmul dword ptr HudOtherPanelOuterLeft
+                    fstp dword ptr [edx]
+                }
+                panelDraw(canvas, coordinates[0], coordinates[1], coordinates[2], coordinates[3],
+                    0x43000000, 0x43e48000, 0x43060000, 0x43f90000, 0x3f800000, material4, color4);
+            }
+            {
+                uint coordinates[4];
+                uint color5 = *(uint*)((byte*)panelHud + 0x5d4);
+                __asm {
+                    mov ebx,panelHud
+                    lea edx,coordinates
+                    fld dword ptr [ebx+0x534]
+                }
+                UMaterial* material5 = panelHud->m_pCurrentMaterial;
+                __asm {
+                    mov ebx,panelHud
+                    lea edx,coordinates
+                    fmul dword ptr HudRadarZero
+                    fstp dword ptr [edx+0xc]
+                    fld dword ptr [ebx+0x530]
+                    fmul dword ptr HudOtherPanelRight
+                    fstp dword ptr [edx+0x8]
+                    fld dword ptr [ebx+0x534]
+                    fmul dword ptr HudSinglePanelHeight
+                    fstp dword ptr [edx+0x4]
+                    fld dword ptr [ebx+0x530]
+                    fmul dword ptr HudOtherPanelInnerRight
+                    fstp dword ptr [edx]
+                }
+                panelDraw(canvas, coordinates[0], coordinates[1], coordinates[2], coordinates[3],
+                    0x430a0000, 0x43e48000, 0x430e0000, 0x43f90000, 0x3f800000, material5, color5);
             }
             uint healthMemberCount = (uint)*savedMemberCount;
             ALevelInfo* healthLevel = this->Level;
@@ -3206,46 +3170,40 @@ void __thiscall AR6HUD::execDrawNativeHUD(AR6HUD* this, FFrame* stack, void* res
             // Builds the native health packet with signed integer loads and scratch-word reuse.
             auto drawTeamHealth = [&](int leftEdge, byte health) {
                 uint cappedHealth = health > 2 ? 2U : (uint)health;
+                const int capturedLeft = leftEdge;
+                uint healthColor = *(uint*)((byte*)this + 0x650);
+                UMaterial* healthMaterial = this->m_pCurrentMaterial;
+                healthV1Word = (int)(cappedHealth << 3);
+                healthPacketScratch = (int)((uint)healthV1Word + 8U);
+                uint healthV2, healthV1, coordinates[4];
                 __asm {
-                    mov eax,cappedHealth
-                    mov ecx,leftEdge
-                    mov ebx,this
-                    mov edx,dword ptr [ebx+0x650]
-                    push edx
-                    mov edx,dword ptr [ebx+0x57c]
-                    shl eax,0x3
-                    push edx
-                    mov healthV1Word,eax
-                    push 0x3f800000
-                    push ecx
-                    add eax,0x8
-                    mov healthPacketScratch,eax
                     fild dword ptr healthPacketScratch
-                    fstp dword ptr [esp]
-                    push 0x43fe0000
+                    fstp dword ptr healthV2
                     fild dword ptr healthV1Word
-                    push ecx
-                    add ecx,0x8
-                    mov healthPacketScratch,ecx
-                    fstp dword ptr [esp]
-                    push 0x43fa0000
+                }
+                healthPacketScratch = (int)((uint)capturedLeft + 8U);
+                __asm {
+                    fstp dword ptr healthV1
+                    mov ebx,this
+                    lea edi,coordinates
                     fld dword ptr [ebx+0x534]
-                    sub esp,0x10
                     fmul dword ptr HudSingleHealthBottomOffset
-                    lea ecx,canvasStorage
-                    fstp dword ptr [esp+0xc]
+                    fstp dword ptr [edi+0xc]
                     fild dword ptr healthPacketScratch
                     fmul dword ptr [ebx+0x530]
-                    fstp dword ptr [esp+0x8]
+                    fstp dword ptr [edi+0x8]
                     fld dword ptr [ebx+0x534]
                     fmul dword ptr HudSingleHealthTopOffset
-                    fstp dword ptr [esp+0x4]
+                    fstp dword ptr [edi+0x4]
                     fild dword ptr healthLeftWord
                     fmul dword ptr [ebx+0x530]
-                    fstp dword ptr [esp]
-                    mov eax,healthTileSlotAddress
-                    call dword ptr [eax]
+                    fstp dword ptr [edi]
                 }
+                using HealthTileCall = void (__thiscall *)(FCanvasUtil*, uint, uint, uint, uint,
+                    uint, uint, uint, uint, uint, UMaterial*, uint);
+                (*(HealthTileCall*)healthTileSlotAddress)(canvas,
+                    coordinates[0], coordinates[1], coordinates[2], coordinates[3],
+                    0x43fa0000, healthV1, 0x43fe0000, healthV2, 0x3f800000, healthMaterial, healthColor);
             };
             byte teamHealthNetMode = *(byte*)((byte*)healthLevel + 0x425);
             *(byte*)&exceptionRegistration.state = 8;
@@ -3333,46 +3291,22 @@ void __thiscall AR6HUD::execDrawNativeHUD(AR6HUD* this, FFrame* stack, void* res
                     const ushort* section = OtherTeamLocalizeSection;
                     const ushort* package = OtherTeamLocalizePackage;
                     const ushort* localized;
-                    __asm {
-                        push 0
-                        push 0
-                        push 0
-                        mov eax,package
-                        push eax
-                        mov eax,key
-                        push eax
-                        mov eax,section
-                        push eax
-                        mov esi,teamLocalize
-                        call esi
-                        add esp,0x18
-                        mov localized,eax
-                    }
+                    localized = teamLocalize(section, key, package, nullptr, 0, 0);
                     return localized;
                 };
                 // Assign through the live import after pushing the returned text word.
                 auto assignTeamAction = [&](const ushort* text) {
                     FStringNoInit* actionString = (FStringNoInit*)&this->m_szTeamState;
                     uint assignSlotAddress = R6GameImports::Core_FStringNoInit_AssignTextSlot;
-                    __asm {
-                        mov eax,text
-                        push eax
-                        mov ecx,actionString
-                        mov edx,assignSlotAddress
-                        call dword ptr [edx]
-                    }
+                    using AssignTextCall = FStringNoInit* (__thiscall *)(FStringNoInit*, const ushort*);
+                    (*(AssignTextCall*)assignSlotAddress)(actionString, text);
                 };
                 // Append through the live import; the member string remains owned by the HUD.
                 auto appendTeamAction = [&](const ushort* text) {
                     FString* actionString = (FString*)&this->m_szTeamState;
                     uint appendSlotAddress = R6GameImports::Core_FString_OperatorAppendAssignTextSlot;
-                    __asm {
-                        mov eax,text
-                        push eax
-                        mov ecx,actionString
-                        mov edx,appendSlotAddress
-                        call dword ptr [edx]
-                    }
+                    using AppendTextCall = FString* (__thiscall *)(FString*, const ushort*);
+                    (*(AppendTextCall*)appendSlotAddress)(actionString, text);
                 };
                 if (actionDispatchIndex < 20U) {
                     const ushort* localized = localizeTeamAction(actionKeys[actionDispatchIndex]);
@@ -3424,19 +3358,8 @@ void __thiscall AR6HUD::execDrawNativeHUD(AR6HUD* this, FFrame* stack, void* res
             UCanvas* teamTextCanvas = C;
             byte* teamTextVtable = *(byte**)teamTextCanvas;
             // WrappedPrintf is cdecl: canvas is a stack argument, and the caller removes all four words.
-            __asm {
-                mov eax,stateText
-                push eax
-                mov ebx,this
-                mov eax,dword ptr [ebx+0x3ec]
-                push 1
-                push eax
-                mov ecx,teamTextCanvas
-                push ecx
-                mov edx,teamTextVtable
-                call dword ptr [edx+0x84]
-                add esp,0x10
-            }
+            UFont* stateFont = this->m_FontRainbow6_14pt;
+            (*(TextCall*)(teamTextVtable + 0x84))(teamTextCanvas, stateFont, 1, stateText);
         }
     }
     byte weaponPanelFlags = *(byte*)((byte*)this + 0x524);
@@ -3451,129 +3374,141 @@ void __thiscall AR6HUD::execDrawNativeHUD(AR6HUD* this, FFrame* stack, void* res
     if (showWeaponInfo) {
         // Draw two filled strips and three outlines with the retained target and live per-packet fields.
         // +530/+534 are scales; +57c is material; +5c8/+5cc are fill/outline colors.
-        __asm {
-            mov ebx,this
-            mov esi,drawWeaponTile
-            mov eax,dword ptr [ebx+0x5c8]
-            fld dword ptr [ebx+0x534]
-            mov ecx,dword ptr [ebx+0x57c]
-            fmul dword ptr HudWeaponPanelBottom
-            push eax
-            push ecx
-            push 0x3f800000
-            push 0x43f88000
-            push 0x42d80000
-            push 0x43d00000
-            push 0x42d00000
-            sub esp,0x10
-            fstp dword ptr [esp+0xc]
-            lea ecx,canvasStorage
-            fld dword ptr [ebx+0x530]
-            fmul dword ptr HudWeaponPanelRight
-            fstp dword ptr [esp+0x8]
-            fld dword ptr [ebx+0x534]
-            fmul dword ptr HudWeaponPanelTop
-            fstp dword ptr [esp+0x4]
-            fld dword ptr [ebx+0x530]
-            fmul dword ptr HudRadarZero
-            fstp dword ptr [esp]
-            call esi
-            mov edx,dword ptr [ebx+0x5c8]
-            fld dword ptr [ebx+0x534]
-            mov eax,dword ptr [ebx+0x57c]
-            fmul dword ptr HudWeaponPanelBottom
-            push edx
-            push eax
-            push 0x3f800000
-            push 0x43f88000
-            push 0x42e40000
-            push 0x43d00000
-            push 0x42d80000
-            sub esp,0x10
-            fstp dword ptr [esp+0xc]
-            lea ecx,canvasStorage
-            fld dword ptr [ebx+0x530]
-            fmul dword ptr HudWeaponPanelOuterRight
-            fstp dword ptr [esp+0x8]
-            fld dword ptr [ebx+0x534]
-            fmul dword ptr HudWeaponPanelTop
-            fstp dword ptr [esp+0x4]
-            fld dword ptr [ebx+0x530]
-            fmul dword ptr HudWeaponPanelRight
-            fstp dword ptr [esp]
-            call esi
-            mov ecx,dword ptr [ebx+0x5cc]
-            fld dword ptr [ebx+0x534]
-            mov edx,dword ptr [ebx+0x57c]
-            fmul dword ptr HudWeaponPanelBottom
-            push ecx
-            push edx
-            push 0x3f800000
-            push 0x43f88000
-            push 0x42f40000
-            push 0x43d00000
-            push 0x42ec0000
-            sub esp,0x10
-            fstp dword ptr [esp+0xc]
-            lea ecx,canvasStorage
-            fld dword ptr [ebx+0x530]
-            fmul dword ptr HudWeaponPanelRight
-            fstp dword ptr [esp+0x8]
-            fld dword ptr [ebx+0x534]
-            fmul dword ptr HudWeaponPanelTop
-            fstp dword ptr [esp+0x4]
-            fld dword ptr [ebx+0x530]
-            fmul dword ptr HudSinglePanelInnerOffset
-            fstp dword ptr [esp]
-            call esi
-            mov eax,dword ptr [ebx+0x5cc]
-            mov ecx,dword ptr [ebx+0x57c]
-            push eax
-            push ecx
-            push 0x3f800000
-            push 0x43f88000
-            push 0x43000000
-            push 0x43d00000
-            push 0x42f40000
-            fld dword ptr [ebx+0x534]
-            sub esp,0x10
-            fmul dword ptr HudWeaponPanelBottom
-            lea ecx,canvasStorage
-            fstp dword ptr [esp+0xc]
-            fld dword ptr [ebx+0x530]
-            fmul dword ptr HudWeaponPanelOuterRight
-            fstp dword ptr [esp+0x8]
-            fld dword ptr [ebx+0x534]
-            fmul dword ptr HudWeaponPanelTop
-            fstp dword ptr [esp+0x4]
-            fld dword ptr [ebx+0x530]
-            fmul dword ptr HudWeaponPanelRight
-            fstp dword ptr [esp]
-            call esi
-            mov edx,dword ptr [ebx+0x5cc]
-            fld dword ptr [ebx+0x534]
-            mov eax,dword ptr [ebx+0x57c]
-            fmul dword ptr HudWeaponPanelBottom
-            push edx
-            push eax
-            push 0x3f800000
-            push 0x43f88000
-            push 0x42ec0000
-            push 0x43d00000
-            push 0x42e40000
-            sub esp,0x10
-            fstp dword ptr [esp+0xc]
-            lea ecx,canvasStorage
-            fld dword ptr [ebx+0x530]
-            fmul dword ptr HudSinglePanelInnerOffset
-            fstp dword ptr [esp+0x8]
-            fld dword ptr [ebx+0x534]
-            fmul dword ptr HudWeaponPanelTop
-            fstp dword ptr [esp+0x4]
-            fld dword ptr [ebx+0x530]
-            fmul dword ptr HudRadarZero
-            fstp dword ptr [esp]
-            call esi
+        using PanelTileCall = void (__thiscall *)(FCanvasUtil*, uint, uint, uint, uint,
+            uint, uint, uint, uint, uint, UMaterial*, uint);
+        AR6HUD* panelHud = this;
+        PanelTileCall panelDraw;
+        panelDraw = (PanelTileCall)drawWeaponTile;
+        {
+            uint coordinates[4];
+            uint color1 = *(uint*)((byte*)panelHud + 0x5c8);
+            __asm {
+                mov ebx,panelHud
+                lea edx,coordinates
+                fld dword ptr [ebx+0x534]
+            }
+            UMaterial* material1 = panelHud->m_pCurrentMaterial;
+            __asm {
+                mov ebx,panelHud
+                lea edx,coordinates
+                fmul dword ptr HudWeaponPanelBottom
+                fstp dword ptr [edx+0xc]
+                fld dword ptr [ebx+0x530]
+                fmul dword ptr HudWeaponPanelRight
+                fstp dword ptr [edx+0x8]
+                fld dword ptr [ebx+0x534]
+                fmul dword ptr HudWeaponPanelTop
+                fstp dword ptr [edx+0x4]
+                fld dword ptr [ebx+0x530]
+                fmul dword ptr HudRadarZero
+                fstp dword ptr [edx]
+            }
+            panelDraw(canvas, coordinates[0], coordinates[1], coordinates[2], coordinates[3],
+                0x42d00000, 0x43d00000, 0x42d80000, 0x43f88000, 0x3f800000, material1, color1);
+        }
+        {
+            uint coordinates[4];
+            uint color2 = *(uint*)((byte*)panelHud + 0x5c8);
+            __asm {
+                mov ebx,panelHud
+                lea edx,coordinates
+                fld dword ptr [ebx+0x534]
+            }
+            UMaterial* material2 = panelHud->m_pCurrentMaterial;
+            __asm {
+                mov ebx,panelHud
+                lea edx,coordinates
+                fmul dword ptr HudWeaponPanelBottom
+                fstp dword ptr [edx+0xc]
+                fld dword ptr [ebx+0x530]
+                fmul dword ptr HudWeaponPanelOuterRight
+                fstp dword ptr [edx+0x8]
+                fld dword ptr [ebx+0x534]
+                fmul dword ptr HudWeaponPanelTop
+                fstp dword ptr [edx+0x4]
+                fld dword ptr [ebx+0x530]
+                fmul dword ptr HudWeaponPanelRight
+                fstp dword ptr [edx]
+            }
+            panelDraw(canvas, coordinates[0], coordinates[1], coordinates[2], coordinates[3],
+                0x42d80000, 0x43d00000, 0x42e40000, 0x43f88000, 0x3f800000, material2, color2);
+        }
+        {
+            uint coordinates[4];
+            uint color3 = *(uint*)((byte*)panelHud + 0x5cc);
+            __asm {
+                mov ebx,panelHud
+                lea edx,coordinates
+                fld dword ptr [ebx+0x534]
+            }
+            UMaterial* material3 = panelHud->m_pCurrentMaterial;
+            __asm {
+                mov ebx,panelHud
+                lea edx,coordinates
+                fmul dword ptr HudWeaponPanelBottom
+                fstp dword ptr [edx+0xc]
+                fld dword ptr [ebx+0x530]
+                fmul dword ptr HudWeaponPanelRight
+                fstp dword ptr [edx+0x8]
+                fld dword ptr [ebx+0x534]
+                fmul dword ptr HudWeaponPanelTop
+                fstp dword ptr [edx+0x4]
+                fld dword ptr [ebx+0x530]
+                fmul dword ptr HudSinglePanelInnerOffset
+                fstp dword ptr [edx]
+            }
+            panelDraw(canvas, coordinates[0], coordinates[1], coordinates[2], coordinates[3],
+                0x42ec0000, 0x43d00000, 0x42f40000, 0x43f88000, 0x3f800000, material3, color3);
+        }
+        {
+            uint coordinates[4];
+            uint color4 = *(uint*)((byte*)panelHud + 0x5cc);
+            UMaterial* material4 = panelHud->m_pCurrentMaterial;
+            __asm {
+                mov ebx,panelHud
+                lea edx,coordinates
+                fld dword ptr [ebx+0x534]
+                fmul dword ptr HudWeaponPanelBottom
+                fstp dword ptr [edx+0xc]
+                fld dword ptr [ebx+0x530]
+                fmul dword ptr HudWeaponPanelOuterRight
+                fstp dword ptr [edx+0x8]
+                fld dword ptr [ebx+0x534]
+                fmul dword ptr HudWeaponPanelTop
+                fstp dword ptr [edx+0x4]
+                fld dword ptr [ebx+0x530]
+                fmul dword ptr HudWeaponPanelRight
+                fstp dword ptr [edx]
+            }
+            panelDraw(canvas, coordinates[0], coordinates[1], coordinates[2], coordinates[3],
+                0x42f40000, 0x43d00000, 0x43000000, 0x43f88000, 0x3f800000, material4, color4);
+        }
+        {
+            uint coordinates[4];
+            uint color5 = *(uint*)((byte*)panelHud + 0x5cc);
+            __asm {
+                mov ebx,panelHud
+                lea edx,coordinates
+                fld dword ptr [ebx+0x534]
+            }
+            UMaterial* material5 = panelHud->m_pCurrentMaterial;
+            __asm {
+                mov ebx,panelHud
+                lea edx,coordinates
+                fmul dword ptr HudWeaponPanelBottom
+                fstp dword ptr [edx+0xc]
+                fld dword ptr [ebx+0x530]
+                fmul dword ptr HudSinglePanelInnerOffset
+                fstp dword ptr [edx+0x8]
+                fld dword ptr [ebx+0x534]
+                fmul dword ptr HudWeaponPanelTop
+                fstp dword ptr [edx+0x4]
+                fld dword ptr [ebx+0x530]
+                fmul dword ptr HudRadarZero
+                fstp dword ptr [edx]
+            }
+            panelDraw(canvas, coordinates[0], coordinates[1], coordinates[2], coordinates[3],
+                0x42e40000, 0x43d00000, 0x42ec0000, 0x43f88000, 0x3f800000, material5, color5);
         }
         AR6Rainbow* weaponView = viewedRainbow;
         auto* engineWeapon = weaponView->EngineWeapon;
@@ -3606,42 +3541,42 @@ void __thiscall AR6HUD::execDrawNativeHUD(AR6HUD* this, FFrame* stack, void* res
                 this->m_pCurrentMaterial = weapon->m_HUDTexture;
             }
             // Keep raw UV words and round each x87 sum/product directly into the outgoing tile packet.
+            uint iconColor = *(uint*)((byte*)this + 0x614);
             __asm {
-                mov ebx,this
                 mov edi,weapon
-                mov esi,drawWeaponTile
-                mov eax,dword ptr [ebx+0x614]
                 fld dword ptr [edi+0x484]
                 fadd dword ptr [edi+0x47c]
-                mov ecx,dword ptr [ebx+0x57c]
-                mov edx,dword ptr [edi+0x47c]
-                push eax
-                mov eax,dword ptr [edi+0x478]
-                push ecx
-                push 0x3f800000
-                sub esp,0x8
-                fstp dword ptr [esp+0x4]
-                lea ecx,canvasStorage
+            }
+            UMaterial* iconMaterial = this->m_pCurrentMaterial;
+            uint iconV1 = *(uint*)((byte*)weapon + 0x47c);
+            uint iconU1 = *(uint*)((byte*)weapon + 0x478);
+            uint iconV2, iconU2, iconCoordinates[4];
+            __asm {
+                fstp dword ptr iconV2
+                mov edi,weapon
                 fld dword ptr [edi+0x480]
                 fadd dword ptr [edi+0x478]
-                fstp dword ptr [esp]
-                push edx
+                fstp dword ptr iconU2
+                mov ebx,this
+                lea edi,iconCoordinates
                 fld dword ptr [ebx+0x534]
-                push eax
                 fmul dword ptr HudWeaponIconBottom
-                sub esp,0x10
-                fstp dword ptr [esp+0xc]
+                fstp dword ptr [edi+0xc]
                 fld dword ptr [ebx+0x530]
                 fmul dword ptr HudWeaponIconRight
-                fstp dword ptr [esp+0x8]
+                fstp dword ptr [edi+0x8]
                 fld dword ptr [ebx+0x534]
                 fmul dword ptr HudWeaponIconTop
-                fstp dword ptr [esp+0x4]
+                fstp dword ptr [edi+0x4]
                 fld dword ptr [ebx+0x530]
                 fmul dword ptr HudWeaponIconLeft
-                fstp dword ptr [esp]
-                call esi
+                fstp dword ptr [edi]
             }
+            using IconTileCall = void (__thiscall *)(FCanvasUtil*, uint, uint, uint, uint,
+                uint, uint, uint, uint, uint, UMaterial*, uint);
+            ((IconTileCall)drawWeaponTile)(canvas,
+                iconCoordinates[0], iconCoordinates[1], iconCoordinates[2], iconCoordinates[3],
+                iconU1, iconV1, iconU2, iconV2, 0x3f800000, iconMaterial, iconColor);
             UMaterial* materialAfterWeapon = this->m_pCurrentMaterial;
             UMaterial* hudElementsTexture = this->m_TexHUDElements;
             if (materialAfterWeapon != hudElementsTexture) {
@@ -3667,33 +3602,18 @@ void __thiscall AR6HUD::execDrawNativeHUD(AR6HUD* this, FFrame* stack, void* res
                 uint appendNameSlot = R6GameImports::Core_FString_OperatorAppendAssignStringSlot;
                 uint destroyNameSlot = R6GameImports::Core_FString_DestructorSlot;
                 // Register each temporary after its argument pushes; destroy frame storage, not returned aliases.
-                __asm {
-                    mov ecx,gadgetName
-                    push ecx
-                    lea edx,combinedStorage
-                    push edx
-                    mov ecx,separatorValue
-                    mov edx,nameUnwindState
-                    mov byte ptr [edx],0x10
-                    mov edx,addNameSlot
-                    call dword ptr [edx]
-                    push eax
-                    lea ecx,nameStorage
-                    mov edx,nameUnwindState
-                    mov byte ptr [edx],0x11
-                    mov edx,appendNameSlot
-                    call dword ptr [edx]
-                    lea ecx,combinedStorage
-                    mov edx,nameUnwindState
-                    mov byte ptr [edx],0x10
-                    mov edx,destroyNameSlot
-                    call dword ptr [edx]
-                    lea ecx,separatorStorage
-                    mov edx,nameUnwindState
-                    mov byte ptr [edx],0xf
-                    mov edx,destroyNameSlot
-                    call dword ptr [edx]
-                }
+                FString* combined = (FString*)combinedStorage;
+                *nameUnwindState = 16;
+                using AddStringsCall = FString* (__thiscall *)(FString*, FString*, const FString*);
+                FString* combinedValue = (*(AddStringsCall*)addNameSlot)(separatorValue, combined, gadgetName);
+                *nameUnwindState = 17;
+                using AppendStringCall = FString* (__thiscall *)(FString*, const FString*);
+                (*(AppendStringCall*)appendNameSlot)(weaponName, combinedValue);
+                *nameUnwindState = 16;
+                using DestroyStringCall = void (__thiscall *)(FString*);
+                (*(DestroyStringCall*)destroyNameSlot)(combined);
+                *nameUnwindState = 15;
+                (*(DestroyStringCall*)destroyNameSlot)(separator);
             }
             FCanvasUtil::Flush(canvas);
             UCanvas* weaponNameXCanvas = C;
@@ -3706,96 +3626,49 @@ void __thiscall AR6HUD::execDrawNativeHUD(AR6HUD* this, FFrame* stack, void* res
             uint weaponNameColor = *(uint*)&this->m_HUDElements[3].Color;
             uint weaponNameDataSlot = R6GameImports::Core_FString_OperatorMultiplySlot;
             // SetClip is thiscall; WrappedPrintf takes canvas/font/1/text on the stack with caller cleanup.
-            __asm {
-                push 32
-                push 156
-                mov ecx,weaponNameColorCanvas
-                mov eax,weaponNameColor
-                mov dword ptr [ecx+0x64],eax
-                mov ecx,C
-                mov edx,dword ptr [ecx]
-                push 557
-                push 0
-                call dword ptr [edx+0x88]
-                lea ecx,nameStorage
-                mov edx,weaponNameDataSlot
-                call dword ptr [edx]
-                mov ecx,C
-                mov edx,dword ptr [ecx]
-                push eax
-                mov ebx,this
-                mov eax,dword ptr [ebx+0x3ec]
-                push 1
-                push eax
-                push ecx
-                call dword ptr [edx+0x84]
-                mov ecx,C
-                mov edx,dword ptr [ecx]
-                add esp,0x10
-                push 600
-                push 800
-                push 0
-                push 0
-                call dword ptr [edx+0x88]
-            }
+            *(uint*)&weaponNameColorCanvas->DrawColor = weaponNameColor;
+            UCanvas* nameClipCanvas = C;
+            byte* nameClipVtable = *(byte**)nameClipCanvas;
+            (*(ClipCall*)(nameClipVtable + 0x88))(nameClipCanvas, 0, 557, 156, 32);
+            using StringDataCall = const ushort* (__thiscall *)(const FString*);
+            const ushort* nameText = (*(StringDataCall*)weaponNameDataSlot)(weaponName);
+            UCanvas* nameTextCanvas = C;
+            byte* nameTextVtable = *(byte**)nameTextCanvas;
+            UFont* nameFont = this->m_FontRainbow6_14pt;
+            (*(TextCall*)(nameTextVtable + 0x84))(nameTextCanvas, nameFont, 1, nameText);
+            UCanvas* restoreNameCanvas = C;
+            byte* restoreNameVtable = *(byte**)restoreNameCanvas;
+            (*(ClipCall*)(restoreNameVtable + 0x88))(restoreNameCanvas, 0, 0, 800, 600);
             byte weaponHUDFlags = *(byte*)((byte*)weapon + 0x3a0);
             if ((weaponHUDFlags & 1U) != 0) {
                 uint bulletTextColor = *(uint*)&this->m_HUDElements[5].Color;
                 UCanvas* bulletColorCanvas = C;
                 int measuredWidth, measuredHeight;
                 // Both variadic virtuals are cdecl; reload the canvas before removing their argument packets.
-                __asm {
-                    mov ebx,this
-                    mov eax,bulletTextColor
-                    mov ecx,bulletColorCanvas
-                    xor esi,esi
-                    mov dword ptr measuredWidth,esi
-                    mov dword ptr measuredHeight,esi
-                    mov dword ptr [ecx+0x64],eax
-                    mov ecx,dword ptr [ebx+0x514]
-                    mov eax,dword ptr C
-                    mov edx,dword ptr [eax]
-                    push ecx
-                    push offset HudBulletCountFormat
-                    lea ecx,measuredHeight
-                    push ecx
-                    lea ecx,measuredWidth
-                    push ecx
-                    mov ecx,dword ptr [ebx+0x3f8]
-                    push ecx
-                    push eax
-                    call dword ptr [edx+0x80]
-                    mov edx,dword ptr C
-                    add esp,0x18
-                    mov dword ptr [edx+0x50],0x42960000
-                    mov eax,dword ptr C
-                    push 0x258
-                    push 0x96
-                    mov dword ptr [eax+0x54],0x440b4000
-                    mov ecx,dword ptr C
-                    mov edx,dword ptr [ecx]
-                    push 0x238
-                    push esi
-                    call dword ptr [edx+0x88]
-                    mov edx,dword ptr [ebx+0x514]
-                    mov eax,dword ptr C
-                    mov ecx,dword ptr [eax]
-                    push edx
-                    mov edx,dword ptr [ebx+0x3f8]
-                    push offset HudBulletCountFormat
-                    push 0x1
-                    push edx
-                    push eax
-                    call dword ptr [ecx+0x84]
-                    mov ecx,dword ptr C
-                    mov eax,dword ptr [ecx]
-                    add esp,0x14
-                    push 0x258
-                    push 0x320
-                    push esi
-                    push esi
-                    call dword ptr [eax+0x88]
-                }
+                measuredWidth = 0;
+                measuredHeight = 0;
+                *(uint*)&bulletColorCanvas->DrawColor = bulletTextColor;
+                const int bulletsToMeasure = this->m_iBulletCount;
+                UCanvas* measureCanvas = C;
+                byte* measureVtable = *(byte**)measureCanvas;
+                UFont* measureFont = this->m_FontRainbow6_36pt;
+                (*(MeasureCall*)(measureVtable + 0x80))(measureCanvas, measureFont,
+                    &measuredWidth, &measuredHeight, HudBulletCountFormat, bulletsToMeasure);
+                UCanvas* bulletXCanvas = C;
+                *(uint*)&bulletXCanvas->CurX = 0x42960000;
+                UCanvas* bulletYCanvas = C;
+                *(uint*)&bulletYCanvas->CurY = 0x440b4000;
+                UCanvas* bulletClipCanvas = C;
+                byte* bulletClipVtable = *(byte**)bulletClipCanvas;
+                (*(ClipCall*)(bulletClipVtable + 0x88))(bulletClipCanvas, 0, 568, 150, 600);
+                const int bulletsToPrint = this->m_iBulletCount;
+                UCanvas* printCanvas = C;
+                byte* printVtable = *(byte**)printCanvas;
+                UFont* printFont = this->m_FontRainbow6_36pt;
+                (*(TextCall*)(printVtable + 0x84))(printCanvas, printFont, 1, HudBulletCountFormat, bulletsToPrint);
+                UCanvas* restoreBulletCanvas = C;
+                byte* restoreBulletVtable = *(byte**)restoreBulletCanvas;
+                (*(ClipCall*)(restoreBulletVtable + 0x88))(restoreBulletCanvas, 0, 0, 800, 600);
             } else {
                 UClass* cursor = *(UClass**)((byte*)weapon + 0x24);
                 UClass* gadgetClass = *(UClass**)R6GameImports::R6Weapons_AR6Gadget_PrivateStaticClassSlot;
@@ -3806,40 +3679,36 @@ void __thiscall AR6HUD::execDrawNativeHUD(AR6HUD* this, FFrame* stack, void* res
                     byte rateOfFire = weapon->m_eRateOfFire;
                     uint rateRowWord = rateOfFire == 0 ? 24U : rateOfFire == 1 ? 44U : 64U;
                     // The native scratch word changes from an integer row into its single-precision UV coordinate.
+                    uint rateColor = *(uint*)((byte*)this + 0x644);
+                    __asm { fild dword ptr rateRowWord }
+                    UMaterial* rateMaterial = this->m_pCurrentMaterial;
+                    __asm { fstp dword ptr rateRowWord }
+                    uint rateV1 = rateRowWord;
+                    uint rateV2, rateCoordinates[4];
                     __asm {
-                        mov ebx,this
-                        mov esi,drawWeaponTile
-                        mov ecx,dword ptr [ebx+0x644]
-                        fild dword ptr rateRowWord
-                        mov edx,dword ptr [ebx+0x57c]
-                        push ecx
-                        fstp dword ptr rateRowWord
-                        mov eax,dword ptr rateRowWord
                         fld dword ptr rateRowWord
-                        push edx
                         fadd dword ptr HudRateIconHeight
-                        push 0x3f800000
-                        push ecx
-                        lea ecx,canvasStorage
-                        fstp dword ptr [esp]
-                        push 0x43ff8000
+                        fstp dword ptr rateV2
+                        mov ebx,this
+                        lea edi,rateCoordinates
                         fld dword ptr [ebx+0x534]
-                        push eax
                         fmul dword ptr HudRateIconBottom
-                        push 0x43fa0000
-                        sub esp,0x10
-                        fstp dword ptr [esp+0xc]
+                        fstp dword ptr [edi+0xc]
                         fld dword ptr [ebx+0x530]
                         fmul dword ptr HudRateIconRight
-                        fstp dword ptr [esp+0x8]
+                        fstp dword ptr [edi+0x8]
                         fld dword ptr [ebx+0x534]
                         fmul dword ptr HudRateIconTop
-                        fstp dword ptr [esp+0x4]
+                        fstp dword ptr [edi+0x4]
                         fld dword ptr [ebx+0x530]
                         fmul dword ptr NativeFloatFive
-                        fstp dword ptr [esp]
-                        call esi
+                        fstp dword ptr [edi]
                     }
+                    using RateTileCall = void (__thiscall *)(FCanvasUtil*, uint, uint, uint, uint,
+                        uint, uint, uint, uint, uint, UMaterial*, uint);
+                    ((RateTileCall)drawWeaponTile)(canvas,
+                        rateCoordinates[0], rateCoordinates[1], rateCoordinates[2], rateCoordinates[3],
+                        0x43fa0000, rateV1, 0x43ff8000, rateV2, 0x3f800000, rateMaterial, rateColor);
                     // Native buffer starts at frame -0x18c; the 64-word reservation is inferred.
                     ushort countBuffer[64];
                     uint countPlaneAddress;
@@ -3847,91 +3716,98 @@ void __thiscall AR6HUD::execDrawNativeHUD(AR6HUD* this, FFrame* stack, void* res
                     uint countFormatSlot = R6GameImports::Core_appSprintfSlot;
                     uint countColorSlot = R6GameImports::Engine_FColor_ConversionOperatorSlot;
                     // Convert each color directly into its outgoing plane; retain the first width for 82-width placement.
+                    FCanvasUtil::Flush(canvas);
+                    int bullets = this->m_iBulletCount;
+                    appSprintf(countBuffer, HudBulletCountFormat, bullets);
+                    UCanvas* measureStyleCanvas = C;
+                    FColor* bulletColor = (FColor*)((byte*)this + 0x62c);
+                    measureStyleCanvas->Style = 0;
+                    // Three native zero words and hidden plane output feed DrawString without a second plane copy.
                     __asm {
-                        mov ebx,this
-                        lea ecx,canvasStorage
-                        mov edx,countFlushSlot
-                        call dword ptr [edx]
-                        mov ecx,dword ptr [ebx+0x514]
-                        push ecx
-                        lea edx,countBuffer
-                        push offset HudBulletCountFormat
-                        push edx
-                        mov edx,countFormatSlot
-                        call dword ptr [edx]
-                        mov eax,dword ptr C
-                        add esp,0xc
-                        push 0x0
-                        push 0x0
-                        push 0x0
+                        push 0
+                        push 0
+                        push 0
                         sub esp,0x10
                         mov ecx,esp
-                        mov dword ptr countPlaneAddress,esp
-                        lea edi,[ebx+0x62c]
+                        mov countPlaneAddress,esp
                         push ecx
-                        mov ecx,edi
-                        mov byte ptr [eax+0x5c],0x0
+                        mov ecx,bulletColor
                         mov edx,countColorSlot
                         call dword ptr [edx]
-                        mov ecx,dword ptr C
-                        mov edx,dword ptr [ecx]
+                    }
+                    UCanvas* measureCountCanvas = C;
+                    byte* measureCountVtable = *(byte**)measureCountCanvas;
+                    UFont* countFont = this->m_FontRainbow6_36pt;
+                    int countWidth;
+                    __asm {
                         lea eax,countBuffer
                         push eax
-                        mov eax,dword ptr [ebx+0x3f8]
-                        push 0x0
-                        push 0x0
+                        mov eax,countFont
+                        push 0
+                        push 0
                         push eax
+                        mov ecx,measureCountCanvas
+                        mov edx,measureCountVtable
                         call dword ptr [edx+0x78]
-                        mov ecx,dword ptr C
-                        push 0x0
-                        push 0x0
-                        push 0x0
+                        mov countWidth,eax
+                    }
+                    UCanvas* bulletStyleCanvas = C;
+                    bulletStyleCanvas->Style = 5;
+                    __asm {
+                        push 0
+                        push 0
+                        push 0
                         sub esp,0x10
                         mov edx,esp
-                        mov byte ptr [ecx+0x5c],0x5
-                        mov dword ptr countPlaneAddress,esp
+                        mov countPlaneAddress,esp
                         push edx
-                        mov ecx,edi
-                        mov esi,eax
+                        mov ecx,bulletColor
                         mov edx,countColorSlot
                         call dword ptr [edx]
-                        mov ecx,dword ptr C
-                        mov eax,dword ptr [ecx]
-                        lea edx,countBuffer
-                        push edx
-                        mov edx,0x52
-                        sub edx,esi
-                        push 0x239
-                        push edx
-                        mov edx,dword ptr [ebx+0x3f8]
-                        push edx
-                        call dword ptr [eax+0x78]
-                        mov eax,dword ptr [ebx+0x51c]
+                    }
+                    UCanvas* bulletCountCanvas = C;
+                    byte* bulletCountVtable = *(byte**)bulletCountCanvas;
+                    int countX = (int)(82U - (uint)countWidth);
+                    countFont = this->m_FontRainbow6_36pt;
+                    __asm {
+                        lea eax,countBuffer
                         push eax
-                        lea ecx,countBuffer
-                        push offset HudMagazineCountFormat
-                        push ecx
-                        mov edx,countFormatSlot
-                        call dword ptr [edx]
-                        add esp,0xc
-                        push 0x0
-                        push 0x0
-                        push 0x0
+                        mov edx,countX
+                        push 569
+                        push edx
+                        mov edx,countFont
+                        push edx
+                        mov ecx,bulletCountCanvas
+                        mov eax,bulletCountVtable
+                        call dword ptr [eax+0x78]
+                    }
+                    int magazines = this->m_iMagCount;
+                    appSprintf(countBuffer, HudMagazineCountFormat, magazines);
+                    FColor* magazineColor = (FColor*)((byte*)this + 0x638);
+                    __asm {
+                        push 0
+                        push 0
+                        push 0
                         sub esp,0x10
                         mov edx,esp
-                        mov dword ptr countPlaneAddress,esp
+                        mov countPlaneAddress,esp
                         push edx
-                        lea ecx,[ebx+0x638]
+                        mov ecx,magazineColor
                         mov edx,countColorSlot
                         call dword ptr [edx]
-                        mov ecx,dword ptr C
-                        mov eax,dword ptr [ecx]
+                    }
+                    UCanvas* magazineCanvas = C;
+                    byte* magazineVtable = *(byte**)magazineCanvas;
+                    UFont* magazineFont = this->m_FontRainbow6_22pt;
+                    __asm {
                         lea edx,countBuffer
                         push edx
-                        mov edx,dword ptr [ebx+0x3f4]
-                        push 0x242
-                        push 0x52
+                        mov edx,magazineFont
+                        push 578
+                        push 82
                         push edx
+                        mov ecx,magazineCanvas
+                        mov eax,magazineVtable
                         call dword ptr [eax+0x78]
                     }
                 }
@@ -3939,13 +3815,9 @@ void __thiscall AR6HUD::execDrawNativeHUD(AR6HUD* this, FFrame* stack, void* res
             byte* weaponNameFinalState = (byte*)&exceptionRegistration.state;
             uint weaponNameDestroySlot = R6GameImports::Core_FString_DestructorSlot;
             // Drop name ownership before invoking its destructor on the original frame object.
-            __asm {
-                lea ecx,nameStorage
-                mov edx,weaponNameFinalState
-                mov byte ptr [edx],14
-                mov edx,weaponNameDestroySlot
-                call dword ptr [edx]
-            }
+            *weaponNameFinalState = 14;
+            using DestroyStringCall = void (__thiscall *)(FString*);
+            (*(DestroyStringCall*)weaponNameDestroySlot)(weaponName);
         }
     }
     AR6RainbowTeam* otherGateTeam = this->m_pLastRainbowTeam;
@@ -4684,17 +4556,18 @@ void __thiscall AR6HUD::DrawRadar(AR6HUD* this, FCameraSceneNode* scene, UViewpo
     uint hudFlags;
     int* radarUnwindState = &exceptionRegistration.state;
     // Retain signed dimensions and aspect on x87 through the native float-store order.
+    int viewportHeight = *(int*)((byte*)radarViewport + 0xa8);
+    __asm { fild dword ptr viewportHeight }
+    int viewportWidth = *(int*)((byte*)radarViewport + 0xa4);
+    __asm { fild dword ptr viewportWidth }
+    hudFlags = *(uint*)((byte*)radarHud + 0x524);
     __asm {
-        mov edi,radarViewport
-        fild dword ptr [edi+0xa8]
-        fild dword ptr [edi+0xa4]
-        mov esi,radarHud
-        mov eax,dword ptr [esi+0x524]
-        mov hudFlags,eax
         fld st(1)
         fdiv st,st(1)
-        mov ecx,radarUnwindState
-        mov byte ptr [ecx],1
+    }
+    *(byte*)radarUnwindState = 1;
+    // ST(0..2) hold aspect, width and height. Preserve the extended schedule and each named float output spill.
+    __asm {
         fld st(1)
         fmul dword ptr HudRadarExtentFraction
         fmul st,st(1)
@@ -4783,31 +4656,22 @@ void __thiscall AR6HUD::DrawRadar(AR6HUD* this, FCameraSceneNode* scene, UViewpo
     uint layerColorWord, layerLeftWord, layerTopWord, cachedRightWord, cachedBottomWord;
     float bottom;
     // The right spill reuses radarWidth; right/bottom words then stay cached across all three layers.
+    __asm { fld dword ptr top }
+    layerMaterialTarget = HudRadarFinalBlend;
+    __asm { fadd dword ptr radarHeight }
+    layerColorWord = *(uint*)&radarColor;
+    layerLeftWord = *(uint*)&left;
     __asm {
-        fld dword ptr top
-        mov eax,dword ptr HudRadarFinalBlend
-        mov layerMaterialTarget,eax
-        fadd dword ptr radarHeight
-        mov eax,dword ptr radarColor
-        mov layerColorWord,eax
-        mov eax,dword ptr left
-        mov layerLeftWord,eax
         fstp dword ptr bottom
         fld dword ptr left
-        mov eax,dword ptr bottom
-        mov cachedBottomWord,eax
-        fadd dword ptr radarWidth
-        mov edx,layerMaterialTarget
-        mov eax,layerTexture
-        mov dword ptr [edx+0x58],eax
-        mov eax,dword ptr HudRadarFinalBlend
-        mov layerDrawMaterial,eax
-        mov eax,dword ptr top
-        mov layerTopWord,eax
-        fstp dword ptr radarWidth
-        mov eax,dword ptr radarWidth
-        mov cachedRightWord,eax
     }
+    cachedBottomWord = *(uint*)&bottom;
+    __asm { fadd dword ptr radarWidth }
+    layerMaterialTarget->Material = layerTexture;
+    layerDrawMaterial = (UMaterial*)HudRadarFinalBlend;
+    layerTopWord = *(uint*)&top;
+    __asm { fstp dword ptr radarWidth }
+    cachedRightWord = *(uint*)&radarWidth;
     (*(DrawTileWordsCall*)R6GameImports::Engine_FCanvasUtil_DrawTileSlot)(canvas,
         layerLeftWord, layerTopWord, cachedRightWord, cachedBottomWord,
         0, 0, 0x43000000, 0x43000000, 0x3f800000, layerDrawMaterial, layerColorWord);
@@ -4846,21 +4710,11 @@ void __thiscall AR6HUD::DrawRadar(AR6HUD* this, FCameraSceneNode* scene, UViewpo
     uint* rotationWords = (uint*)rotationStorage;
     FMatrix* rotationDestination = (FMatrix*)matrixStorage;
     // Rewrite the fixed rotator and its outgoing copy in their native word order.
-    __asm {
-        mov edx,rotationWords
-        mov eax,dword ptr [edx+0x4]
-        sub esp,0xc
-        mov edi,esp
-        mov dword ptr [edi],0
-        neg eax
-        mov dword ptr [edx],0
-        mov dword ptr [edi+0x4],eax
-        mov ecx,rotationDestination
-        mov dword ptr [edx+0x4],eax
-        mov dword ptr [edx+0x8],0
-        mov dword ptr [edi+0x8],0
-        call BuildRotationMatrixFromAngles
-    }
+    uint inverseYaw = 0U - rotationWords[1];
+    rotationWords[0] = 0;
+    rotationWords[1] = inverseYaw;
+    rotationWords[2] = 0;
+    BuildRotationMatrixFromAngles(rotationDestination, 0, (int)inverseYaw, 0);
     float worldToRadarScale, radiusSquared, radius;
     double radiusDouble;
     uint viewportActorWord;
@@ -4915,12 +4769,13 @@ void __thiscall AR6HUD::DrawRadar(AR6HUD* this, FCameraSceneNode* scene, UViewpo
         __asm {
             mov ecx,member
             fld dword ptr [ecx+0x3a8]
-            mov edx,markerColorWord
-            mov byte ptr [edx],0xff
-            fcomp dword ptr HudRadarZero
-            mov byte ptr [edx+0x1],0xff
-            mov byte ptr [edx+0x2],0xff
-            mov byte ptr [edx+0x3],0xff
+        }
+        ((byte*)markerColorWord)[0] = 0xff;
+        __asm { fcomp dword ptr HudRadarZero }
+        ((byte*)markerColorWord)[1] = 0xff;
+        ((byte*)markerColorWord)[2] = 0xff;
+        ((byte*)markerColorWord)[3] = 0xff;
+        __asm {
             fnstsw ax
             mov communicationStatus,ax
         }
@@ -5099,41 +4954,33 @@ void __thiscall AR6HUD::DrawRadar(AR6HUD* this, FCameraSceneNode* scene, UViewpo
         float* markerPosition = (float*)&radarPosition;
         uint markerDrawSlotAddress = R6GameImports::Engine_FCanvasUtil_DrawTileSlot;
         // Capture color before Material changes, then store bottom/right/top/left directly into the outgoing packet.
+        markerMaterialTarget->Material = markerTexture;
+        UMaterial* currentMarkerMaterial = (UMaterial*)HudRadarFinalBlend;
+        uint markerCoordinates[4];
+        // Input markerPosition is scaled/clamped world-relative position; output is four rounded screen bounds.
         __asm {
-            mov eax,markerColorValue
-            push eax
-            mov eax,markerMaterialTarget
-            mov edx,markerTexture
-            mov dword ptr [eax+0x58],edx
-            mov edx,dword ptr HudRadarFinalBlend
             mov esi,markerPosition
+            lea edi,markerCoordinates
             fld dword ptr [esi+0x4]
-            push edx
             fadd dword ptr halfMarkerY
-            push 0x3f800000
-            push 0x42000000
-            push 0x42000000
             fadd dword ptr centerY
-            push 0
-            push 0
-            sub esp,0x10
-            mov ecx,canvas
-            fstp dword ptr [esp+0xc]
+            fstp dword ptr [edi+0xc]
             fld dword ptr [esi]
             fadd dword ptr halfMarkerX
             fadd dword ptr centerX
-            fstp dword ptr [esp+0x8]
+            fstp dword ptr [edi+0x8]
             fld dword ptr [esi+0x4]
             fadd dword ptr centerY
             fsub dword ptr halfMarkerY
-            fstp dword ptr [esp+0x4]
+            fstp dword ptr [edi+0x4]
             fld dword ptr [esi]
             fadd dword ptr centerX
             fsub dword ptr halfMarkerX
-            fstp dword ptr [esp]
-            mov eax,markerDrawSlotAddress
-            call dword ptr [eax]
+            fstp dword ptr [edi]
         }
+        (*(DrawTileWordsCall*)markerDrawSlotAddress)(canvas,
+            markerCoordinates[0], markerCoordinates[1], markerCoordinates[2], markerCoordinates[3],
+            0, 0, 0x42000000, 0x42000000, 0x3f800000, currentMarkerMaterial, markerColorValue);
         FCanvasUtil::Flush(canvas);
         markerScanHud = radarHud;
         actorIndex = savedActorIndex;

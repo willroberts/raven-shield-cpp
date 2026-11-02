@@ -21,87 +21,50 @@ __declspec(naked) uint __stdcall DispatchMSClientState(uint firstWord,uint secon
 
 // Polls fixed500/800 budgets, expires an unsigned deadline, then drains enabled callback paths with raw AL results.
 // R6GameService.dll @ 10032940 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall ProcessServiceClientState(void *client,uint unusedWord0,uint unusedWord1)
+uint __thiscall ProcessServiceClientState(void *client,uint unusedWord0,uint unusedWord1)
 {
-  __asm {
-    push   esi
-    push   0x320
-    push   0x1f4
-    mov    esi,ecx
-    call   R6GameServiceAddresses::PollTransportAndDispatchQueuedRecords
-    test   al,al
-    jne    Branch2
-    pop    esi
-    ret    0x8
-  Branch2:
-    mov    al,BYTE PTR [esi+0x117]
-    test   al,al
-    je     Branch4
-    mov    eax,DWORD PTR [esi+0x100]
-    test   eax,eax
-    je     Branch3
-    push   0x0
-    call   R6GameServiceAddresses::time
-    mov    ecx,DWORD PTR [esi+0x100]
-    add    esp,0x4
-    cmp    ecx,eax
-    jae    Branch3
-    mov    eax,DWORD PTR [esi]
-    mov    ecx,esi
-    mov    DWORD PTR [esi+0x100],0x0
-    call   DWORD PTR [eax+0x3c]
-    mov    BYTE PTR [esi+0x114],0x0
-  Branch3:
-    push   0x320
-    push   0x1f4
-    mov    ecx,esi
-    call   R6GameServiceAddresses::ProcessPendingCallbackEventsThroughSubobject
-    test   al,al
-    jne    Branch4
-    pop    esi
-    ret    0x8
-  Branch4:
-    mov    al,BYTE PTR [esi+0x115]
-    test   al,al
-    je     Branch5
-    push   0x320
-    push   0x1f4
-    mov    ecx,esi
-    call   R6GameServiceAddresses::PollAndDispatchCallbackQueueViaSubobject
-  Branch5:
-    mov    al,0x1
-    pop    esi
-    ret    0x8
+  byte* cachedClient = reinterpret_cast<byte*>(client);
+  uint raw = PollTransportAndDispatchQueuedRecords(client, 500, 800);
+  if (static_cast<byte>(raw) == 0) return raw;
+  // Keep the original client across callback-producing calls; shutdown does not cause a global reload or stale-pointer guard.
+  const byte pendingEnabled = *(cachedClient + 0x117);
+  raw = (raw & 0xffffff00U) | pendingEnabled;
+  if (pendingEnabled) {
+    raw = *reinterpret_cast<uint*>(cachedClient + 0x100);
+    if (raw) {
+      raw = time(nullptr);
+      if (*reinterpret_cast<uint*>(cachedClient + 0x100) < raw) {
+        byte* table = *reinterpret_cast<byte**>(cachedClient);
+        *reinterpret_cast<uint*>(cachedClient + 0x100) = 0;
+        using ExpireCall = uint (__thiscall *)(void*);
+        raw = (*reinterpret_cast<ExpireCall*>(table + 0x3c))(cachedClient);
+        *(cachedClient + 0x114) = 0;
+      }
+    }
+    raw = ProcessPendingCallbackEventsThroughSubobject(cachedClient, 500, 800);
+    if (static_cast<byte>(raw) == 0) return raw;
   }
+  const byte queueEnabled = *(cachedClient + 0x115);
+  raw = (raw & 0xffffff00U) | queueEnabled;
+  if (queueEnabled) raw = PollAndDispatchCallbackQueueViaSubobject(cachedClient, 500, 800);
+  return (raw & 0xffffff00U) | 1U;
 }
 
 // Installs ten MS callbacks in order through independently guarded singleton wrappers; retains the last raw EAX.
 // R6GameService.dll @ 1000acb0 : complete native operations and raw ABI; descriptive helper name.
-__declspec(naked) uint __cdecl RegisterMSClientCallbacks(void)
+uint __cdecl RegisterMSClientCallbacks(void)
 {
-  __asm {
-    push   R6GameServiceAddresses::MSGameServer
-    call   R6GameServiceAddresses::SetMSClientCallback1
-    push   R6GameServiceAddresses::MSError
-    call   R6GameServiceAddresses::SetMSClientCallback3
-    push   R6GameServiceAddresses::MSInitFinished
-    call   R6GameServiceAddresses::SetMSClientCallback4
-    push   R6GameServiceAddresses::MSRequestFinished
-    call   R6GameServiceAddresses::SetMSClientCallback7
-    push   R6GameServiceAddresses::MSJoinFinished
-    call   R6GameServiceAddresses::SetMSClientCallback8
-    push   R6GameServiceAddresses::MSLoginDisconnect
-    call   R6GameServiceAddresses::SetMSClientCallback5
-    push   R6GameServiceAddresses::MSLobbyDisconnect
-    call   R6GameServiceAddresses::SetMSClientCallback6
-    push   R6GameServiceAddresses::MSAlternateInfo
-    call   R6GameServiceAddresses::SetMSClientCallback2
-    push   R6GameServiceAddresses::MSMatchStartedCB
-    call   R6GameServiceAddresses::SetMSClientCallback9
-    push   R6GameServiceAddresses::MSSubmitMatchCB
-    call   R6GameServiceAddresses::SetMSClientCallback10
-    ret
-  }
+  SetMSClientCallback1(R6GameServiceAddresses::MSGameServer);
+  SetMSClientCallback3(R6GameServiceAddresses::MSError);
+  SetMSClientCallback4(R6GameServiceAddresses::MSInitFinished);
+  SetMSClientCallback7(R6GameServiceAddresses::MSRequestFinished);
+  SetMSClientCallback8(R6GameServiceAddresses::MSJoinFinished);
+  SetMSClientCallback5(R6GameServiceAddresses::MSLoginDisconnect);
+  SetMSClientCallback6(R6GameServiceAddresses::MSLobbyDisconnect);
+  SetMSClientCallback2(R6GameServiceAddresses::MSAlternateInfo);
+  SetMSClientCallback9(R6GameServiceAddresses::MSMatchStartedCB);
+  return SetMSClientCallback10(R6GameServiceAddresses::MSSubmitMatchCB);
+  // Every setter reloads/guards its current singleton. Match callback implementations remain outside this lifecycle.
 }
 
 // Stores one word through the current MS singleton when present; sets only AL to success or failure.
@@ -296,20 +259,18 @@ __declspec(naked) uint __stdcall SetMSClientCallback10(uint callbackWord)
 
 // Invokes singleton slot+0x24 with1 if present, clears the current global after return, then sets only AL=1.
 // R6GameService.dll @ 10032300 : raw EAX/AL boundary; original free/member declaration and client class unassigned.
-__declspec(naked) uint __cdecl CloseMSClientSingleton(void)
+uint __cdecl CloseMSClientSingleton(void)
 {
-  __asm {
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GMSClientSingleton
-    test   ecx,ecx
-    je     Branch16
-    mov    eax,DWORD PTR [ecx]
-    push   0x1
-    call   DWORD PTR [eax+0x24]
-  Branch16:
-    mov    DWORD PTR ds:R6GameServiceAddresses::GMSClientSingleton,0x0
-    mov    al,0x1
-    ret
+  uint raw;
+  __asm { mov raw,eax } // Absent-client path preserves incoming EAX high bytes; original return type is unrecovered.
+  void* client = *reinterpret_cast<void**>(R6GameServiceAddresses::GMSClientSingleton);
+  if (client) {
+    byte* table = *reinterpret_cast<byte**>(client);
+    using CloseCall = uint (__thiscall *)(void*, uint);
+    raw = (*reinterpret_cast<CloseCall*>(table + 0x24))(client, 1);
   }
+  *reinterpret_cast<void**>(R6GameServiceAddresses::GMSClientSingleton) = nullptr;
+  return (raw & 0xffffff00U) | 1U;
 }
 
 // Forwards two untouched words to the current client request matcher, or clears only AL when absent.
@@ -377,55 +338,33 @@ __declspec(naked) uint __thiscall CompleteStoredRequestIfMatched(void *client, u
 // Five untouched stack words/RET20. Existing singleton rejects without argument access; NULL allocation
 // still reaches initialization with ECX0. No own guard/rollback, and failure reloads current singleton.
 // R6GameService.dll @ 10032280 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __stdcall CreateMSClientSingleton(char *router,uint port,char *user,char *password,char *globalText)
+uint __stdcall CreateMSClientSingleton(char *router,uint port,char *user,char *password,char *globalText)
 {
-  __asm {
-    mov    eax,ds:R6GameServiceAddresses::GMSClientSingleton
-    test   eax,eax
-    je     Branch20
-    xor    al,al
-    ret    0x14
-  Branch20:
-    push   0x150
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    test   eax,eax
-    je     Branch21
-    push   0x1
-    mov    ecx,eax
-    call   R6GameServiceAddresses::clMSClient_clMSClient
-    jmp    Branch22
-  Branch21:
-    xor    eax,eax
-  Branch22:
-    mov    ecx,DWORD PTR [esp+0x14]
-    mov    edx,DWORD PTR [esp+0x10]
-    push   ecx
-    mov    ecx,DWORD PTR [esp+0x10]
-    push   edx
-    mov    edx,DWORD PTR [esp+0x10]
-    push   ecx
-    mov    ecx,DWORD PTR [esp+0x10]
-    push   edx
-    push   ecx
-    mov    ecx,eax
-    mov    ds:R6GameServiceAddresses::GMSClientSingleton,eax
-    call   R6GameServiceAddresses::InitializeServiceClientFields
-    test   al,al
-    jne    Branch24
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GMSClientSingleton
-    test   ecx,ecx
-    je     Branch23
-    mov    edx,DWORD PTR [ecx]
-    push   0x1
-    call   DWORD PTR [edx+0x24]
-  Branch23:
-    mov    DWORD PTR ds:R6GameServiceAddresses::GMSClientSingleton,0x0
-    xor    al,al
-    ret    0x14
-  Branch24:
-    mov    al,0x1
-    ret    0x14
+  uint raw = *reinterpret_cast<uint*>(R6GameServiceAddresses::GMSClientSingleton);
+  if (raw) return raw & 0xffffff00U;
+  void* block = AllocateGameServiceBytes(0x150);
+  void* constructed = nullptr;
+  if (block) {
+    using ClientConstructor = void* (__thiscall *)(void*, uint);
+    constructed = reinterpret_cast<ClientConstructor>(R6GameServiceAddresses::clMSClient_clMSClient)(block, 1);
   }
+  // Read argument words only after allocation/construction; publish even a null construction result before initialization.
+  char* finalGlobal = globalText;
+  char* finalPassword = password;
+  char* finalUser = user;
+  uint finalPort = port;
+  char* finalRouter = router;
+  *reinterpret_cast<void**>(R6GameServiceAddresses::GMSClientSingleton) = constructed;
+  raw = InitializeServiceClientFields(constructed, finalRouter, finalPort, finalUser, finalPassword, finalGlobal);
+  if (static_cast<byte>(raw) != 0) return (raw & 0xffffff00U) | 1U;
+  void* current = *reinterpret_cast<void**>(R6GameServiceAddresses::GMSClientSingleton);
+  if (current) {
+    byte* table = *reinterpret_cast<byte**>(current);
+    using CloseCall = uint (__thiscall *)(void*, uint);
+    raw = (*reinterpret_cast<CloseCall*>(table + 0x24))(current, 1);
+  }
+  *reinterpret_cast<void**>(R6GameServiceAddresses::GMSClientSingleton) = nullptr;
+  return raw & 0xffffff00U;
 }
 
 // Copy fixed ANSI inputs, reset resource words/flags and return the chained backend raw EAX unchanged.

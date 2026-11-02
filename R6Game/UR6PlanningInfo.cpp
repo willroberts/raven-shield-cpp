@@ -1036,16 +1036,14 @@ void __thiscall UR6PlanningInfo::execFindPathToNextPoint(UR6PlanningInfo* this, 
             fsub dword ptr [ecx+0x234]
             lea edi,differenceSpill
             fstp dword ptr [edi]
-            mov ecx,dword ptr [edi]
-            lea edx,offsetDirection
-            mov dword ptr [edx],ecx
-            fstp dword ptr [edi+0x4]
-            mov ecx,dword ptr [edi+0x4]
-            fstp dword ptr [edi+0x8]
-            mov eax,dword ptr [edi+0x8]
-            mov dword ptr [edx+0x4],ecx
-            mov dword ptr [edx+0x8],eax
         }
+        *(uint*)&offsetDirection.X = *(uint*)&differenceSpill.X;
+        __asm { fstp dword ptr differenceSpill.Y }
+        uint differenceYWord = *(uint*)&differenceSpill.Y;
+        __asm { fstp dword ptr differenceSpill.Z }
+        uint differenceZWord = *(uint*)&differenceSpill.Z;
+        *(uint*)&offsetDirection.Y = differenceYWord;
+        *(uint*)&offsetDirection.Z = differenceZWord;
         FVector::Normalize(&offsetDirection);
         float scaledZ;
         // Only scaled Z is rounded before adding the refreshed start location.

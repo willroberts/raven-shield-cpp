@@ -1357,52 +1357,40 @@ __declspec(naked) void __thiscall UR6GSServers::Destroy(UR6GSServers *this)
     push   eax
     mov    DWORD PTR fs:0x0,esp
     sub    esp,0xc
-    push   ebx
-    push   esi
-    push   edi
-    mov    DWORD PTR [ebp-0x10],esp
-    mov    esi,ecx
-    mov    DWORD PTR [ebp-0x4],0x0
-    call   R6GameServiceAddresses::getGameShutDown
-    test   eax,eax
-    je    Branch10
-    call   R6GameServiceAddresses::UeviLPatchService_FinalDestroy
-    mov    ecx,esi
-    call   R6GameServiceAddresses::UR6GSServers_UnInitRegServer
-    mov    eax,ds:0x10091e64
-    test   eax,eax
-    je    Branch9
-    call   R6GameServiceAddresses::CloseMSClientSingleton
-    mov    eax,ds:R6GameServiceAddresses::GServiceVerboseLogging
-    test   eax,eax
-    je    Branch8
-    mov    eax,ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    ecx,DWORD PTR [eax]
-    push   R6GameServiceAddresses::WideTextMSClientUninitialize
-    push   ecx
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FOutputDevice_LogfSlot
-    add    esp,0x8
-  Branch8:
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    DWORD PTR ds:0x10091e64,0x0
-    mov    eax,DWORD PTR [edx]
-    push   R6GameServiceAddresses::WideTextLoggedOffFromUbiComMSClientService
-    push   eax
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FOutputDevice_LogfSlot
-    add    esp,0x8
-  Branch9:
-    mov    ecx,esi
-    call   R6GameServiceAddresses::UR6GSServers_UnInitCDKey
-  Branch10:
-    mov    ecx,esi
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_UObject_DestroySlot
-    mov    ecx,DWORD PTR [ebp-0xc]
-    pop    edi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
+    push ebx
+    push esi
+    push edi
+    mov esi,ecx
+    mov DWORD PTR [ebp-0x10],esp
+  }
+  // These aliases bind existing native storage; inherited-frame handlers and their offsets remain unchanged.
+  byte* nativeFrame;
+  UR6GSServers* receiver;
+  __asm { mov nativeFrame,ebp }
+  __asm { mov receiver,esi }
+  *reinterpret_cast<int*>(nativeFrame - 4) = 0;
+  if (getGameShutDown()) {
+    UeviLPatchService::FinalDestroy();
+    receiver->UnInitRegServer();
+    if (*reinterpret_cast<int*>(0x10091e64)) {
+      CloseMSClientSingleton();
+      if (*reinterpret_cast<int*>(R6GameServiceAddresses::GServiceVerboseLogging))
+        GLog->Logf(reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextMSClientUninitialize));
+      // This clear precedes the unconditional log; the logger is reloaded after shutdown and optional logging.
+      *reinterpret_cast<int*>(0x10091e64) = 0;
+      GLog->Logf(reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextLoggedOffFromUbiComMSClientService));
+    }
+    receiver->UnInitCDKey();
+  }
+  receiver->UObject::Destroy();
+  __asm {
+    mov ecx,DWORD PTR [ebp-0xc]
+    pop edi
+    pop esi
+    mov DWORD PTR fs:0x0,ecx
+    pop ebx
+    mov esp,ebp
+    pop ebp
     ret
   }
 }
@@ -2037,40 +2025,39 @@ __declspec(naked) int __thiscall UR6GSServers::UnInitMSClient(void)
     push   eax
     mov    DWORD PTR fs:0x0,esp
     sub    esp,0xc
-    xor    eax,eax
-    mov    ds:0x10091e6c,eax
-    mov    edx,DWORD PTR [ecx+0x194]
-    push   ebx
-    and    edx,0xffffff7f
-    mov    DWORD PTR [ecx+0x194],edx
-    cmp    DWORD PTR ds:R6GameServiceAddresses::GServiceVerboseLogging,eax
-    push   esi
-    push   edi
-    mov    DWORD PTR [ebp-0x10],esp
-    mov    DWORD PTR [ebp-0x4],eax
-    mov    ds:R6GameServiceAddresses::GLoggedInUbiDotCom,eax
-    mov    ds:R6GameServiceAddresses::GJoinInProgress,eax
-    mov    ds:0x10091d30,eax
-    mov    ds:0x10091d38,eax
-    mov    ds:0x10091e68,eax
-    mov    ds:0x10091e64,eax
-    je     Branch27
-    mov    eax,ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    ecx,DWORD PTR [eax]
-    push   R6GameServiceAddresses::WideTextMSClientUninitialize
-    push   ecx
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FOutputDevice_LogfSlot
-    add    esp,0x8
-  Branch27:
-    call   R6GameServiceAddresses::CloseMSClientSingleton
-    mov    ecx,DWORD PTR [ebp-0xc]
-    pop    edi
-    pop    esi
-    movzx  eax,al
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
+    push ebx
+    push esi
+    push edi
+    mov esi,ecx
+    mov DWORD PTR [ebp-0x10],esp
+  }
+  // These aliases bind existing native storage; inherited-frame handlers and their offsets remain unchanged.
+  byte* nativeFrame;
+  UR6GSServers* receiver;
+  __asm { mov nativeFrame,ebp }
+  __asm { mov receiver,esi }
+  *reinterpret_cast<int*>(0x10091e6c) = 0;
+  uint& flags = *reinterpret_cast<uint*>(reinterpret_cast<byte*>(receiver) + 0x194);
+  flags &= 0xffffff7f;
+  const int logging = *reinterpret_cast<int*>(R6GameServiceAddresses::GServiceVerboseLogging);
+  *reinterpret_cast<int*>(nativeFrame - 4) = 0;
+  *reinterpret_cast<int*>(R6GameServiceAddresses::GLoggedInUbiDotCom) = 0;
+  *reinterpret_cast<int*>(R6GameServiceAddresses::GJoinInProgress) = 0;
+  *reinterpret_cast<int*>(0x10091d30) = 0;
+  *reinterpret_cast<int*>(0x10091d38) = 0;
+  *reinterpret_cast<int*>(0x10091e68) = 0;
+  *reinterpret_cast<int*>(0x10091e64) = 0;
+  if (logging) GLog->Logf(reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextMSClientUninitialize));
+  const int returnValue = static_cast<byte>(CloseMSClientSingleton());
+  __asm {
+    mov eax,returnValue
+    mov ecx,DWORD PTR [ebp-0xc]
+    pop edi
+    pop esi
+    mov DWORD PTR fs:0x0,ecx
+    pop ebx
+    mov esp,ebp
+    pop ebp
     ret
   }
 }
@@ -2152,38 +2139,42 @@ __declspec(naked) void __thiscall UR6GSServers::execUnInitializeMSClient(FFrame 
     push   eax
     mov    DWORD PTR fs:0x0,esp
     sub    esp,0xc
-    mov    eax,DWORD PTR [ebp+0x8]
-    mov    edx,DWORD PTR [eax+0xc]
-    push   ebx
-    inc    edx
-    push   esi
-    mov    esi,ecx
-    mov    DWORD PTR [eax+0xc],edx
-    cmp    BYTE PTR [edx],0x42
-    push   edi
-    mov    DWORD PTR [ebp-0x10],esp
-    mov    DWORD PTR [ebp-0x4],0x0
-    jne    Branch28
-    mov    ecx,DWORD PTR [eax+0x8]
-    inc    edx
-    push   0x0
-    mov    DWORD PTR [eax+0xc],edx
-    push   eax
-    mov    eax,ds:R6GameServiceAddresses::Core__GNativesSlot
-    call   DWORD PTR [eax+0x108]
-  Branch28:
-    mov    ecx,esi
-    call   R6GameServiceAddresses::UR6GSServers_UnInitMSClient
-    mov    ecx,DWORD PTR [ebp+0xc]
-    pop    edi
-    mov    DWORD PTR [ecx],eax
-    mov    ecx,DWORD PTR [ebp-0xc]
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
-    ret    0x8
+    push ebx
+    push esi
+    push edi
+    mov esi,ecx
+    mov DWORD PTR [ebp-0x10],esp
+  }
+  // Aliases below refer to the retained native frame; they do not define a new exception layout.
+  byte* nativeFrame;
+  UR6GSServers* receiver;
+  __asm { mov nativeFrame,ebp }
+  __asm { mov receiver,esi }
+  FFrame* executionStack = *reinterpret_cast<FFrame**>(nativeFrame + 8);
+  byte*& code = *reinterpret_cast<byte**>(reinterpret_cast<byte*>(executionStack) + 0xc);
+  byte* next = code + 1;
+  code = next;
+  const bool debugInfo = *next == 0x42;
+  *reinterpret_cast<int*>(nativeFrame - 4) = 0;
+  if (debugInfo) {
+    UObject* context = *reinterpret_cast<UObject**>(reinterpret_cast<byte*>(executionStack) + 8);
+    code = next + 1;
+    using ScriptNative = void (__thiscall *)(UObject*, FFrame*, void*);
+    ScriptNative* natives = *reinterpret_cast<ScriptNative**>(R6GameServiceAddresses::Core__GNativesSlot);
+    natives[0x42](context, executionStack, nullptr);
+  }
+  const int closed = receiver->UnInitMSClient();
+  int* output = *reinterpret_cast<int**>(nativeFrame + 0xc);
+  *output = closed;
+  __asm {
+    mov ecx,DWORD PTR [ebp-0xc]
+    pop edi
+    pop esi
+    mov DWORD PTR fs:0x0,ecx
+    pop ebx
+    mov esp,ebp
+    pop ebp
+    ret 0x8
   }
 }
 
@@ -2383,46 +2374,44 @@ __declspec(naked) void __thiscall UR6GSServers::execIsRefreshServersInProgress(U
     push   eax
     mov    DWORD PTR fs:0x0,esp
     sub    esp,0xc
-    mov    eax,DWORD PTR [ebp+0x8]
-    mov    edx,DWORD PTR [eax+0xc]
-    inc    edx
-    push   ebx
-    push   esi
-    mov    DWORD PTR [eax+0xc],edx
-    cmp    BYTE PTR [edx],0x42
-    push   edi
-    mov    DWORD PTR [ebp-0x10],esp
-    mov    DWORD PTR [ebp-0x4],0x0
-    jne    Branch30
-    mov    ecx,DWORD PTR [eax+0x8]
-    inc    edx
-    push   0x0
-    mov    DWORD PTR [eax+0xc],edx
-    push   eax
-    mov    eax,ds:R6GameServiceAddresses::Core__GNativesSlot
-    call   DWORD PTR [eax+0x108]
-  Branch30:
-    mov    eax,ds:0x10091d38
-    test   eax,eax
-    jne    Branch31
-    mov    eax,ds:0x10091d30
-    test   eax,eax
-    jne    Branch31
-    xor    eax,eax
-    jmp    Branch32
-  Branch31:
-    mov    eax,0x1
-  Branch32:
-    mov    ecx,DWORD PTR [ebp+0xc]
-    pop    edi
-    mov    DWORD PTR [ecx],eax
-    mov    ecx,DWORD PTR [ebp-0xc]
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
-    ret    0x8
+    push ebx
+    push esi
+    push edi
+    mov esi,ecx
+    mov DWORD PTR [ebp-0x10],esp
+  }
+  // Aliases below refer to the retained native frame; they do not define a new exception layout.
+  byte* nativeFrame;
+  UR6GSServers* receiver;
+  __asm { mov nativeFrame,ebp }
+  __asm { mov receiver,esi }
+  FFrame* executionStack = *reinterpret_cast<FFrame**>(nativeFrame + 8);
+  byte*& code = *reinterpret_cast<byte**>(reinterpret_cast<byte*>(executionStack) + 0xc);
+  byte* next = code + 1;
+  code = next;
+  const bool debugInfo = *next == 0x42;
+  *reinterpret_cast<int*>(nativeFrame - 4) = 0;
+  if (debugInfo) {
+    UObject* context = *reinterpret_cast<UObject**>(reinterpret_cast<byte*>(executionStack) + 8);
+    code = next + 1;
+    using ScriptNative = void (__thiscall *)(UObject*, FFrame*, void*);
+    ScriptNative* natives = *reinterpret_cast<ScriptNative**>(R6GameServiceAddresses::Core__GNativesSlot);
+    natives[0x42](context, executionStack, nullptr);
+  }
+  const bool refreshingAll = *reinterpret_cast<int*>(0x10091d38) != 0;
+  // The second global is loaded only if the all-server flag was clear.
+  const int active = refreshingAll || *reinterpret_cast<int*>(0x10091d30) != 0;
+  int* output = *reinterpret_cast<int**>(nativeFrame + 0xc);
+  *output = active;
+  __asm {
+    mov ecx,DWORD PTR [ebp-0xc]
+    pop edi
+    pop esi
+    mov DWORD PTR fs:0x0,ecx
+    pop ebx
+    mov esp,ebp
+    pop ebp
+    ret 0x8
   }
 }
 
@@ -2493,36 +2482,41 @@ __declspec(naked) void __thiscall UR6GSServers::execStopRefreshServers(UR6GSServ
     push   eax
     mov    DWORD PTR fs:0x0,esp
     sub    esp,0xc
-    mov    eax,DWORD PTR [ebp+0x8]
-    mov    edx,DWORD PTR [eax+0xc]
-    push   ebx
-    push   esi
-    xor    esi,esi
-    inc    edx
-    mov    DWORD PTR [eax+0xc],edx
-    cmp    BYTE PTR [edx],0x42
-    push   edi
-    mov    DWORD PTR [ebp-0x10],esp
-    mov    DWORD PTR [ebp-0x4],esi
-    jne    Branch33
-    mov    ecx,DWORD PTR [eax+0x8]
-    inc    edx
-    push   esi
-    mov    DWORD PTR [eax+0xc],edx
-    push   eax
-    mov    eax,ds:R6GameServiceAddresses::Core__GNativesSlot
-    call   DWORD PTR [eax+0x108]
-  Branch33:
-    mov    ecx,DWORD PTR [ebp-0xc]
-    pop    edi
-    mov    DWORD PTR ds:0x10091d38,esi
-    mov    DWORD PTR ds:0x10091d30,esi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
-    ret    0x8
+    push ebx
+    push esi
+    push edi
+    mov esi,ecx
+    mov DWORD PTR [ebp-0x10],esp
+  }
+  // Aliases below refer to the retained native frame; they do not define a new exception layout.
+  byte* nativeFrame;
+  UR6GSServers* receiver;
+  __asm { mov nativeFrame,ebp }
+  __asm { mov receiver,esi }
+  FFrame* executionStack = *reinterpret_cast<FFrame**>(nativeFrame + 8);
+  byte*& code = *reinterpret_cast<byte**>(reinterpret_cast<byte*>(executionStack) + 0xc);
+  byte* next = code + 1;
+  code = next;
+  const bool debugInfo = *next == 0x42;
+  *reinterpret_cast<int*>(nativeFrame - 4) = 0;
+  if (debugInfo) {
+    UObject* context = *reinterpret_cast<UObject**>(reinterpret_cast<byte*>(executionStack) + 8);
+    code = next + 1;
+    using ScriptNative = void (__thiscall *)(UObject*, FFrame*, void*);
+    ScriptNative* natives = *reinterpret_cast<ScriptNative**>(R6GameServiceAddresses::Core__GNativesSlot);
+    natives[0x42](context, executionStack, nullptr);
+  }
+  *reinterpret_cast<int*>(0x10091d38) = 0; // All-server refresh in progress.
+  *reinterpret_cast<int*>(0x10091d30) = 0; // Single-server refresh in progress; no request is withdrawn here.
+  __asm {
+    mov ecx,DWORD PTR [ebp-0xc]
+    pop edi
+    pop esi
+    mov DWORD PTR fs:0x0,ecx
+    pop ebx
+    mov esp,ebp
+    pop ebp
+    ret 0x8
   }
 }
 
@@ -4352,40 +4346,37 @@ __declspec(naked) void __thiscall UR6GSServers::PollCallbacks
     push   eax
     mov    DWORD PTR fs:0x0,esp
     sub    esp,0xc
-    push   ebx
-    push   esi
-    push   edi
-    mov    edi,DWORD PTR [ebp+0x8]
-    mov    DWORD PTR [ebp-0x10],esp
-    push   edi
-    mov    esi,ecx
-    mov    DWORD PTR [ebp-0x4],0x0
-    call   R6GameServiceAddresses::UR6GSServers_PollMSClientCallbacks
-    mov    ebx,DWORD PTR [ebp+0x10]
-    push   ebx
-    mov    ecx,esi
-    call   R6GameServiceAddresses::UR6GSServers_PollRegServerCallbacks
-    mov    eax,DWORD PTR [ebp+0xc]
-    push   ebx
-    push   edi
-    push   eax
-    mov    ecx,esi
-    call   R6GameServiceAddresses::UR6GSServers_PollClientCDKeyCallbacks
-    mov    ecx,DWORD PTR [ebp+0x14]
-    push   ecx
-    mov    ecx,esi
-    call   R6GameServiceAddresses::UR6GSServers_PollGSClientCallbacks
-    push   edi
-    mov    ecx,esi
-    call   R6GameServiceAddresses::UR6GSServers_PollPingManager
-    mov    ecx,DWORD PTR [ebp-0xc]
-    pop    edi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
-    ret    0x10
+    push ebx
+    push esi
+    push edi
+    mov esi,ecx
+    mov DWORD PTR [ebp-0x10],esp
+  }
+  // These aliases bind existing native storage; inherited-frame handlers and their offsets remain unchanged.
+  byte* nativeFrame;
+  UR6GSServers* receiver;
+  __asm { mov nativeFrame,ebp }
+  __asm { mov receiver,esi }
+  const int msAndPing = *reinterpret_cast<int*>(nativeFrame + 8);
+  *reinterpret_cast<int*>(nativeFrame - 4) = 0;
+  receiver->PollMSClientCallbacks(msAndPing);
+  const int registration = *reinterpret_cast<int*>(nativeFrame + 0x10);
+  receiver->PollRegServerCallbacks(registration);
+  // The CD-key and GS inputs are loaded after preceding callbacks; the MS and registration words stay cached.
+  const int cdKey = *reinterpret_cast<int*>(nativeFrame + 0xc);
+  receiver->PollClientCDKeyCallbacks(cdKey, msAndPing, registration);
+  const int gsClient = *reinterpret_cast<int*>(nativeFrame + 0x14);
+  receiver->PollGSClientCallbacks(gsClient);
+  receiver->PollPingManager(msAndPing);
+  __asm {
+    mov ecx,DWORD PTR [ebp-0xc]
+    pop edi
+    pop esi
+    mov DWORD PTR fs:0x0,ecx
+    pop ebx
+    mov esp,ebp
+    pop ebp
+    ret 0x10
   }
 }
 
@@ -4441,52 +4432,54 @@ __declspec(naked) int __thiscall UR6GSServers::InitializeMSClient(UR6GSServers *
     push   eax
     mov    DWORD PTR fs:0x0,esp
     sub    esp,0x1c
-    push   ebx
-    push   esi
-    push   edi
-    mov    DWORD PTR [ebp-0x10],esp
-    mov    esi,ecx
-    mov    DWORD PTR [ebp-0x4],0x0
-    call   R6GameServiceAddresses::UR6ServerList_InitFavorites
-    mov    eax,ds:R6GameServiceAddresses::GMSClientInitialized
-    test   eax,eax
-    jne    Branch67
-    sub    esp,0xc
-    mov    eax,esp
-    mov    DWORD PTR [ebp-0x18],esp
-    push   eax
-    mov    ecx,esi
-    call   R6GameServiceAddresses::UR6GSServers_eventGetLocallyBoundIpAddr
-    mov    ecx,esi
-    call   R6GameServiceAddresses::UR6GSServers_Init
-    mov    eax,ds:R6GameServiceAddresses::GMSClientInitialized
-    test   eax,eax
-    je     Branch68
-  Branch67:
-    mov    DWORD PTR ds:0x10091c14,0x1
-    jmp    Branch69
-  Branch68:
-    push   R6GameServiceAddresses::WideTextLOGINFAILDEFAULT
-    lea    ecx,[ebp-0x28]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot2
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::Engine__GR6GameManagerSlot
-    lea    ecx,[ebp-0x28]
-    push   ecx
-    mov    ecx,DWORD PTR [edx]
-    mov    BYTE PTR [ebp-0x4],0x1
-    call   DWORD PTR ds:R6GameServiceAddresses::Engine_UR6AbstractGameManager_eventGMProcessMsgSlot
-    lea    ecx,[ebp-0x28]
-    mov    BYTE PTR [ebp-0x4],0x0
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringSlot
-  Branch69:
-    mov    ecx,DWORD PTR [ebp-0xc]
-    mov    eax,ds:R6GameServiceAddresses::GMSClientInitialized
-    pop    edi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
+    push ebx
+    push esi
+    push edi
+    mov esi,ecx
+    mov DWORD PTR [ebp-0x10],esp
+  }
+  // These aliases bind existing native storage; inherited-frame handlers and their offsets remain unchanged.
+  byte* nativeFrame;
+  UR6GSServers* receiver;
+  __asm { mov nativeFrame,ebp }
+  __asm { mov receiver,esi }
+  *reinterpret_cast<int*>(nativeFrame - 4) = 0;
+  receiver->InitFavorites();
+  if (!*reinterpret_cast<int*>(R6GameServiceAddresses::GMSClientInitialized)) {
+    // Hidden-result storage is also the outgoing by-value FString. Init owns and destroys that value.
+    __asm {
+      sub esp,0xc
+      mov eax,esp
+      mov DWORD PTR [ebp-0x18],esp
+      push eax
+      mov ecx,esi
+      call R6GameServiceAddresses::UR6GSServers_eventGetLocallyBoundIpAddr
+      mov ecx,esi
+      call R6GameServiceAddresses::UR6GSServers_Init
+    }
+  }
+  if (*reinterpret_cast<int*>(R6GameServiceAddresses::GMSClientInitialized)) {
+    *reinterpret_cast<int*>(0x10091c14) = 1;
+  } else {
+    FString* message = reinterpret_cast<FString*>(nativeFrame - 0x28);
+    FString::FString(message, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextLOGINFAILDEFAULT));
+    UR6AbstractGameManager* manager = GR6GameManager;
+    *reinterpret_cast<byte*>(nativeFrame - 4) = 1;
+    manager->eventGMProcessMsg(*message);
+    *reinterpret_cast<byte*>(nativeFrame - 4) = 0;
+    FString::~FString(message);
+  }
+  // Callback processing can replace this global; return the final full word rather than the earlier gate sample.
+  const int returnValue = *reinterpret_cast<int*>(R6GameServiceAddresses::GMSClientInitialized);
+  __asm {
+    mov eax,returnValue
+    mov ecx,DWORD PTR [ebp-0xc]
+    pop edi
+    pop esi
+    mov DWORD PTR fs:0x0,ecx
+    pop ebx
+    mov esp,ebp
+    pop ebp
     ret
   }
 }
@@ -4554,38 +4547,42 @@ __declspec(naked) void __thiscall UR6GSServers::execInitializeMSClient
     push   eax
     mov    DWORD PTR fs:0x0,esp
     sub    esp,0xc
-    mov    eax,DWORD PTR [ebp+0x8]
-    mov    edx,DWORD PTR [eax+0xc]
-    push   ebx
-    inc    edx
-    push   esi
-    mov    esi,ecx
-    mov    DWORD PTR [eax+0xc],edx
-    cmp    BYTE PTR [edx],0x42
-    push   edi
-    mov    DWORD PTR [ebp-0x10],esp
-    mov    DWORD PTR [ebp-0x4],0x0
-    jne    Branch70
-    mov    ecx,DWORD PTR [eax+0x8]
-    inc    edx
-    push   0x0
-    mov    DWORD PTR [eax+0xc],edx
-    push   eax
-    mov    eax,ds:R6GameServiceAddresses::Core__GNativesSlot
-    call   DWORD PTR [eax+0x108]
-  Branch70:
-    mov    ecx,esi
-    call   R6GameServiceAddresses::UR6GSServers_InitializeMSClient
-    mov    ecx,DWORD PTR [ebp+0xc]
-    pop    edi
-    mov    DWORD PTR [ecx],eax
-    mov    ecx,DWORD PTR [ebp-0xc]
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
-    ret    0x8
+    push ebx
+    push esi
+    push edi
+    mov esi,ecx
+    mov DWORD PTR [ebp-0x10],esp
+  }
+  // Aliases below refer to the retained native frame; they do not define a new exception layout.
+  byte* nativeFrame;
+  UR6GSServers* receiver;
+  __asm { mov nativeFrame,ebp }
+  __asm { mov receiver,esi }
+  FFrame* executionStack = *reinterpret_cast<FFrame**>(nativeFrame + 8);
+  byte*& code = *reinterpret_cast<byte**>(reinterpret_cast<byte*>(executionStack) + 0xc);
+  byte* next = code + 1;
+  code = next;
+  const bool debugInfo = *next == 0x42;
+  *reinterpret_cast<int*>(nativeFrame - 4) = 0;
+  if (debugInfo) {
+    UObject* context = *reinterpret_cast<UObject**>(reinterpret_cast<byte*>(executionStack) + 8);
+    code = next + 1;
+    using ScriptNative = void (__thiscall *)(UObject*, FFrame*, void*);
+    ScriptNative* natives = *reinterpret_cast<ScriptNative**>(R6GameServiceAddresses::Core__GNativesSlot);
+    natives[0x42](context, executionStack, nullptr);
+  }
+  const int initialized = receiver->InitializeMSClient();
+  int* output = *reinterpret_cast<int**>(nativeFrame + 0xc);
+  *output = initialized;
+  __asm {
+    mov ecx,DWORD PTR [ebp-0xc]
+    pop edi
+    pop esi
+    mov DWORD PTR fs:0x0,ecx
+    pop ebx
+    mov esp,ebp
+    pop ebp
+    ret 0x8
   }
 }
 
@@ -4642,55 +4639,47 @@ __declspec(naked) void __thiscall UR6GSServers::RefreshOneServer(UR6GSServers *t
     push   eax
     mov    DWORD PTR fs:0x0,esp
     sub    esp,0xc
-    push   ebx
-    push   esi
-    mov    esi,DWORD PTR [ebp+0x8]
-    push   edi
-    mov    edi,ecx
-    mov    eax,DWORD PTR [edi+0x80]
-    mov    ebx,DWORD PTR [eax+esi*4]
-    mov    eax,ds:0x10091e6c
-    test   eax,eax
-    mov    DWORD PTR [ebp-0x10],esp
-    mov    DWORD PTR [ebp-0x4],0x0
-    je    Branch71
-    mov    eax,ds:0x10091d38
-    test   eax,eax
-    jne    Branch71
-    mov    eax,ds:0x10091d30
-    test   eax,eax
-    jne    Branch71
-    call   R6GameServiceAddresses::ReadCycleTimeSeconds
-    imul   esi,esi,0xdc
-    fstp   DWORD PTR ds:R6GameServiceAddresses::NativeFloat0_0
-    mov    DWORD PTR ds:0x10091bf8,0x0
-    mov    DWORD PTR ds:0x10091d30,0x1
-    mov    ecx,DWORD PTR [edi+0x5c]
-    lea    eax,[esi+ecx*1]
-    mov    DWORD PTR [edi+0x44],ebx
-    mov    edx,DWORD PTR [eax]
-    mov    eax,DWORD PTR [eax+0x4]
-    push   edx
-    push   eax
-    call   R6GameServiceAddresses::ForwardMSClientOperation2
-    mov    eax,ds:R6GameServiceAddresses::GServiceVerboseLogging
-    test   eax,eax
-    je    Branch71
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    edx,DWORD PTR [ecx]
-    push   R6GameServiceAddresses::WideTextMSClientRefreshGameServers
-    push   edx
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FOutputDevice_LogfSlot
-    add    esp,0x8
-  Branch71:
-    mov    ecx,DWORD PTR [ebp-0xc]
-    pop    edi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
-    ret    0x4
+    push ebx
+    push esi
+    push edi
+    mov esi,ecx
+    mov DWORD PTR [ebp-0x10],esp
+  }
+  // These aliases bind existing native storage; inherited-frame handlers and their offsets remain unchanged.
+  byte* nativeFrame;
+  UR6GSServers* receiver;
+  __asm { mov nativeFrame,ebp }
+  __asm { mov receiver,esi }
+  const uint inputIndex = *reinterpret_cast<uint*>(nativeFrame + 8);
+  byte* list = reinterpret_cast<byte*>(receiver);
+  uint* display = *reinterpret_cast<uint**>(list + 0x80);
+  const int mappedIndex = display[inputIndex]; // Unchecked access occurs even when the service is disabled.
+  const int enabled = *reinterpret_cast<int*>(0x10091e6c);
+  *reinterpret_cast<int*>(nativeFrame - 4) = 0;
+  if (enabled && !*reinterpret_cast<int*>(0x10091d38) && !*reinterpret_cast<int*>(0x10091d30)) {
+    __asm { call R6GameServiceAddresses::ReadCycleTimeSeconds }
+    __asm { fstp DWORD PTR ds:R6GameServiceAddresses::NativeFloat0_0 }
+    *reinterpret_cast<int*>(0x10091bf8) = 0;
+    *reinterpret_cast<int*>(0x10091d30) = 1;
+    byte* records = *reinterpret_cast<byte**>(list + 0x5c);
+    byte* record = records + inputIndex * 0xdcU;
+    *reinterpret_cast<int*>(list + 0x44) = mappedIndex;
+    const uint first = *reinterpret_cast<uint*>(record);
+    const uint second = *reinterpret_cast<uint*>(record + 4);
+    // Native uses the original input index for the request, although +0x44 stores its mapped display index.
+    ForwardMSClientOperation2(second, first);
+    if (*reinterpret_cast<int*>(R6GameServiceAddresses::GServiceVerboseLogging))
+      GLog->Logf(reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextMSClientRefreshGameServers));
+  }
+  __asm {
+    mov ecx,DWORD PTR [ebp-0xc]
+    pop edi
+    pop esi
+    mov DWORD PTR fs:0x0,ecx
+    pop ebx
+    mov esp,ebp
+    pop ebp
+    ret 0x4
   }
 }
 
@@ -4762,50 +4751,45 @@ __declspec(naked) void __thiscall UR6GSServers::execRefreshOneServer(UR6GSServer
     push   eax
     mov    DWORD PTR fs:0x0,esp
     sub    esp,0x10
-    push   ebx
-    push   esi
-    mov    esi,DWORD PTR [ebp+0x8]
-    mov    eax,DWORD PTR [esi+0xc]
-    mov    DWORD PTR [ebp-0x14],0x0
-    movzx  edx,BYTE PTR [eax]
-    inc    eax
-    push   edi
-    mov    DWORD PTR [esi+0xc],eax
-    mov    DWORD PTR [ebp-0x10],esp
-    lea    eax,[ebp-0x14]
-    push   eax
-    mov    eax,ds:R6GameServiceAddresses::Core__GNativesSlot
-    mov    edi,ecx
-    mov    ecx,DWORD PTR [esi+0x8]
-    push   esi
-    mov    DWORD PTR [ebp-0x4],0x0
-    call   DWORD PTR [eax+edx*4]
-    mov    edx,DWORD PTR [esi+0xc]
-    inc    edx
-    mov    eax,edx
-    mov    DWORD PTR [esi+0xc],edx
-    cmp    BYTE PTR [eax],0x42
-    jne    Branch72
-    mov    ecx,DWORD PTR [esi+0x8]
-    inc    eax
-    push   0x0
-    mov    DWORD PTR [esi+0xc],eax
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::Core__GNativesSlot
-    push   esi
-    call   DWORD PTR [edx+0x108]
-  Branch72:
-    mov    eax,DWORD PTR [ebp-0x14]
-    push   eax
-    mov    ecx,edi
-    call   R6GameServiceAddresses::UR6GSServers_RefreshOneServer
-    mov    ecx,DWORD PTR [ebp-0xc]
-    pop    edi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
-    ret    0x8
+    push ebx
+    push esi
+    push edi
+    mov esi,ecx
+    mov DWORD PTR [ebp-0x10],esp
+  }
+  // These aliases bind existing native storage; inherited-frame handlers and their offsets remain unchanged.
+  byte* nativeFrame;
+  UR6GSServers* receiver;
+  __asm { mov nativeFrame,ebp }
+  __asm { mov receiver,esi }
+  FFrame* executionStack = *reinterpret_cast<FFrame**>(nativeFrame + 8);
+  byte*& code = *reinterpret_cast<byte**>(reinterpret_cast<byte*>(executionStack) + 0xc);
+  int& index = *reinterpret_cast<int*>(nativeFrame - 0x14);
+  index = 0;
+  const byte opcode = *code++;
+  using ScriptNative = void (__thiscall *)(UObject*, FFrame*, void*);
+  ScriptNative* natives = *reinterpret_cast<ScriptNative**>(R6GameServiceAddresses::Core__GNativesSlot);
+  UObject* context = *reinterpret_cast<UObject**>(reinterpret_cast<byte*>(executionStack) + 8);
+  *reinterpret_cast<int*>(nativeFrame - 4) = 0;
+  natives[opcode](context, executionStack, &index);
+  byte* next = code + 1;
+  code = next;
+  if (*next == 0x42) {
+    context = *reinterpret_cast<UObject**>(reinterpret_cast<byte*>(executionStack) + 8);
+    code = next + 1;
+    natives = *reinterpret_cast<ScriptNative**>(R6GameServiceAddresses::Core__GNativesSlot);
+    natives[0x42](context, executionStack, nullptr);
+  }
+  receiver->RefreshOneServer(index);
+  __asm {
+    mov ecx,DWORD PTR [ebp-0xc]
+    pop edi
+    pop esi
+    mov DWORD PTR fs:0x0,ecx
+    pop ebx
+    mov esp,ebp
+    pop ebp
+    ret 0x8
   }
 }
 
@@ -5875,21 +5859,28 @@ __declspec(naked) int __thiscall UR6GSServers::ReceiveServer(void)
     push   eax
     mov    DWORD PTR fs:0x0,esp
     sub    esp,0x338
-    push   ebx
-    push   esi
-    push   edi
-    xor    eax,eax
-    mov    edi,ecx
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray3+0x4
-    test   ecx,ecx
-    setg   al
-    mov    DWORD PTR [ebp-0x10],esp
-    mov    DWORD PTR [ebp-0x4],0x0
-    mov    DWORD PTR [ebp-0x1c],0x100
-    mov    DWORD PTR [ebp-0x2c],ecx
-    test   eax,eax
-    mov    DWORD PTR [ebp-0x34],eax
-    je     Branch111
+    push ebx
+    push esi
+    push edi
+    mov esi,ecx
+    mov DWORD PTR [ebp-0x10],esp
+  }
+  // These aliases bind existing native storage; inherited-frame handlers and their offsets remain unchanged.
+  byte* nativeFrame;
+  UR6GSServers* receiver;
+  __asm { mov nativeFrame,ebp }
+  __asm { mov receiver,esi }
+  byte* list = reinterpret_cast<byte*>(receiver);
+  FArray* pending = reinterpret_cast<FArray*>(R6GameServiceAddresses::GServiceArray3);
+  const int queued = *reinterpret_cast<int*>(reinterpret_cast<byte*>(pending) + 4);
+  *reinterpret_cast<int*>(nativeFrame - 4) = 0;
+  uint& bytes = *reinterpret_cast<uint*>(nativeFrame - 0x1c);
+  bytes = 0x100;
+  *reinterpret_cast<int*>(nativeFrame - 0x2c) = queued;
+  *reinterpret_cast<int*>(nativeFrame - 0x34) = queued > 0;
+  if (queued > 0) {
+    // Hardware clock input and unsigned high/low conversion stay in the native x87 precision/order.
+    __asm {
     rdtsc
     mov    DWORD PTR [ebp-0x24],eax
     mov    DWORD PTR [ebp-0x20],edx
@@ -5911,487 +5902,167 @@ __declspec(naked) int __thiscall UR6GSServers::ReceiveServer(void)
     fmul   QWORD PTR [eax]
     fadd   QWORD PTR ds:R6GameServiceAddresses::NativeDouble16777216_0
     fstp   DWORD PTR ds:R6GameServiceAddresses::NativeFloat0_0
-  Branch111:
-    xor    eax,eax
-    mov    DWORD PTR [ebp-0x24],eax
-  Branch112:
-    cmp    eax,0x2
-    jge    Branch141
-    cmp    eax,ecx
-    jge    Branch141
-    mov    eax,ds:0x10091d30
-    mov    esi,DWORD PTR [edi+0x60]
-    xor    ecx,ecx
-    test   eax,eax
-    mov    DWORD PTR [ebp-0x20],ecx
-    mov    DWORD PTR [ebp-0x28],esi
-    je     Branch117
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray3
-    xor    eax,eax
-  Branch113:
-    cmp    eax,DWORD PTR [edi+0x60]
-    jge    Branch116
-    test   ecx,ecx
-    jne    Branch118
-    mov    ebx,DWORD PTR [edi+0x5c]
-    mov    ecx,eax
-    imul   ecx,ecx,0xdc
-    add    ecx,ebx
-    mov    ebx,DWORD PTR [ecx+0x4]
-    cmp    ebx,DWORD PTR [edx+0x10c]
-    jne    Branch114
-    mov    ecx,DWORD PTR [ecx]
-    cmp    ecx,DWORD PTR [edx+0x108]
-    jne    Branch114
-    mov    ebx,DWORD PTR ds:0x10091d30
-    test   ebx,ebx
-    mov    ecx,0x1
-    mov    esi,eax
-    mov    DWORD PTR [ebp-0x20],ecx
-    mov    DWORD PTR [ebp-0x28],esi
-    je     Branch115
-    cmp    eax,DWORD PTR [edi+0x44]
-    jne    Branch115
-    mov    DWORD PTR ds:0x10091d30,0x0
-    inc    eax
-    jmp    Branch113
-  Branch114:
-    mov    ecx,DWORD PTR [ebp-0x20]
-  Branch115:
-    inc    eax
-    jmp    Branch113
-  Branch116:
-    test   ecx,ecx
-    jne    Branch118
-  Branch117:
-    push   0x1
-    lea    esi,[edi+0x80]
-    push   0x4
-    mov    ecx,esi
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FArray_AddZeroedSlot
-    mov    edx,DWORD PTR [esi]
-    push   0x1
-    push   0xdc
-    lea    ecx,[edi+0x5c]
-    mov    DWORD PTR [edx+eax*4],eax
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FArray_AddZeroedSlot
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray3
-    mov    esi,eax
-    mov    DWORD PTR [ebp-0x28],esi
-  Branch118:
-    mov    ecx,DWORD PTR [edx+0x108]
-    imul   esi,esi,0xdc
-    mov    eax,DWORD PTR [edi+0x5c]
-    mov    DWORD PTR [esi+eax*1],ecx
-    mov    eax,ds:R6GameServiceAddresses::GServiceArray3
-    mov    edx,DWORD PTR [edi+0x5c]
-    mov    ecx,DWORD PTR [eax+0x10c]
-    mov    DWORD PTR [esi+edx*1+0x4],ecx
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray3
-    mov    ebx,DWORD PTR [edi+0x5c]
-    add    edx,0x634
-    push   edx
-    add    ebx,esi
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appFromAnsiSlot
-    add    esp,0x4
-    push   eax
-    lea    ecx,[ebx+0x10]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__4FStringNoInitSlot2
-    mov    eax,ds:R6GameServiceAddresses::GServiceArray3
-    mov    ebx,DWORD PTR [edi+0x5c]
-    add    eax,0x734
-    push   eax
-    add    ebx,esi
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appFromAnsiSlot
-    add    esp,0x4
-    push   eax
-    lea    ecx,[ebx+0x1c]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__4FStringNoInitSlot2
-    mov    ecx,DWORD PTR [edi+0x5c]
-    mov    edx,DWORD PTR [esi+ecx*1+0x28]
-    lea    eax,[esi+ecx*1+0x28]
-    and    edx,0xfffffffe
-    mov    DWORD PTR [eax],edx
-    mov    edx,DWORD PTR [edi+0x5c]
-    mov    ecx,DWORD PTR [esi+edx*1+0x28]
-    lea    eax,[esi+edx*1+0x28]
-    or     ecx,0x2
-    mov    DWORD PTR [eax],ecx
-    mov    eax,DWORD PTR [edi+0x5c]
-    mov    DWORD PTR [esi+eax*1+0xc],0x3e8
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray3
-    mov    ebx,DWORD PTR [edi+0x5c]
-    add    ecx,0x8
-    push   ecx
-    add    ebx,esi
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appFromAnsiSlot
-    add    esp,0x4
-    push   eax
-    lea    ecx,[ebx+0x5c]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__4FStringNoInitSlot2
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray3
-    mov    ebx,DWORD PTR [edi+0x5c]
-    add    edx,0x41c
-    push   edx
-    add    ebx,esi
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appFromAnsiSlot
-    add    esp,0x4
-    push   eax
-    lea    ecx,[ebx+0xac]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__4FStringNoInitSlot2
-    mov    ecx,DWORD PTR [edi+0x5c]
-    lea    eax,[edi+0x168]
-    push   eax
-    lea    ecx,[esi+ecx*1+0xac]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__8FStringSlot
-    mov    edx,DWORD PTR [edi+0x5c]
-    lea    ecx,[esi+edx*1+0x28]
-    mov    edx,DWORD PTR [ecx]
-    shl    eax,0x3
-    xor    eax,edx
-    and    eax,0x8
-    xor    edx,eax
-    mov    DWORD PTR [ecx],edx
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray3
-    mov    ecx,DWORD PTR [edi+0x5c]
-    mov    eax,DWORD PTR [edx+0x628]
-    push   0x4
-    mov    DWORD PTR [esi+ecx*1+0x78],eax
-    push   0x1
-    mov    ecx,R6GameServiceAddresses::GServiceArray4
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FArray_AddSlot
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray4
-    mov    edx,DWORD PTR [ebp-0x28]
-    mov    DWORD PTR [ecx+eax*4],edx
-    mov    eax,ds:R6GameServiceAddresses::GServiceArray3
-    mov    ecx,DWORD PTR [eax+0x620]
-    test   ecx,ecx
-    jle    Branch133
-    mov    eax,DWORD PTR [eax+0x61c]
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServerReplySerializedStore
-    push   eax
-    call   R6GameServiceAddresses::LoadSerializedByteStore
-    lea    ecx,[ebp-0x1c]
-    push   ecx
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServerReplySerializedStore
-    lea    edx,[ebp-0x144]
-    push   edx
-    push   0xfd
-    mov    DWORD PTR [ebp-0x1c],0x100
-    call   R6GameServiceAddresses::ReadStoredBytes
-    test   eax,eax
-    jl     Branch119
-    mov    ebx,DWORD PTR [edi+0x5c]
-    lea    eax,[ebp-0x144]
-    push   eax
-    add    ebx,esi
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appFromAnsiSlot
-    add    esp,0x4
-    push   eax
-    lea    ecx,[ebx+0x68]
-    jmp    Branch120
-  Branch119:
-    mov    ecx,DWORD PTR [edi+0x5c]
-    push   R6GameServiceAddresses::GEmptyWideText
-    lea    ecx,[esi+ecx*1+0x68]
-  Branch120:
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__4FStringNoInitSlot2
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServerReplySerializedStore
-    lea    edx,[ebp-0x1c]
-    push   edx
-    lea    eax,[ebp-0x144]
-    push   eax
-    push   0x64
-    mov    DWORD PTR [ebp-0x1c],0x100
-    call   R6GameServiceAddresses::ReadStoredBytes
-    test   eax,eax
-    jl     Branch121
-    mov    ebx,DWORD PTR [edi+0x5c]
-    lea    ecx,[ebp-0x144]
-    push   ecx
-    add    ebx,esi
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appFromAnsiSlot
-    add    esp,0x4
-    push   eax
-    lea    ecx,[ebx+0x94]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__4FStringNoInitSlot2
-  Branch121:
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServerReplySerializedStore
-    lea    edx,[ebp-0x18]
-    push   edx
-    push   0x6d
-    call   R6GameServiceAddresses::ReadStoredWord
-    test   eax,eax
-    jl     Branch122
-    mov    eax,DWORD PTR [edi+0x5c]
-    mov    ecx,DWORD PTR [ebp-0x18]
-    mov    DWORD PTR [esi+eax*1+0x74],ecx
-  Branch122:
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServerReplySerializedStore
-    lea    edx,[ebp-0x11]
-    push   edx
-    push   0x66
-    call   R6GameServiceAddresses::ReadStoredWord
-    test   eax,eax
-    jl     Branch123
-    mov    eax,DWORD PTR [edi+0x5c]
-    mov    edx,DWORD PTR [esi+eax*1+0x38]
-    xor    ecx,ecx
-    mov    cl,BYTE PTR [ebp-0x11]
-    lea    eax,[esi+eax*1+0x38]
-    xor    ecx,edx
-    and    ecx,0x1
-    xor    edx,ecx
-    mov    DWORD PTR [eax],edx
-  Branch123:
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServerReplySerializedStore
-    lea    edx,[ebp-0x11]
-    push   edx
-    push   0x67
-    call   R6GameServiceAddresses::ReadStoredWord
-    test   eax,eax
-    jl     Branch124
-    mov    eax,DWORD PTR [edi+0x5c]
-    movzx  ecx,BYTE PTR [ebp-0x11]
-    mov    edx,DWORD PTR [esi+eax*1+0x38]
-    lea    eax,[esi+eax*1+0x38]
-    shl    ecx,1
-    xor    ecx,edx
-    and    ecx,0x2
-    xor    edx,ecx
-    mov    DWORD PTR [eax],edx
-  Branch124:
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServerReplySerializedStore
-    lea    edx,[ebp-0x18]
-    push   edx
-    push   0x69
-    call   R6GameServiceAddresses::ReadStoredWord
-    test   eax,eax
-    jl     Branch125
-    mov    eax,DWORD PTR [edi+0x5c]
-    mov    ecx,DWORD PTR [ebp-0x18]
-    mov    DWORD PTR [esi+eax*1+0x3c],ecx
-  Branch125:
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServerReplySerializedStore
-    lea    edx,[ebp-0x11]
-    push   edx
-    push   0x6a
-    call   R6GameServiceAddresses::ReadStoredWord
-    test   eax,eax
-    jl     Branch126
-    mov    eax,DWORD PTR [edi+0x5c]
-    movzx  ecx,BYTE PTR [ebp-0x11]
-    mov    edx,DWORD PTR [esi+eax*1+0x4c]
-    lea    eax,[esi+eax*1+0x4c]
-    shl    ecx,0x2
-    xor    ecx,edx
-    and    ecx,0x4
-    xor    edx,ecx
-    mov    DWORD PTR [eax],edx
-  Branch126:
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServerReplySerializedStore
-    lea    edx,[ebp-0x1c]
-    push   edx
-    lea    eax,[ebp-0x144]
-    push   eax
-    push   0x65
-    mov    DWORD PTR [ebp-0x1c],0x100
-    call   R6GameServiceAddresses::ReadStoredBytes
-    test   eax,eax
-    jl     Branch127
-    mov    ebx,DWORD PTR [edi+0x5c]
-    lea    ecx,[ebp-0x144]
-    push   ecx
-    add    ebx,esi
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appFromAnsiSlot
-    add    esp,0x4
-    push   eax
-    lea    ecx,[ebx+0x88]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__4FStringNoInitSlot2
-  Branch127:
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServerReplySerializedStore
-    lea    edx,[ebp-0x1c]
-    push   edx
-    lea    eax,[ebp-0x18]
-    push   eax
-    push   0x68
-    call   R6GameServiceAddresses::ReadStoredBytes
-    test   eax,eax
-    jl     Branch128
-    mov    ecx,DWORD PTR [edi+0x5c]
-    lea    eax,[esi+ecx*1+0x4c]
-    mov    ecx,DWORD PTR [ebp-0x18]
-    xor    edx,edx
-    test   ecx,ecx
-    mov    ecx,DWORD PTR [eax]
-    sete   dl
-    shl    edx,0x6
-    xor    edx,ecx
-    and    edx,0x40
-    xor    ecx,edx
-    mov    DWORD PTR [eax],ecx
-  Branch128:
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServerReplySerializedStore
-    lea    eax,[ebp-0x18]
-    push   eax
-    push   0x6b
-    call   R6GameServiceAddresses::ReadStoredWord
-    test   eax,eax
-    jl     Branch129
-    mov    ecx,DWORD PTR [edi+0x5c]
-    mov    edx,DWORD PTR [ebp-0x18]
-    mov    DWORD PTR [esi+ecx*1+0x58],edx
-  Branch129:
-    mov    eax,DWORD PTR [ebp-0x18]
-    push   eax
-    lea    ecx,[ebp-0x344]
-    push   R6GameServiceAddresses::WideTextI
-    push   ecx
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appSprintfSlot
-    add    esp,0xc
-    test   eax,eax
-    jl     Branch130
-    mov    eax,DWORD PTR [edi+0x5c]
-    lea    edx,[ebp-0x344]
-    push   edx
-    lea    ecx,[esi+eax*1+0x10]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__YFStringSlot2
-    mov    edx,DWORD PTR [edi+0x5c]
-    lea    ecx,[ebp-0x344]
-    push   ecx
-    lea    ecx,[esi+edx*1+0x1c]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__YFStringSlot2
-  Branch130:
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServerReplySerializedStore
-    lea    eax,[ebp-0x18]
-    push   eax
-    push   0x6c
-    call   R6GameServiceAddresses::ReadStoredWord
-    test   eax,eax
-    jl     Branch131
-    mov    ecx,DWORD PTR [ebp-0x18]
-    mov    eax,ds:R6GameServiceAddresses::Engine__GModMgrSlot
-    push   ecx
-    mov    ecx,DWORD PTR [eax]
-    lea    edx,[ebp-0x44]
-    push   edx
-    call   DWORD PTR ds:R6GameServiceAddresses::Engine_UR6ModMgr_eventGetGameTypeNameSlot
-    mov    ecx,DWORD PTR [edi+0x5c]
-    push   eax
-    lea    ecx,[esi+ecx*1+0x7c]
-    mov    BYTE PTR [ebp-0x4],0x1
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__4FStringNoInitSlot3
-    lea    ecx,[ebp-0x44]
-    mov    BYTE PTR [ebp-0x4],0x0
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringSlot
-  Branch131:
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServerReplySerializedStore
-    lea    edx,[ebp-0x18]
-    push   edx
-    push   0xfc
-    call   R6GameServiceAddresses::ReadStoredWord
-    test   eax,eax
-    jl     Branch132
-    mov    eax,DWORD PTR [edi+0x5c]
-    mov    ecx,DWORD PTR [ebp-0x18]
-    mov    DWORD PTR [esi+eax*1+0x8],ecx
-  Branch132:
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServerReplySerializedStore
-    lea    edx,[ebp-0x11]
-    push   edx
-    push   0xff
-    call   R6GameServiceAddresses::ReadStoredWord
-    test   eax,eax
-    jl     Branch133
-    mov    eax,DWORD PTR [edi+0x5c]
-    movzx  ecx,BYTE PTR [ebp-0x11]
-    mov    edx,DWORD PTR [esi+eax*1+0x4c]
-    lea    eax,[esi+eax*1+0x4c]
-    shl    ecx,0xa
-    xor    ecx,edx
-    and    ecx,0x400
-    xor    edx,ecx
-    mov    DWORD PTR [eax],edx
-  Branch133:
-    mov    edx,DWORD PTR [edi+0x5c]
-    mov    ecx,DWORD PTR [esi+edx*1+0x28]
-    lea    eax,[esi+edx*1+0x28]
-    and    ecx,0xfffffffb
-    mov    DWORD PTR [eax],ecx
-    xor    ebx,ebx
-    jmp    Branch134
-    lea    ecx,[ecx+0x0]
-  Branch134:
-    cmp    ebx,DWORD PTR [edi+0x54]
-    jge    Branch136
-    mov    ecx,DWORD PTR [edi+0x50]
-    lea    eax,[ebx+ebx*2]
-    lea    edx,[ecx+eax*4]
-    mov    eax,DWORD PTR [edi+0x5c]
-    push   edx
-    lea    ecx,[esi+eax*1+0x10]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__8FStringSlot
-    test   eax,eax
-    je     Branch135
-    mov    ecx,DWORD PTR [edi+0x5c]
-    lea    eax,[esi+ecx*1+0x28]
-    or     DWORD PTR [eax],0x4
-  Branch135:
-    inc    ebx
-    jmp    Branch134
-  Branch136:
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::Core__GMallocSlot
-    mov    ecx,DWORD PTR [edx]
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray3
-    mov    edx,DWORD PTR [edx+0x61c]
-    mov    eax,DWORD PTR [ecx]
-    push   edx
-    call   DWORD PTR [eax+0x8]
-    mov    eax,ds:R6GameServiceAddresses::GServiceArray3+0x4
-    test   eax,eax
-    jge    Branch137
-    push   0x202
-    push   R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH
-    push   R6GameServiceAddresses::TextIndexArrayNum
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appFailAssertSlot
-    add    esp,0xc
-  Branch137:
-    cmp    DWORD PTR ds:R6GameServiceAddresses::GServiceArray3+0x4,0x1
-    jge    Branch138
-    push   0x203
-    push   R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH
-    push   R6GameServiceAddresses::TextIndexCountArrayNum
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appFailAssertSlot
-    add    esp,0xc
-  Branch138:
-    xor    eax,eax
-    jmp    Branch139
-    lea    ecx,[ecx+0x0]
-  Branch139:
-    cmp    eax,0x1
-    jge    Branch140
-    inc    eax
-    jmp    Branch139
-  Branch140:
-    push   0x838
-    push   0x1
-    push   0x0
-    mov    ecx,R6GameServiceAddresses::GServiceArray3
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FArray_RemoveSlot
-    mov    eax,DWORD PTR [ebp-0x24]
-    mov    ecx,DWORD PTR [ebp-0x2c]
-    inc    eax
-    mov    DWORD PTR [ebp-0x24],eax
-    jmp    Branch112
-  Branch141:
-    mov    ecx,DWORD PTR [ebp-0xc]
-    mov    eax,DWORD PTR [ebp-0x34]
-    pop    edi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
+    }
+  }
+  int& consumed = *reinterpret_cast<int*>(nativeFrame - 0x24);
+  consumed = 0;
+  auto incoming = [&]() { return *reinterpret_cast<byte**>(pending); };
+  auto serverData = [&]() { return *reinterpret_cast<byte**>(list + 0x5c); };
+  auto store = [&]() { return *reinterpret_cast<void**>(R6GameServiceAddresses::GServerReplySerializedStore); };
+  while (consumed < 2 && consumed < *reinterpret_cast<int*>(nativeFrame - 0x2c)) {
+    const int refreshingOne = *reinterpret_cast<int*>(0x10091d30);
+    int& selected = *reinterpret_cast<int*>(nativeFrame - 0x28);
+    selected = *reinterpret_cast<int*>(list + 0x60);
+    int& found = *reinterpret_cast<int*>(nativeFrame - 0x20);
+    found = 0;
+    byte* reply;
+    if (refreshingOne) {
+      reply = incoming(); // Kept through the match walk; record storage/count stay live.
+      for (int i = 0; i < *reinterpret_cast<int*>(list + 0x60) && !found; ++i) {
+        byte* row = serverData() + static_cast<uint>(i) * 0xdcU;
+        if (*reinterpret_cast<uint*>(row + 4) == *reinterpret_cast<uint*>(reply + 0x10c) &&
+            *reinterpret_cast<uint*>(row) == *reinterpret_cast<uint*>(reply + 0x108)) {
+          const int stillRefreshing = *reinterpret_cast<int*>(0x10091d30);
+          found = 1;
+          selected = i;
+          if (stillRefreshing && i == *reinterpret_cast<int*>(list + 0x44))
+            *reinterpret_cast<int*>(0x10091d30) = 0;
+        }
+      }
+    }
+    if (!found) {
+      FArray* display = reinterpret_cast<FArray*>(list + 0x80);
+      const int displayIndex = display->AddZeroed(4, 1);
+      uint* displayData = *reinterpret_cast<uint**>(display);
+      displayData[displayIndex] = displayIndex;
+      selected = reinterpret_cast<FArray*>(list + 0x5c)->AddZeroed(0xdc, 1);
+      reply = incoming();
+    }
+    // Cache the byte offset, but reload the server array after every provider/assignment callback.
+    const uint rowOffset = static_cast<uint>(selected) * 0xdcU;
+    uint word = *reinterpret_cast<uint*>(reply + 0x108);
+    *reinterpret_cast<uint*>(serverData() + rowOffset) = word;
+    reply = incoming();
+    byte* rows = serverData();
+    word = *reinterpret_cast<uint*>(reply + 0x10c);
+    *reinterpret_cast<uint*>(rows + rowOffset + 4) = word;
+    auto assignIncomingText = [&](uint sourceOffset, uint destinationOffset) {
+      byte* currentReply = incoming();
+      byte* destination = serverData() + rowOffset;
+      const TCHAR* text = appFromAnsi(reinterpret_cast<char*>(currentReply + sourceOffset));
+      *reinterpret_cast<FStringNoInit*>(destination + destinationOffset) = text;
+    };
+    assignIncomingText(0x634, 0x10);
+    assignIncomingText(0x734, 0x1c);
+    *reinterpret_cast<uint*>(serverData() + rowOffset + 0x28) &= 0xfffffffe;
+    *reinterpret_cast<uint*>(serverData() + rowOffset + 0x28) |= 2;
+    *reinterpret_cast<int*>(serverData() + rowOffset + 0xc) = 1000;
+    assignIncomingText(8, 0x5c);
+    assignIncomingText(0x41c, 0xac);
+    FString* version = reinterpret_cast<FString*>(serverData() + rowOffset + 0xac);
+    const int sameVersion = *version == *reinterpret_cast<FString*>(list + 0x168);
+    uint* versionFlags = reinterpret_cast<uint*>(serverData() + rowOffset + 0x28);
+    *versionFlags ^= (*versionFlags ^ (static_cast<uint>(sameVersion) << 3)) & 8;
+    reply = incoming();
+    rows = serverData();
+    word = *reinterpret_cast<uint*>(reply + 0x628);
+    *reinterpret_cast<uint*>(rows + rowOffset + 0x78) = word;
+    FArray* pingQueue = reinterpret_cast<FArray*>(R6GameServiceAddresses::GServiceArray4);
+    const int pingIndex = pingQueue->Add(1, 4);
+    uint* pingData = *reinterpret_cast<uint**>(pingQueue);
+    pingData[pingIndex] = *reinterpret_cast<uint*>(nativeFrame - 0x28);
+    reply = incoming();
+    if (*reinterpret_cast<int*>(reply + 0x620) > 0) {
+      LoadSerializedByteStore(store(), *reinterpret_cast<byte**>(reply + 0x61c));
+      char* textBuffer = reinterpret_cast<char*>(nativeFrame - 0x144);
+      uint& value = *reinterpret_cast<uint*>(nativeFrame - 0x18); // Deliberately retains stale/uninitialized data.
+      byte& flag = *reinterpret_cast<byte*>(nativeFrame - 0x11);
+      auto readText = [&](uint key, uint offset, bool clearOnFailure) {
+        bytes = 0x100;
+        const int status = static_cast<int>(ReadStoredBytes(store(), key, textBuffer, &bytes));
+        if (status >= 0) {
+          byte* destination = serverData() + rowOffset;
+          const TCHAR* text = appFromAnsi(textBuffer);
+          *reinterpret_cast<FStringNoInit*>(destination + offset) = text;
+        } else if (clearOnFailure) {
+          *reinterpret_cast<FStringNoInit*>(serverData() + rowOffset + offset) =
+              reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::GEmptyWideText);
+        }
+      };
+      auto readWord = [&](uint key, uint offset) {
+        if (static_cast<int>(ReadStoredWord(store(), key, &value)) >= 0)
+          *reinterpret_cast<uint*>(serverData() + rowOffset + offset) = value;
+      };
+      auto readFlag = [&](uint key, uint offset, uint shift, uint mask) {
+        if (static_cast<int>(ReadStoredWord(store(), key, &flag)) >= 0) {
+          uint* bits = reinterpret_cast<uint*>(serverData() + rowOffset + offset);
+          *bits ^= (*bits ^ (static_cast<uint>(flag) << shift)) & mask;
+        }
+      };
+      readText(0xfd, 0x68, true);
+      readText(0x64, 0x94, false);
+      readWord(0x6d, 0x74);
+      readFlag(0x66, 0x38, 0, 1);
+      readFlag(0x67, 0x38, 1, 2);
+      readWord(0x69, 0x3c);
+      readFlag(0x6a, 0x4c, 2, 4);
+      readText(0x65, 0x88, false);
+      // Native reuses the byte count from selector 0x65 for this read rather than resetting it.
+      if (static_cast<int>(ReadStoredBytes(store(), 0x68, &value, &bytes)) >= 0) {
+        uint* bits = reinterpret_cast<uint*>(serverData() + rowOffset + 0x4c);
+        *bits ^= (*bits ^ (static_cast<uint>(value == 0) << 6)) & 0x40;
+      }
+      readWord(0x6b, 0x58);
+      TCHAR* portText = reinterpret_cast<TCHAR*>(nativeFrame - 0x344);
+      // This uses value even when selector 0x6b failed. Formatting success, not the selector status, gates appends.
+      if (appSprintf(portText, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextI), value) >= 0) {
+        *reinterpret_cast<FString*>(serverData() + rowOffset + 0x10) += portText;
+        *reinterpret_cast<FString*>(serverData() + rowOffset + 0x1c) += portText;
+      }
+      if (static_cast<int>(ReadStoredWord(store(), 0x6c, &value)) >= 0) {
+        FString* gameType = reinterpret_cast<FString*>(nativeFrame - 0x44);
+        using GameTypeCall = FString* (__thiscall *)(UR6ModMgr*, FString*, uint);
+        GameTypeCall getName = *reinterpret_cast<GameTypeCall*>(
+            R6GameServiceAddresses::Engine_UR6ModMgr_eventGetGameTypeNameSlot);
+        FString* returned = getName(GModMgr, gameType, value);
+        byte* destination = serverData() + rowOffset;
+        *reinterpret_cast<byte*>(nativeFrame - 4) = 1;
+        *reinterpret_cast<FStringNoInit*>(destination + 0x7c) = *returned;
+        *reinterpret_cast<byte*>(nativeFrame - 4) = 0;
+        FString::~FString(gameType);
+      }
+      readWord(0xfc, 8);
+      readFlag(0xff, 0x4c, 10, 0x400);
+    }
+    *reinterpret_cast<uint*>(serverData() + rowOffset + 0x28) &= 0xfffffffb;
+    for (int favorite = 0; favorite < *reinterpret_cast<int*>(list + 0x54); ++favorite) {
+      FString* favorites = *reinterpret_cast<FString**>(list + 0x50);
+      FString* address = reinterpret_cast<FString*>(serverData() + rowOffset + 0x10);
+      if (*address == favorites[favorite])
+        *reinterpret_cast<uint*>(serverData() + rowOffset + 0x28) |= 4;
+    }
+    FMalloc* allocator = GMalloc; // Capture the allocator before the current pending-record pointer is read.
+    reply = incoming();
+    allocator->Free(*reinterpret_cast<void**>(reply + 0x61c));
+    if (*reinterpret_cast<int*>(reinterpret_cast<byte*>(pending) + 4) < 0)
+      appFailAssert(reinterpret_cast<const char*>(R6GameServiceAddresses::TextIndexArrayNum),
+          reinterpret_cast<const char*>(R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH), 0x202);
+    if (*reinterpret_cast<int*>(reinterpret_cast<byte*>(pending) + 4) < 1)
+      appFailAssert(reinterpret_cast<const char*>(R6GameServiceAddresses::TextIndexCountArrayNum),
+          reinterpret_cast<const char*>(R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH), 0x203);
+    pending->Remove(0, 1, 0x838); // Queue storage is current after frees/assert callbacks; payload already freed.
+    ++consumed;
+  }
+  const int returnValue = *reinterpret_cast<int*>(nativeFrame - 0x34);
+  __asm {
+    mov eax,returnValue
+    mov ecx,DWORD PTR [ebp-0xc]
+    pop edi
+    pop esi
+    mov DWORD PTR fs:0x0,ecx
+    pop ebx
+    mov esp,ebp
+    pop ebp
     ret
   }
 }
@@ -6499,181 +6170,98 @@ __declspec(naked) void __thiscall UR6GSServers::InitMSClient(void)
     push   eax
     mov    DWORD PTR fs:0x0,esp
     sub    esp,0x18
-    mov    eax,ds:R6GameServiceAddresses::GMSRouterIndex
-    push   ebx
-    push   esi
-    push   edi
-    xor    edi,edi
-    mov    DWORD PTR [ebp-0x10],esp
-    mov    DWORD PTR [ebp-0x14],ecx
-    mov    DWORD PTR [ebp-0x4],edi
-    mov    DWORD PTR [ebp-0x18],edi
-  Branch142:
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray1+0x4
-    cmp    DWORD PTR [ebp-0x18],ecx
-    jge    Branch148
-    test   edi,edi
-    jne    Branch149
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray1
-    imul   eax,eax,0x108
-    mov    ecx,R6GameServiceAddresses::GServiceString2
-    lea    esi,[eax+edx*1]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    mov    edi,DWORD PTR ds:R6GameServiceAddresses::Core__appToAnsiSlot
-    push   eax
-    call   edi
-    mov    ecx,DWORD PTR [ebp-0x14]
-    add    esp,0x4
-    add    ecx,0x1dc
-    mov    ebx,eax
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    push   eax
-    call   edi
-    mov    ecx,DWORD PTR [ebp-0x14]
-    add    esp,0x4
-    add    ecx,0x34
-    mov    edi,eax
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    push   eax
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appToAnsiSlot
-    add    esp,0x4
-    push   ebx
-    push   edi
-    push   eax
-    xor    eax,eax
-    mov    ax,WORD PTR [esi+0x100]
-    push   eax
-    push   esi
-    call   R6GameServiceAddresses::CreateMSClientSingleton
-    movzx  edi,al
-    mov    eax,ds:R6GameServiceAddresses::GServiceVerboseLogging
-    test   eax,eax
-    je     Branch143
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GMSRouterIndex
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    eax,DWORD PTR [edx]
-    mov    esi,DWORD PTR ds:R6GameServiceAddresses::Core_FOutputDevice_LogfSlot
-    push   ecx
-    push   R6GameServiceAddresses::WideTextMSClientInitializeGIRouterIndexI
-    push   eax
-    call   esi
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GMSRouterIndex
-    mov    ebx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray1
-    imul   ecx,ecx,0x108
-    add    ecx,ebx
-    add    esp,0xc
-    push   ecx
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appFromAnsiSlot
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::Core__GLogSlot
-    add    esp,0x4
-    push   eax
-    mov    eax,DWORD PTR [edx]
-    push   R6GameServiceAddresses::WideTextMSClientInitializeSzNameS
-    push   eax
-    call   esi
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GMSRouterIndex
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray1
-    imul   ecx,ecx,0x108
-    mov    eax,DWORD PTR [ecx+edx*1+0x100]
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    edx,DWORD PTR [ecx]
-    add    esp,0xc
-    push   eax
-    push   R6GameServiceAddresses::WideTextMSClientInitializeIPortI
-    push   edx
-    call   esi
-    mov    ecx,DWORD PTR [ebp-0x14]
-    add    esp,0xc
-    add    ecx,0x34
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    push   eax
-    mov    eax,ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    ecx,DWORD PTR [eax]
-    push   R6GameServiceAddresses::WideTextMSClientInitializeMSzUserIDS
-    push   ecx
-    call   esi
-    mov    ecx,DWORD PTR [ebp-0x14]
-    add    esp,0xc
-    add    ecx,0x1dc
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::Core__GLogSlot
-    push   eax
-    mov    eax,DWORD PTR [edx]
-    push   R6GameServiceAddresses::WideTextMSClientInitializeMSzPasswordS
-    push   eax
-    call   esi
-    add    esp,0xc
-  Branch143:
-    mov    eax,ds:R6GameServiceAddresses::GMSRouterIndex
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray1+0x4
-    inc    eax
-    cmp    eax,ecx
-    mov    ds:R6GameServiceAddresses::GMSRouterIndex,eax
-    jl     Branch144
-    xor    eax,eax
-    mov    ds:R6GameServiceAddresses::GMSRouterIndex,eax
-  Branch144:
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServerReplySerializedStore
-    test   ecx,ecx
-    jne    Branch147
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::Core__GMallocSlot
-    mov    ecx,DWORD PTR [ecx]
-    mov    edx,DWORD PTR [ecx]
-    push   R6GameServiceAddresses::WideTextNew
-    push   0x24
-    call   DWORD PTR [edx]
-    mov    ecx,eax
-    mov    DWORD PTR [ebp-0x20],ecx
-    test   ecx,ecx
-    mov    BYTE PTR [ebp-0x4],0x1
-    je     Branch145
-    call   R6GameServiceAddresses::InitializeSerializedByteStore
-    jmp    Branch146
-  Branch145:
-    xor    eax,eax
-  Branch146:
-    mov    ds:R6GameServiceAddresses::GServerReplySerializedStore,eax
-    mov    eax,ds:R6GameServiceAddresses::GMSRouterIndex
-    mov    BYTE PTR [ebp-0x4],0x0
-  Branch147:
-    inc    DWORD PTR [ebp-0x18]
-    jmp    Branch142
-  Branch148:
-    test   edi,edi
-    je     Branch152
-  Branch149:
-    mov    eax,ds:R6GameServiceAddresses::GServiceVerboseLogging
-    test   eax,eax
-    mov    DWORD PTR ds:0x10091e64,0x1
-    je     Branch151
-    mov    eax,ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    ecx,DWORD PTR [eax]
-    push   R6GameServiceAddresses::WideTextMSClientInitialized
-    push   ecx
-  Branch150:
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FOutputDevice_LogfSlot
-    add    esp,0x8
-  Branch151:
-    call   R6GameServiceAddresses::RegisterMSClientCallbacks
-    mov    ecx,DWORD PTR [ebp-0xc]
-    pop    edi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
+    push ebx
+    push esi
+    push edi
+    mov esi,ecx
+    mov DWORD PTR [ebp-0x10],esp
+  }
+  // These aliases bind existing native storage; inherited-frame handlers and their offsets remain unchanged.
+  byte* nativeFrame;
+  UR6GSServers* receiver;
+  __asm { mov nativeFrame,ebp }
+  __asm { mov receiver,esi }
+  int routerIndex = *reinterpret_cast<int*>(R6GameServiceAddresses::GMSRouterIndex);
+  *reinterpret_cast<UR6GSServers**>(nativeFrame - 0x14) = receiver;
+  *reinterpret_cast<int*>(nativeFrame - 4) = 0;
+  uint& attempts = *reinterpret_cast<uint*>(nativeFrame - 0x18);
+  attempts = 0;
+  uint connected = 0;
+  auto currentOwner = [&]() { return *reinterpret_cast<byte**>(nativeFrame - 0x14); };
+  while (static_cast<int>(attempts) < *reinterpret_cast<int*>(R6GameServiceAddresses::GServiceArray1 + 4)) {
+    if (connected) break;
+    byte* routerData = *reinterpret_cast<byte**>(R6GameServiceAddresses::GServiceArray1);
+    byte* router = routerData + static_cast<uint>(routerIndex) * 0x108U;
+    const TCHAR* version = **reinterpret_cast<FString*>(R6GameServiceAddresses::GServiceString2);
+    using ToAnsiCall = char* (__cdecl *)(const TCHAR*);
+    ToAnsiCall toAnsi = *reinterpret_cast<ToAnsiCall*>(R6GameServiceAddresses::Core__appToAnsiSlot);
+    char* versionAnsi = toAnsi(version);
+    FString* password = reinterpret_cast<FString*>(currentOwner() + 0x1dc);
+    const TCHAR* passwordText = **password;
+    char* passwordAnsi = toAnsi(passwordText);
+    const TCHAR* userText = **reinterpret_cast<FString*>(currentOwner() + 0x34);
+    char* userAnsi = appToAnsi(userText); // This conversion reloads the import; the first two share the cached target.
+    const uint port = *reinterpret_cast<ushort*>(router + 0x100);
+    connected = static_cast<byte>(CreateMSClientSingleton(reinterpret_cast<char*>(router), port,
+        userAnsi, passwordAnsi, versionAnsi));
+    if (*reinterpret_cast<int*>(R6GameServiceAddresses::GServiceVerboseLogging)) {
+      const int currentIndex = *reinterpret_cast<int*>(R6GameServiceAddresses::GMSRouterIndex);
+      FOutputDevice* logger = GLog;
+      using LogCall = void (__cdecl *)(FOutputDevice*, const TCHAR*, ...);
+      LogCall log = *reinterpret_cast<LogCall*>(R6GameServiceAddresses::Core_FOutputDevice_LogfSlot);
+      log(logger, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextMSClientInitializeGIRouterIndexI),
+          currentIndex);
+      routerIndex = *reinterpret_cast<int*>(R6GameServiceAddresses::GMSRouterIndex);
+      routerData = *reinterpret_cast<byte**>(R6GameServiceAddresses::GServiceArray1);
+      const TCHAR* routerName = appFromAnsi(reinterpret_cast<char*>(routerData + static_cast<uint>(routerIndex) * 0x108U));
+      log(GLog, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextMSClientInitializeSzNameS), routerName);
+      routerIndex = *reinterpret_cast<int*>(R6GameServiceAddresses::GMSRouterIndex);
+      routerData = *reinterpret_cast<byte**>(R6GameServiceAddresses::GServiceArray1);
+      const uint diagnosticPort = *reinterpret_cast<uint*>(routerData + static_cast<uint>(routerIndex) * 0x108U + 0x100);
+      log(GLog, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextMSClientInitializeIPortI), diagnosticPort);
+      userText = **reinterpret_cast<FString*>(currentOwner() + 0x34);
+      log(GLog, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextMSClientInitializeMSzUserIDS), userText);
+      passwordText = **reinterpret_cast<FString*>(currentOwner() + 0x1dc);
+      log(GLog, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextMSClientInitializeMSzPasswordS), passwordText);
+    }
+    uint advanced = *reinterpret_cast<uint*>(R6GameServiceAddresses::GMSRouterIndex) + 1U;
+    const int count = *reinterpret_cast<int*>(R6GameServiceAddresses::GServiceArray1 + 4);
+    *reinterpret_cast<uint*>(R6GameServiceAddresses::GMSRouterIndex) = advanced;
+    if (static_cast<int>(advanced) >= count) {
+      advanced = 0;
+      *reinterpret_cast<int*>(R6GameServiceAddresses::GMSRouterIndex) = 0;
+    }
+    routerIndex = static_cast<int>(advanced);
+    if (!*reinterpret_cast<void**>(R6GameServiceAddresses::GServerReplySerializedStore)) {
+      void* block = GMalloc->Malloc(0x24, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextNew));
+      *reinterpret_cast<void**>(nativeFrame - 0x20) = block;
+      *reinterpret_cast<byte*>(nativeFrame - 4) = 1;
+      void* constructed = block ? InitializeSerializedByteStore(reinterpret_cast<uint*>(block)) : nullptr;
+      *reinterpret_cast<void**>(R6GameServiceAddresses::GServerReplySerializedStore) = constructed;
+      routerIndex = *reinterpret_cast<int*>(R6GameServiceAddresses::GMSRouterIndex);
+      *reinterpret_cast<byte*>(nativeFrame - 4) = 0;
+    }
+    ++attempts;
+  }
+  const int logging = *reinterpret_cast<int*>(R6GameServiceAddresses::GServiceVerboseLogging);
+  if (connected) {
+    *reinterpret_cast<int*>(0x10091e64) = 1;
+    if (logging) GLog->Logf(reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextMSClientInitialized));
+  } else {
+    *reinterpret_cast<int*>(0x10091c14) = 3;
+    *reinterpret_cast<int*>(0x10091e68) = 0;
+    if (logging) GLog->Logf(reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextMSClientCouldNotConnectToServer));
+  }
+  RegisterMSClientCallbacks(); // Runs after either normal outcome, retaining already-published globals.
+  __asm {
+    mov ecx,DWORD PTR [ebp-0xc]
+    pop edi
+    pop esi
+    mov DWORD PTR fs:0x0,ecx
+    pop ebx
+    mov esp,ebp
+    pop ebp
     ret
-  Branch152:
-    mov    eax,ds:R6GameServiceAddresses::GServiceVerboseLogging
-    test   eax,eax
-    mov    DWORD PTR ds:0x10091c14,0x3
-    mov    DWORD PTR ds:0x10091e68,0x0
-    je     Branch151
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    eax,DWORD PTR [edx]
-    push   R6GameServiceAddresses::WideTextMSClientCouldNotConnectToServer
-    push   eax
-    jmp    Branch150
   }
 }
 
@@ -6781,454 +6369,185 @@ __declspec(naked) int __thiscall UR6GSServers::ReceiveAltInfo(void)
     push   eax
     mov    DWORD PTR fs:0x0,esp
     sub    esp,0x138
-    push   ebx
-    push   esi
-    xor    eax,eax
-    mov    esi,ecx
-    cmp    DWORD PTR ds:R6GameServiceAddresses::GServiceArray2+0x4,eax
-    push   edi
-    mov    DWORD PTR [ebp-0x10],esp
-    mov    DWORD PTR [ebp-0x4],eax
-    mov    DWORD PTR [ebp-0x20],0x100
-    mov    DWORD PTR [ebp-0x30],eax
-    jle    Branch170
-    mov    edi,DWORD PTR ds:R6GameServiceAddresses::GServiceArray2
-    xor    edx,edx
-    lea    esp,[esp+0x0]
-  Branch153:
-    cmp    eax,DWORD PTR [esi+0x60]
-    jge    Branch155
-    test   edx,edx
-    jne    Branch156
-    mov    ebx,DWORD PTR [esi+0x5c]
-    mov    ecx,eax
-    imul   ecx,ecx,0xdc
-    add    ecx,ebx
-    mov    ebx,DWORD PTR [ecx+0x4]
-    cmp    ebx,DWORD PTR [edi+0x4]
-    jne    Branch154
-    mov    ecx,DWORD PTR [ecx]
-    cmp    ecx,DWORD PTR [edi]
-    jne    Branch154
-    mov    edx,0x1
-    mov    DWORD PTR [ebp-0x28],eax
-  Branch154:
-    inc    eax
-    jmp    Branch153
-  Branch155:
-    test   edx,edx
-    je     Branch165
-  Branch156:
-    mov    eax,DWORD PTR [edi+0xc]
-    test   eax,eax
-    jle    Branch165
-    mov    edx,DWORD PTR [edi+0x8]
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServerReplySerializedStore
-    push   edx
-    mov    DWORD PTR [ebp-0x30],0x1
-    call   R6GameServiceAddresses::LoadSerializedByteStore
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServerReplySerializedStore
-    lea    eax,[ebp-0x18]
-    push   eax
-    push   0x6f
-    call   R6GameServiceAddresses::ReadStoredWord
-    mov    ebx,DWORD PTR [ebp-0x28]
-    mov    ecx,DWORD PTR [esi+0x5c]
-    imul   ebx,ebx,0xdc
-    mov    edx,DWORD PTR [ebp-0x18]
-    lea    eax,[ebp-0x18]
-    push   eax
-    mov    DWORD PTR [ecx+ebx*1+0x40],edx
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServerReplySerializedStore
-    push   0x70
-    call   R6GameServiceAddresses::ReadStoredWord
-    mov    ecx,DWORD PTR [esi+0x5c]
-    mov    edx,DWORD PTR [ebp-0x18]
-    lea    eax,[ebp-0x18]
-    push   eax
-    mov    DWORD PTR [ecx+ebx*1+0x44],edx
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServerReplySerializedStore
-    push   0x71
-    call   R6GameServiceAddresses::ReadStoredWord
-    mov    ecx,DWORD PTR [esi+0x5c]
-    mov    edx,DWORD PTR [ebp-0x18]
-    lea    eax,[ebp-0x11]
-    push   eax
-    mov    DWORD PTR [ecx+ebx*1+0x48],edx
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServerReplySerializedStore
-    push   0x72
-    call   R6GameServiceAddresses::ReadStoredWord
-    mov    ecx,DWORD PTR [esi+0x5c]
-    mov    edi,DWORD PTR [ecx+ebx*1+0x4c]
-    xor    edx,edx
-    mov    dl,BYTE PTR [ebp-0x11]
-    lea    eax,[ecx+ebx*1+0x4c]
-    xor    edx,edi
-    and    edx,0x1
-    xor    edi,edx
-    mov    DWORD PTR [eax],edi
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServerReplySerializedStore
-    lea    eax,[ebp-0x11]
-    push   eax
-    push   0x73
-    call   R6GameServiceAddresses::ReadStoredWord
-    mov    ecx,DWORD PTR [esi+0x5c]
-    movzx  edx,BYTE PTR [ebp-0x11]
-    mov    edi,DWORD PTR [ecx+ebx*1+0x4c]
-    lea    eax,[ecx+ebx*1+0x4c]
-    shl    edx,1
-    xor    edx,edi
-    and    edx,0x2
-    xor    edi,edx
-    mov    DWORD PTR [eax],edi
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServerReplySerializedStore
-    lea    eax,[ebp-0x11]
-    push   eax
-    push   0x74
-    call   R6GameServiceAddresses::ReadStoredWord
-    mov    ecx,DWORD PTR [esi+0x5c]
-    movzx  edx,BYTE PTR [ebp-0x11]
-    mov    edi,DWORD PTR [ecx+ebx*1+0x4c]
-    lea    eax,[ecx+ebx*1+0x4c]
-    shl    edx,0x3
-    xor    edx,edi
-    and    edx,0x8
-    xor    edi,edx
-    mov    DWORD PTR [eax],edi
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServerReplySerializedStore
-    lea    eax,[ebp-0x11]
-    push   eax
-    push   0x75
-    call   R6GameServiceAddresses::ReadStoredWord
-    mov    ecx,DWORD PTR [esi+0x5c]
-    movzx  edx,BYTE PTR [ebp-0x11]
-    lea    eax,[ecx+ebx*1+0x4c]
-    mov    edi,DWORD PTR [eax]
-    shl    edx,0x4
-    xor    edx,edi
-    and    edx,0x10
-    xor    edi,edx
-    mov    DWORD PTR [eax],edi
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServerReplySerializedStore
-    lea    eax,[ebp-0x11]
-    push   eax
-    push   0x76
-    call   R6GameServiceAddresses::ReadStoredWord
-    mov    ecx,DWORD PTR [esi+0x5c]
-    movzx  edx,BYTE PTR [ebp-0x11]
-    mov    edi,DWORD PTR [ecx+ebx*1+0x4c]
-    lea    eax,[ecx+ebx*1+0x4c]
-    shl    edx,0x5
-    xor    edx,edi
-    and    edx,0x20
-    xor    edi,edx
-    mov    DWORD PTR [eax],edi
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServerReplySerializedStore
-    lea    eax,[ebp-0x18]
-    push   eax
-    push   0x77
-    call   R6GameServiceAddresses::ReadStoredWord
-    mov    ecx,DWORD PTR [esi+0x5c]
-    mov    edx,DWORD PTR [ebp-0x18]
-    lea    eax,[ebp-0x18]
-    push   eax
-    mov    DWORD PTR [ecx+ebx*1+0x50],edx
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServerReplySerializedStore
-    push   0x78
-    call   R6GameServiceAddresses::ReadStoredWord
-    mov    ecx,DWORD PTR [esi+0x5c]
-    mov    edx,DWORD PTR [ebp-0x18]
-    lea    eax,[ebp-0x11]
-    push   eax
-    mov    DWORD PTR [ecx+ebx*1+0x54],edx
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServerReplySerializedStore
-    push   0x79
-    call   R6GameServiceAddresses::ReadStoredWord
-    mov    ecx,DWORD PTR [esi+0x5c]
-    mov    edi,DWORD PTR [ecx+ebx*1+0x4c]
-    xor    edx,edx
-    mov    dh,BYTE PTR [ebp-0x11]
-    lea    eax,[ecx+ebx*1+0x4c]
-    xor    edx,edi
-    and    edx,0x100
-    xor    edi,edx
-    mov    DWORD PTR [eax],edi
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServerReplySerializedStore
-    lea    eax,[ebp-0x11]
-    push   eax
-    push   0x7a
-    call   R6GameServiceAddresses::ReadStoredWord
-    mov    ecx,DWORD PTR [esi+0x5c]
-    movzx  edx,BYTE PTR [ebp-0x11]
-    mov    edi,DWORD PTR [ecx+ebx*1+0x4c]
-    lea    eax,[ecx+ebx*1+0x4c]
-    shl    edx,0x7
-    xor    edx,edi
-    and    edx,0x80
-    xor    edi,edx
-    mov    DWORD PTR [eax],edi
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServerReplySerializedStore
-    lea    eax,[ebp-0x11]
-    push   eax
-    push   0x7b
-    call   R6GameServiceAddresses::ReadStoredWord
-    mov    ecx,DWORD PTR [esi+0x5c]
-    movzx  edx,BYTE PTR [ebp-0x11]
-    lea    eax,[ecx+ebx*1+0x4c]
-    mov    ecx,DWORD PTR [eax]
-    shl    edx,0x9
-    xor    edx,ecx
-    and    edx,0x200
-    xor    ecx,edx
-    mov    DWORD PTR [eax],ecx
-    mov    eax,DWORD PTR [esi+0x5c]
-    push   0x0
-    lea    ecx,[eax+ebx*1+0xb8]
-    call   R6GameServiceAddresses::ResetStringPairArray18
-    xor    edi,edi
-    mov    DWORD PTR [ebp-0x1c],edi
-    mov    edi,edi
-  Branch157:
-    lea    ecx,[ebp-0x20]
-    push   ecx
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServerReplySerializedStore
-    lea    edx,[ebp-0x144]
-    push   edx
-    lea    eax,[edi+0x7c]
-    push   eax
-    mov    DWORD PTR [ebp-0x20],0x100
-    mov    BYTE PTR [ebp-0x144],0x0
-    call   R6GameServiceAddresses::ReadStoredBytes
-    test   eax,eax
-    mov    DWORD PTR [ebp-0x24],eax
-    jl     Branch158
-    mov    edi,DWORD PTR [ebp-0x28]
-    mov    ecx,DWORD PTR [esi+0x5c]
-    imul   edi,edi,0xdc
-    push   0x1
-    lea    ecx,[ecx+edi*1+0xb8]
-    push   0x18
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FArray_AddZeroedSlot
-    mov    ecx,DWORD PTR [esi+0x5c]
-    add    ecx,edi
-    mov    ecx,DWORD PTR [ecx+0xb8]
-    lea    ebx,[eax+eax*2]
-    shl    ebx,0x3
-    lea    edx,[ebp-0x144]
-    add    ecx,ebx
-    push   edx
-    mov    DWORD PTR [ebp-0x2c],ecx
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appFromAnsiSlot
-    mov    ecx,DWORD PTR [ebp-0x2c]
-    add    esp,0x4
-    push   eax
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__4FStringNoInitSlot2
-    mov    ecx,DWORD PTR [ebp-0x1c]
-    lea    eax,[ebp-0x18]
-    add    ecx,0x9c
-    push   eax
-    push   ecx
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServerReplySerializedStore
-    mov    DWORD PTR [ebp-0x20],0x100
-    mov    BYTE PTR [ebp-0x144],0x0
-    call   R6GameServiceAddresses::ReadStoredWord
-    mov    edx,DWORD PTR [ebp-0x18]
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::Engine__GModMgrSlot
-    mov    ecx,DWORD PTR [ecx]
-    push   edx
-    lea    eax,[ebp-0x44]
-    push   eax
-    call   DWORD PTR ds:R6GameServiceAddresses::Engine_UR6ModMgr_eventGetGameTypeNameSlot
-    mov    edx,DWORD PTR [esi+0x5c]
-    push   eax
-    mov    eax,DWORD PTR [edx+edi*1+0xb8]
-    lea    ecx,[eax+ebx*1+0xc]
-    mov    BYTE PTR [ebp-0x4],0x1
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__4FStringNoInitSlot3
-    lea    ecx,[ebp-0x44]
-    mov    BYTE PTR [ebp-0x4],0x0
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringSlot
-    mov    eax,DWORD PTR [ebp-0x24]
-    mov    edi,DWORD PTR [ebp-0x1c]
-  Branch158:
-    inc    edi
-    test   eax,eax
-    mov    DWORD PTR [ebp-0x1c],edi
-    jl     Branch159
-    cmp    edi,0x10
-    jl     Branch157
-  Branch159:
-    mov    ecx,DWORD PTR [ebp-0x28]
-    mov    edx,DWORD PTR [esi+0x5c]
-    imul   ecx,ecx,0xdc
-    lea    edi,[ecx+edx*1+0xc4]
-    mov    DWORD PTR [ebp-0x1c],0x0
-  Branch160:
-    mov    eax,DWORD PTR [ebp-0x1c]
-    cmp    eax,DWORD PTR [edi+0x4]
-    jge    Branch161
-    mov    ebx,eax
-    mov    eax,DWORD PTR [edi]
-    imul   ebx,ebx,0x2c
-    add    ebx,eax
-    mov    DWORD PTR [ebp-0x24],ebx
-    lea    ecx,[ebx+0x20]
-    mov    BYTE PTR [ebp-0x4],0x2
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringNoInitSlot
-    mov    ecx,ebx
-    mov    BYTE PTR [ebp-0x4],0x0
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringNoInitSlot
-    inc    DWORD PTR [ebp-0x1c]
-    jmp    Branch160
-  Branch161:
-    push   0x2c
-    mov    ecx,edi
-    mov    DWORD PTR [edi+0x4],0x0
-    mov    DWORD PTR [edi+0x8],0x0
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FArray_ReallocSlot
-    xor    edi,edi
-    mov    DWORD PTR [ebp-0x1c],edi
-  Branch162:
-    lea    ecx,[ebp-0x20]
-    push   ecx
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServerReplySerializedStore
-    lea    edx,[ebp-0x144]
-    push   edx
-    lea    eax,[edi+0xbc]
-    push   eax
-    mov    DWORD PTR [ebp-0x20],0x100
-    mov    BYTE PTR [ebp-0x144],0x0
-    call   R6GameServiceAddresses::ReadStoredBytes
-    test   eax,eax
-    mov    DWORD PTR [ebp-0x2c],eax
-    jl     Branch163
-    mov    edi,DWORD PTR [ebp-0x28]
-    mov    ecx,DWORD PTR [esi+0x5c]
-    imul   edi,edi,0xdc
-    push   0x1
-    lea    ecx,[ecx+edi*1+0xc4]
-    push   0x2c
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FArray_AddZeroedSlot
-    mov    ecx,DWORD PTR [esi+0x5c]
-    mov    ebx,eax
-    imul   ebx,ebx,0x2c
-    add    ecx,edi
-    mov    ecx,DWORD PTR [ecx+0xc4]
-    lea    edx,[ebp-0x144]
-    add    ecx,ebx
-    push   edx
-    mov    DWORD PTR [ebp-0x24],ecx
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appFromAnsiSlot
-    mov    ecx,DWORD PTR [ebp-0x24]
-    add    esp,0x4
-    push   eax
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__4FStringNoInitSlot2
-    mov    edx,DWORD PTR [ebp-0x1c]
-    lea    eax,[ebp-0x20]
-    push   eax
-    lea    ecx,[ebp-0x144]
-    push   ecx
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServerReplySerializedStore
-    add    edx,0xcc
-    push   edx
-    mov    DWORD PTR [ebp-0x20],0x100
-    mov    BYTE PTR [ebp-0x144],0x0
-    call   R6GameServiceAddresses::ReadStoredBytes
-    mov    eax,DWORD PTR [esi+0x5c]
-    add    eax,edi
-    mov    eax,DWORD PTR [eax+0xc4]
-    add    eax,ebx
-    mov    DWORD PTR [ebp-0x24],eax
-    lea    eax,[ebp-0x144]
-    push   eax
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appFromAnsiSlot
-    mov    ecx,DWORD PTR [ebp-0x24]
-    add    esp,0x4
-    push   eax
-    add    ecx,0x20
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__4FStringNoInitSlot2
-    mov    edx,DWORD PTR [ebp-0x1c]
-    lea    ecx,[ebp-0x18]
-    push   ecx
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServerReplySerializedStore
-    add    edx,0xdc
-    push   edx
-    mov    DWORD PTR [ebp-0x20],0x100
-    mov    BYTE PTR [ebp-0x144],0x0
-    call   R6GameServiceAddresses::ReadStoredWord
-    mov    eax,DWORD PTR [esi+0x5c]
-    mov    ecx,DWORD PTR [eax+edi*1+0xc4]
-    mov    edx,DWORD PTR [ebp-0x18]
-    mov    DWORD PTR [ecx+ebx*1+0xc],edx
-    mov    ecx,DWORD PTR [ebp-0x1c]
-    lea    eax,[ebp-0x18]
-    add    ecx,0xec
-    push   eax
-    push   ecx
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServerReplySerializedStore
-    mov    DWORD PTR [ebp-0x20],0x100
-    mov    BYTE PTR [ebp-0x144],0x0
-    call   R6GameServiceAddresses::ReadStoredWord
-    mov    edx,DWORD PTR [esi+0x5c]
-    mov    eax,DWORD PTR [edx+edi*1+0xc4]
-    mov    ecx,DWORD PTR [ebp-0x18]
-    mov    edi,DWORD PTR [ebp-0x1c]
-    mov    DWORD PTR [eax+ebx*1+0x18],ecx
-    mov    eax,DWORD PTR [ebp-0x2c]
-  Branch163:
-    inc    edi
-    test   eax,eax
-    mov    DWORD PTR [ebp-0x1c],edi
-    jl     Branch164
-    cmp    edi,0x10
-    jl     Branch162
-  Branch164:
-    mov    edi,DWORD PTR ds:R6GameServiceAddresses::GServiceArray2
-  Branch165:
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::Core__GMallocSlot
-    mov    ecx,DWORD PTR [edx]
-    mov    edx,DWORD PTR [edi+0x8]
-    mov    eax,DWORD PTR [ecx]
-    push   edx
-    call   DWORD PTR [eax+0x8]
-    mov    eax,ds:R6GameServiceAddresses::GServiceArray2+0x4
-    test   eax,eax
-    jge    Branch166
-    push   0x202
-    push   R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH
-    push   R6GameServiceAddresses::TextIndexArrayNum
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appFailAssertSlot
-    add    esp,0xc
-  Branch166:
-    cmp    DWORD PTR ds:R6GameServiceAddresses::GServiceArray2+0x4,0x1
-    jge    Branch167
-    push   0x203
-    push   R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH
-    push   R6GameServiceAddresses::TextIndexCountArrayNum
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appFailAssertSlot
-    add    esp,0xc
-  Branch167:
-    xor    eax,eax
-  Branch168:
-    cmp    eax,0x1
-    jge    Branch169
-    inc    eax
-    jmp    Branch168
-  Branch169:
-    push   0x10
-    push   0x1
-    push   0x0
-    mov    ecx,R6GameServiceAddresses::GServiceArray2
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FArray_RemoveSlot
-  Branch170:
-    mov    ecx,DWORD PTR [ebp-0xc]
-    mov    eax,DWORD PTR [ebp-0x30]
-    pop    edi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
+    push ebx
+    push esi
+    push edi
+    mov esi,ecx
+    mov DWORD PTR [ebp-0x10],esp
+  }
+  // These aliases bind existing native storage; inherited-frame handlers and their offsets remain unchanged.
+  byte* nativeFrame;
+  UR6GSServers* receiver;
+  __asm { mov nativeFrame,ebp }
+  __asm { mov receiver,esi }
+  byte* list = reinterpret_cast<byte*>(receiver);
+  FArray* pending = reinterpret_cast<FArray*>(R6GameServiceAddresses::GServiceArray2);
+  const int queued = *reinterpret_cast<int*>(reinterpret_cast<byte*>(pending) + 4);
+  *reinterpret_cast<int*>(nativeFrame - 4) = 0;
+  uint& bytes = *reinterpret_cast<uint*>(nativeFrame - 0x20);
+  bytes = 0x100;
+  *reinterpret_cast<int*>(nativeFrame - 0x30) = 0;
+  if (queued > 0) {
+    byte* reply = *reinterpret_cast<byte**>(pending);
+    int& selected = *reinterpret_cast<int*>(nativeFrame - 0x28);
+    bool found = false;
+    for (int i = 0; i < *reinterpret_cast<int*>(list + 0x60) && !found; ++i) {
+      byte* row = *reinterpret_cast<byte**>(list + 0x5c) + static_cast<uint>(i) * 0xdcU;
+      if (*reinterpret_cast<uint*>(row + 4) == *reinterpret_cast<uint*>(reply + 4) &&
+          *reinterpret_cast<uint*>(row) == *reinterpret_cast<uint*>(reply)) {
+        found = true;
+        selected = i;
+      }
+    }
+    auto rows = [&]() { return *reinterpret_cast<byte**>(list + 0x5c); };
+    auto store = [&]() { return *reinterpret_cast<void**>(R6GameServiceAddresses::GServerReplySerializedStore); };
+    if (found && *reinterpret_cast<int*>(reply + 0xc) > 0) {
+      byte* payload = *reinterpret_cast<byte**>(reply + 8);
+      *reinterpret_cast<int*>(nativeFrame - 0x30) = 1;
+      LoadSerializedByteStore(store(), payload);
+      uint& value = *reinterpret_cast<uint*>(nativeFrame - 0x18);
+      byte& flag = *reinterpret_cast<byte*>(nativeFrame - 0x11);
+      // The native ignores every scalar-reader status here. Failed reads can propagate stale scratch contents.
+      ReadStoredWord(store(), 0x6f, &value);
+      uint rowOffset = static_cast<uint>(selected) * 0xdcU;
+      *reinterpret_cast<uint*>(rows() + rowOffset + 0x40) = value;
+      ReadStoredWord(store(), 0x70, &value);
+      *reinterpret_cast<uint*>(rows() + rowOffset + 0x44) = value;
+      ReadStoredWord(store(), 0x71, &value);
+      *reinterpret_cast<uint*>(rows() + rowOffset + 0x48) = value;
+      auto readFlag = [&](uint key, uint shift, uint mask) {
+        ReadStoredWord(store(), key, &flag);
+        uint* bits = reinterpret_cast<uint*>(rows() + rowOffset + 0x4c);
+        const uint old = *bits;
+        *bits = old ^ ((old ^ (static_cast<uint>(flag) << shift)) & mask);
+      };
+      readFlag(0x72, 0, 1);
+      readFlag(0x73, 1, 2);
+      readFlag(0x74, 3, 8);
+      readFlag(0x75, 4, 0x10);
+      readFlag(0x76, 5, 0x20);
+      ReadStoredWord(store(), 0x77, &value);
+      *reinterpret_cast<uint*>(rows() + rowOffset + 0x50) = value;
+      ReadStoredWord(store(), 0x78, &value);
+      *reinterpret_cast<uint*>(rows() + rowOffset + 0x54) = value;
+      readFlag(0x79, 8, 0x100);
+      readFlag(0x7a, 7, 0x80);
+      readFlag(0x7b, 9, 0x200);
+      ResetStringPairArray18(rows() + rowOffset + 0xb8, 0);
+      uint& index = *reinterpret_cast<uint*>(nativeFrame - 0x1c);
+      index = 0;
+      char* textBuffer = reinterpret_cast<char*>(nativeFrame - 0x144);
+      do {
+        bytes = 0x100;
+        textBuffer[0] = 0;
+        const int status = static_cast<int>(ReadStoredBytes(store(), index + 0x7cU, textBuffer, &bytes));
+        *reinterpret_cast<int*>(nativeFrame - 0x24) = status;
+        if (status >= 0) {
+          rowOffset = static_cast<uint>(selected) * 0xdcU;
+          FArray* names = reinterpret_cast<FArray*>(rows() + rowOffset + 0xb8);
+          const int added = names->AddZeroed(0x18, 1);
+          byte* nameData = *reinterpret_cast<byte**>(rows() + rowOffset + 0xb8);
+          const uint nameOffset = static_cast<uint>(added) * 0x18U;
+          FStringNoInit* first = reinterpret_cast<FStringNoInit*>(nameData + nameOffset);
+          *reinterpret_cast<FStringNoInit**>(nativeFrame - 0x2c) = first;
+          const TCHAR* name = appFromAnsi(textBuffer);
+          first = *reinterpret_cast<FStringNoInit**>(nativeFrame - 0x2c);
+          *first = name;
+          bytes = 0x100;
+          textBuffer[0] = 0;
+          ReadStoredWord(store(), index + 0x9cU, &value);
+          FString* typeName = reinterpret_cast<FString*>(nativeFrame - 0x44);
+          using GameTypeCall = FString* (__thiscall *)(UR6ModMgr*, FString*, uint);
+          GameTypeCall getName = *reinterpret_cast<GameTypeCall*>(
+              R6GameServiceAddresses::Engine_UR6ModMgr_eventGetGameTypeNameSlot);
+          FString* returned = getName(GModMgr, typeName, value);
+          nameData = *reinterpret_cast<byte**>(rows() + rowOffset + 0xb8);
+          *reinterpret_cast<byte*>(nativeFrame - 4) = 1;
+          *reinterpret_cast<FStringNoInit*>(nameData + nameOffset + 0xc) = *returned;
+          *reinterpret_cast<byte*>(nativeFrame - 4) = 0;
+          FString::~FString(typeName);
+        }
+        ++index;
+        if (*reinterpret_cast<int*>(nativeFrame - 0x24) < 0) break;
+      } while (static_cast<int>(index) < 16);
+      rowOffset = static_cast<uint>(selected) * 0xdcU;
+      FArray* details = reinterpret_cast<FArray*>(rows() + rowOffset + 0xc4);
+      index = 0;
+      while (static_cast<int>(index) < *reinterpret_cast<int*>(reinterpret_cast<byte*>(details) + 4)) {
+        byte* data = *reinterpret_cast<byte**>(details);
+        byte* detail = data + index * 0x2cU;
+        *reinterpret_cast<byte**>(nativeFrame - 0x24) = detail;
+        *reinterpret_cast<byte*>(nativeFrame - 4) = 2;
+        FStringNoInit::~FStringNoInit(reinterpret_cast<FStringNoInit*>(detail + 0x20));
+        *reinterpret_cast<byte*>(nativeFrame - 4) = 0;
+        FStringNoInit::~FStringNoInit(reinterpret_cast<FStringNoInit*>(detail));
+        ++index;
+      }
+      *reinterpret_cast<int*>(reinterpret_cast<byte*>(details) + 4) = 0;
+      *reinterpret_cast<int*>(reinterpret_cast<byte*>(details) + 8) = 0;
+      details->Realloc(0x2c);
+      index = 0;
+      do {
+        bytes = 0x100;
+        textBuffer[0] = 0;
+        const int status = static_cast<int>(ReadStoredBytes(store(), index + 0xbcU, textBuffer, &bytes));
+        *reinterpret_cast<int*>(nativeFrame - 0x2c) = status;
+        if (status >= 0) {
+          rowOffset = static_cast<uint>(selected) * 0xdcU;
+          FArray* currentDetails = reinterpret_cast<FArray*>(rows() + rowOffset + 0xc4);
+          const int added = currentDetails->AddZeroed(0x2c, 1);
+          const uint detailOffset = static_cast<uint>(added) * 0x2cU;
+          byte* data = *reinterpret_cast<byte**>(rows() + rowOffset + 0xc4);
+          byte* detail = data + detailOffset;
+          *reinterpret_cast<byte**>(nativeFrame - 0x24) = detail;
+          const TCHAR* name = appFromAnsi(textBuffer);
+          detail = *reinterpret_cast<byte**>(nativeFrame - 0x24);
+          *reinterpret_cast<FStringNoInit*>(detail) = name;
+          bytes = 0x100;
+          textBuffer[0] = 0;
+          ReadStoredBytes(store(), index + 0xccU, textBuffer, &bytes); // Status ignored; the zeroed buffer is still used.
+          data = *reinterpret_cast<byte**>(rows() + rowOffset + 0xc4);
+          detail = data + detailOffset;
+          *reinterpret_cast<byte**>(nativeFrame - 0x24) = detail;
+          const TCHAR* trailing = appFromAnsi(textBuffer);
+          detail = *reinterpret_cast<byte**>(nativeFrame - 0x24);
+          *reinterpret_cast<FStringNoInit*>(detail + 0x20) = trailing;
+          bytes = 0x100;
+          textBuffer[0] = 0;
+          ReadStoredWord(store(), index + 0xdcU, &value);
+          data = *reinterpret_cast<byte**>(rows() + rowOffset + 0xc4);
+          *reinterpret_cast<uint*>(data + detailOffset + 0xc) = value;
+          bytes = 0x100;
+          textBuffer[0] = 0;
+          ReadStoredWord(store(), index + 0xecU, &value);
+          data = *reinterpret_cast<byte**>(rows() + rowOffset + 0xc4);
+          *reinterpret_cast<uint*>(data + detailOffset + 0x18) = value;
+        }
+        ++index;
+        if (*reinterpret_cast<int*>(nativeFrame - 0x2c) < 0) break;
+      } while (static_cast<int>(index) < 16);
+      reply = *reinterpret_cast<byte**>(pending); // Reload only after the populated-details path.
+    }
+    FMalloc* allocator = GMalloc;
+    allocator->Free(*reinterpret_cast<void**>(reply + 8)); // Unmatched or empty replies are freed and removed too.
+    if (*reinterpret_cast<int*>(reinterpret_cast<byte*>(pending) + 4) < 0)
+      appFailAssert(reinterpret_cast<const char*>(R6GameServiceAddresses::TextIndexArrayNum),
+          reinterpret_cast<const char*>(R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH), 0x202);
+    if (*reinterpret_cast<int*>(reinterpret_cast<byte*>(pending) + 4) < 1)
+      appFailAssert(reinterpret_cast<const char*>(R6GameServiceAddresses::TextIndexCountArrayNum),
+          reinterpret_cast<const char*>(R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH), 0x203);
+    pending->Remove(0, 1, 0x10);
+  }
+  const int returnValue = *reinterpret_cast<int*>(nativeFrame - 0x30);
+  __asm {
+    mov eax,returnValue
+    mov ecx,DWORD PTR [ebp-0xc]
+    pop edi
+    pop esi
+    mov DWORD PTR fs:0x0,ecx
+    pop ebx
+    mov esp,ebp
+    pop ebp
     ret
   }
 }
@@ -7346,83 +6665,71 @@ __declspec(naked) void __thiscall UR6GSServers::ProcessMSClientInitRequest(void)
     push   eax
     mov    DWORD PTR fs:0x0,esp
     sub    esp,0x18
-    mov    eax,ds:0x10091c14
-    push   ebx
-    xor    ebx,ebx
-    push   esi
-    dec    eax
-    cmp    eax,0x5
-    push   edi
-    mov    DWORD PTR [ebp-0x10],esp
-    mov    esi,ecx
-    mov    DWORD PTR [ebp-0x4],ebx
-    ja     Branch171
-    jmp    DWORD PTR [eax*4+R6GameServiceAddresses::GProcessMSClientInitRequestSwitch]
-    call   R6GameServiceAddresses::ReadCycleTimeSeconds
-    fstp   DWORD PTR ds:0x100933c8
-    mov    ecx,esi
-    mov    DWORD PTR ds:0x10091c14,0x2
-    mov    DWORD PTR ds:0x10091c0c,ebx
-    call   R6GameServiceAddresses::UR6GSServers_InitMSClient
-  Branch171:
-    mov    ecx,DWORD PTR [ebp-0xc]
-    mov    DWORD PTR fs:0x0,ecx
-    pop    edi
-    pop    esi
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
-    ret
-    call   R6GameServiceAddresses::ReadCycleTimeSeconds
-    fsub   DWORD PTR ds:0x100933c8
-    fcomp  DWORD PTR [esi+0x198]
-    fnstsw ax
-    test   ah,0x41
-    jne    Branch171
-    mov    DWORD PTR ds:0x10091c14,0x3
-    mov    ecx,DWORD PTR [ebp-0xc]
-    mov    DWORD PTR fs:0x0,ecx
-    pop    edi
-    pop    esi
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
-    ret
-    mov    ecx,esi
-    call   R6GameServiceAddresses::UR6GSServers_UnInitMSClient
-    mov    DWORD PTR ds:0x10091c14,ebx
-    mov    DWORD PTR ds:0x10091c0c,0x3
-    mov    ecx,DWORD PTR [ebp-0xc]
-    mov    DWORD PTR fs:0x0,ecx
-    pop    edi
-    pop    esi
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
-    ret
-    mov    DWORD PTR ds:0x10091e6c,0x1
-    or     DWORD PTR [esi+0x194],0x80
-    push   R6GameServiceAddresses::WideTextLOGINSUCCESS
-    lea    ecx,[ebp-0x24]
-    mov    DWORD PTR ds:0x10091c14,ebx
-    mov    DWORD PTR ds:0x10091c0c,0x2
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot2
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::Engine__GR6GameManagerSlot
-    mov    ecx,DWORD PTR [ecx]
-    lea    eax,[ebp-0x24]
-    push   eax
-    mov    BYTE PTR [ebp-0x4],0x1
-    call   DWORD PTR ds:R6GameServiceAddresses::Engine_UR6AbstractGameManager_eventGMProcessMsgSlot
-    lea    ecx,[ebp-0x24]
-    mov    BYTE PTR [ebp-0x4],bl
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringSlot
-    mov    ecx,DWORD PTR [ebp-0xc]
-    pop    edi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
+    push ebx
+    push esi
+    push edi
+    mov esi,ecx
+    mov DWORD PTR [ebp-0x10],esp
+  }
+  // These aliases bind existing native storage; inherited-frame handlers and their offsets remain unchanged.
+  byte* nativeFrame;
+  UR6GSServers* receiver;
+  __asm { mov nativeFrame,ebp }
+  __asm { mov receiver,esi }
+  const uint request = *reinterpret_cast<uint*>(0x10091c14);
+  *reinterpret_cast<int*>(nativeFrame - 4) = 0;
+  switch (request) {
+  case 1:
+    __asm { call R6GameServiceAddresses::ReadCycleTimeSeconds }
+    __asm { fstp DWORD PTR ds:0x100933c8 }
+    *reinterpret_cast<int*>(0x10091c14) = 2;
+    *reinterpret_cast<int*>(0x10091c0c) = 0;
+    receiver->InitMSClient();
+    break;
+  case 2: {
+    // ST(0) elapsed time is compared without a float spill. Unordered/equal do not time out.
+    byte timedOut;
+    __asm {
+      call R6GameServiceAddresses::ReadCycleTimeSeconds
+      fsub DWORD PTR ds:0x100933c8
+      fcomp DWORD PTR [esi+0x198]
+      fnstsw ax
+      test ah,0x41
+      sete timedOut
+    }
+    if (timedOut) *reinterpret_cast<int*>(0x10091c14) = 3;
+    break;
+  }
+  case 3:
+    receiver->UnInitMSClient();
+    *reinterpret_cast<int*>(0x10091c14) = 0;
+    *reinterpret_cast<int*>(0x10091c0c) = 3;
+    break;
+  case 6: {
+    *reinterpret_cast<int*>(0x10091e6c) = 1;
+    *reinterpret_cast<uint*>(reinterpret_cast<byte*>(receiver) + 0x194) |= 0x80;
+    *reinterpret_cast<int*>(0x10091c14) = 0;
+    *reinterpret_cast<int*>(0x10091c0c) = 2;
+    FString* message = reinterpret_cast<FString*>(nativeFrame - 0x24);
+    FString::FString(message, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextLOGINSUCCESS));
+    UR6AbstractGameManager* manager = GR6GameManager;
+    *reinterpret_cast<byte*>(nativeFrame - 4) = 1;
+    manager->eventGMProcessMsg(*message);
+    *reinterpret_cast<byte*>(nativeFrame - 4) = 0;
+    FString::~FString(message);
+    break;
+  }
+  default:
+    break; // States 4/5 and all out-of-range DWORDs do no work.
+  }
+  __asm {
+    mov ecx,DWORD PTR [ebp-0xc]
+    pop edi
+    pop esi
+    mov DWORD PTR fs:0x0,ecx
+    pop ebx
+    mov esp,ebp
+    pop ebp
     ret
   }
 }
@@ -7532,62 +6839,44 @@ __declspec(naked) void __thiscall UR6GSServers::RefreshServers(UR6GSServers *thi
     push   eax
     mov    DWORD PTR fs:0x0,esp
     sub    esp,0xc
-    mov    eax,ds:0x10091e6c
-    test   eax,eax
-    push   ebx
-    push   esi
-    push   edi
-    mov    DWORD PTR [ebp-0x10],esp
-    mov    esi,ecx
-    mov    DWORD PTR [ebp-0x4],0x0
-    je    Branch172
-    mov    eax,ds:0x10091d30
-    test   eax,eax
-    jne    Branch172
-    mov    eax,ds:0x10091d38
-    test   eax,eax
-    jne    Branch172
-    call   R6GameServiceAddresses::ReadCycleTimeSeconds
-    fstp   DWORD PTR ds:R6GameServiceAddresses::NativeFloat0_0
-    mov    DWORD PTR ds:0x10091d38,0x1
-    mov    DWORD PTR ds:0x10091bf8,0x0
-    mov    eax,DWORD PTR [esi+0x60]
-    push   eax
-    push   0x0
-    lea    ecx,[esi+0x5c]
-    call   R6GameServiceAddresses::RemoveSTGameServerRange
-    mov    eax,DWORD PTR [esi+0x84]
-    push   eax
-    push   0x0
-    lea    ecx,[esi+0x80]
-    call   R6GameServiceAddresses::RemoveFourByteArrayElements
-    mov    ecx,R6GameServiceAddresses::GServiceString1
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    push   eax
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appToAnsiSlot
-    add    esp,0x4
-    push   eax
-    call   R6GameServiceAddresses::ForwardMSClientOperation1
-    mov    eax,ds:R6GameServiceAddresses::GServiceVerboseLogging
-    test   eax,eax
-    je    Branch172
-    mov    ecx,R6GameServiceAddresses::GServiceString1
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    push   eax
-    mov    eax,ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    ecx,DWORD PTR [eax]
-    push   R6GameServiceAddresses::WideTextMSClientRequestGameServersMSzGameServiceGameNameS
-    push   ecx
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FOutputDevice_LogfSlot
-    add    esp,0xc
-  Branch172:
-    mov    ecx,DWORD PTR [ebp-0xc]
-    pop    edi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
+    push ebx
+    push esi
+    push edi
+    mov esi,ecx
+    mov DWORD PTR [ebp-0x10],esp
+  }
+  // These aliases bind existing native storage; inherited-frame handlers and their offsets remain unchanged.
+  byte* nativeFrame;
+  UR6GSServers* receiver;
+  __asm { mov nativeFrame,ebp }
+  __asm { mov receiver,esi }
+  const int serviceEnabled = *reinterpret_cast<int*>(0x10091e6c);
+  *reinterpret_cast<int*>(nativeFrame - 4) = 0;
+  if (serviceEnabled && !*reinterpret_cast<int*>(0x10091d30) && !*reinterpret_cast<int*>(0x10091d38)) {
+    // The clock returns ST(0); the native single-precision spill precedes all refresh publications.
+    __asm { call R6GameServiceAddresses::ReadCycleTimeSeconds }
+    __asm { fstp DWORD PTR ds:R6GameServiceAddresses::NativeFloat0_0 }
+    *reinterpret_cast<int*>(0x10091d38) = 1;
+    *reinterpret_cast<int*>(0x10091bf8) = 0;
+    byte* list = reinterpret_cast<byte*>(receiver);
+    RemoveSTGameServerRange(list + 0x5c, 0, *reinterpret_cast<int*>(list + 0x60));
+    RemoveFourByteArrayElements(list + 0x80, 0, *reinterpret_cast<int*>(list + 0x84));
+    FString* gameName = reinterpret_cast<FString*>(R6GameServiceAddresses::GServiceString1);
+    ForwardMSClientOperation1(appToAnsi(**gameName));
+    if (*reinterpret_cast<int*>(R6GameServiceAddresses::GServiceVerboseLogging)) {
+      const TCHAR* currentName = **gameName;
+      GLog->Logf(reinterpret_cast<const TCHAR*>(
+          R6GameServiceAddresses::WideTextMSClientRequestGameServersMSzGameServiceGameNameS), currentName);
+    }
+  }
+  __asm {
+    mov ecx,DWORD PTR [ebp-0xc]
+    pop edi
+    pop esi
+    mov DWORD PTR fs:0x0,ecx
+    pop ebx
+    mov esp,ebp
+    pop ebp
     ret
   }
 }
@@ -7653,36 +6942,40 @@ __declspec(naked) void __thiscall UR6GSServers::execRefreshServers(UR6GSServers 
     push   eax
     mov    DWORD PTR fs:0x0,esp
     sub    esp,0xc
-    mov    eax,DWORD PTR [ebp+0x8]
-    mov    edx,DWORD PTR [eax+0xc]
-    push   ebx
-    inc    edx
-    push   esi
-    mov    esi,ecx
-    mov    DWORD PTR [eax+0xc],edx
-    cmp    BYTE PTR [edx],0x42
-    push   edi
-    mov    DWORD PTR [ebp-0x10],esp
-    mov    DWORD PTR [ebp-0x4],0x0
-    jne    Branch173
-    mov    ecx,DWORD PTR [eax+0x8]
-    inc    edx
-    push   0x0
-    mov    DWORD PTR [eax+0xc],edx
-    push   eax
-    mov    eax,ds:R6GameServiceAddresses::Core__GNativesSlot
-    call   DWORD PTR [eax+0x108]
-  Branch173:
-    mov    ecx,esi
-    call   R6GameServiceAddresses::UR6GSServers_RefreshServers
-    mov    ecx,DWORD PTR [ebp-0xc]
-    pop    edi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
-    ret    0x8
+    push ebx
+    push esi
+    push edi
+    mov esi,ecx
+    mov DWORD PTR [ebp-0x10],esp
+  }
+  // Aliases below refer to the retained native frame; they do not define a new exception layout.
+  byte* nativeFrame;
+  UR6GSServers* receiver;
+  __asm { mov nativeFrame,ebp }
+  __asm { mov receiver,esi }
+  FFrame* executionStack = *reinterpret_cast<FFrame**>(nativeFrame + 8);
+  byte*& code = *reinterpret_cast<byte**>(reinterpret_cast<byte*>(executionStack) + 0xc);
+  byte* next = code + 1;
+  code = next;
+  const bool debugInfo = *next == 0x42;
+  *reinterpret_cast<int*>(nativeFrame - 4) = 0;
+  if (debugInfo) {
+    UObject* context = *reinterpret_cast<UObject**>(reinterpret_cast<byte*>(executionStack) + 8);
+    code = next + 1;
+    using ScriptNative = void (__thiscall *)(UObject*, FFrame*, void*);
+    ScriptNative* natives = *reinterpret_cast<ScriptNative**>(R6GameServiceAddresses::Core__GNativesSlot);
+    natives[0x42](context, executionStack, nullptr);
+  }
+  receiver->RefreshServers(); // Void script native leaves the result storage untouched.
+  __asm {
+    mov ecx,DWORD PTR [ebp-0xc]
+    pop edi
+    pop esi
+    mov DWORD PTR fs:0x0,ecx
+    pop ebx
+    mov esp,ebp
+    pop ebp
+    ret 0x8
   }
 }
 
@@ -7762,178 +7055,145 @@ __declspec(naked) void __thiscall UR6GSServers::GameServiceManager(int msClientA
     push   eax
     mov    DWORD PTR fs:0x0,esp
     sub    esp,0xc
-    mov    eax,ds:R6GameServiceAddresses::GMSClientInitialized
-    push   ebx
-    push   esi
-    xor    ebx,ebx
-    cmp    eax,ebx
-    push   edi
-    mov    DWORD PTR [ebp-0x10],esp
-    mov    esi,ecx
-    mov    DWORD PTR [ebp-0x4],ebx
-    je     Branch186
-    mov    eax,DWORD PTR [ebp+0x14]
-    mov    ecx,DWORD PTR [ebp+0x10]
-    mov    edx,DWORD PTR [ebp+0xc]
-    push   eax
-    mov    eax,DWORD PTR [ebp+0x8]
-    push   ecx
-    push   edx
-    push   eax
-    mov    ecx,esi
-    call   R6GameServiceAddresses::UR6GSServers_PollCallbacks
-    mov    ecx,esi
-    call   R6GameServiceAddresses::UR6GSServers_ReceiveServer
-    cmp    eax,ebx
-    je     Branch174
-    or     DWORD PTR [esi+0x48],0x2
-  Branch174:
-    mov    ecx,esi
-    call   R6GameServiceAddresses::UR6GSServers_ReceiveAltInfo
-    cmp    eax,ebx
-    je     Branch175
-    or     DWORD PTR [esi+0x48],0x4
-  Branch175:
-    cmp    DWORD PTR ds:0x10091c20,ebx
-    je     Branch176
-    or     DWORD PTR [esi+0x48],0x2
-  Branch176:
-    xor    edi,edi
-    jmp    Branch177
-    lea    ebx,[ebx+0x0]
-  Branch177:
-    mov    eax,ds:R6GameServiceAddresses::GServiceArray4+0x4
-    cmp    edi,eax
-    jge    Branch178
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray4
-    mov    eax,DWORD PTR [ecx+edi*4]
-    mov    edx,DWORD PTR [esi+0x5c]
-    imul   eax,eax,0xdc
-    sub    esp,0xc
-    add    eax,edx
-    add    eax,0x10
-    mov    ecx,esp
-    mov    DWORD PTR [ebp+0x14],esp
-    push   eax
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot3
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray4
-    mov    eax,DWORD PTR [edx+edi*4]
-    mov    edx,DWORD PTR [esi+0x5c]
-    imul   eax,eax,0xdc
-    sub    esp,0xc
-    add    eax,edx
-    add    eax,0x5c
-    mov    ecx,esp
-    mov    DWORD PTR [ebp+0xc],esp
-    push   eax
-    mov    BYTE PTR [ebp-0x4],0x1
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot3
-    mov    ecx,esi
-    mov    BYTE PTR [ebp-0x4],0x0
-    call   R6GameServiceAddresses::UR6GSServers_PingRequest
-    inc    edi
-    jmp    Branch177
-  Branch178:
-    cmp    eax,ebx
-    mov    edi,eax
-    jge    Branch180
-    mov    ebx,DWORD PTR ds:R6GameServiceAddresses::Core__appFailAssertSlot
-    push   0x202
-    push   R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH
-    push   R6GameServiceAddresses::TextIndexArrayNum
-    call   ebx
-    mov    eax,ds:R6GameServiceAddresses::GServiceArray4+0x4
-    add    esp,0xc
-    cmp    edi,eax
-    jle    Branch179
-    push   0x203
-    push   R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH
-    push   R6GameServiceAddresses::TextIndexCountArrayNum
-    call   ebx
-    add    esp,0xc
-  Branch179:
-    xor    ebx,ebx
-  Branch180:
-    push   0x4
-    push   edi
-    push   ebx
-    mov    ecx,R6GameServiceAddresses::GServiceArray4
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FArray_RemoveSlot
-    cmp    DWORD PTR ds:0x10091d38,ebx
-    je     Branch182
-    cmp    DWORD PTR ds:0x10091bf8,ebx
-    jne    Branch181
-    call   R6GameServiceAddresses::ReadCycleTimeSeconds
-    fld    DWORD PTR ds:R6GameServiceAddresses::NativeFloat0_0
-    fsubr  st,st(1)
-    fcomp  DWORD PTR [esi+0x198]
-    fnstsw ax
-    fstp   st(0)
-    test   ah,0x41
-    jne    Branch184
-  Branch181:
-    cmp    DWORD PTR ds:0x10091d3c,ebx
-    jne    Branch184
-    mov    DWORD PTR ds:0x10091d38,ebx
-    or     DWORD PTR [esi+0x194],0x400
-    jmp    Branch184
-  Branch182:
-    cmp    DWORD PTR ds:0x10091d30,ebx
-    je     Branch184
-    cmp    DWORD PTR ds:0x10091bf8,ebx
-    jne    Branch183
-    call   R6GameServiceAddresses::ReadCycleTimeSeconds
-    fld    DWORD PTR ds:R6GameServiceAddresses::NativeFloat0_0
-    fsubr  st,st(1)
-    fcomp  DWORD PTR [esi+0x198]
-    fnstsw ax
-    fstp   st(0)
-    test   ah,0x41
-    jne    Branch184
-  Branch183:
-    mov    DWORD PTR ds:0x10091d30,ebx
-    mov    edi,DWORD PTR [esi+0x194]
-    mov    eax,DWORD PTR [esi+0x44]
-    push   0x1
-    or     edi,0x400
-    push   eax
-    lea    ecx,[esi+0x5c]
-    mov    DWORD PTR [esi+0x194],edi
-    call   R6GameServiceAddresses::RemoveSTGameServerRange
-    mov    ecx,DWORD PTR [esi+0x44]
-    push   0x1
-    push   ecx
-    lea    ecx,[esi+0x80]
-    call   R6GameServiceAddresses::RemoveFourByteArrayElements
-  Branch184:
-    cmp    DWORD PTR [ebp+0x10],ebx
-    je     Branch185
-    mov    ecx,esi
-    call   R6GameServiceAddresses::UR6GSServers_ReceiveValidation
-  Branch185:
-    mov    ecx,esi
-    call   R6GameServiceAddresses::UR6GSServers_ProcessMSClientInitRequest
-    mov    ecx,esi
-    call   R6GameServiceAddresses::UR6GSServers_ProcessRegServerLoginRouterRequest
-    mov    ecx,esi
-    call   R6GameServiceAddresses::UR6GSServers_ProcessRegServerGetLobbiesRequest
-    mov    ecx,esi
-    call   R6GameServiceAddresses::UR6GSServers_ProcessRegServerRegOnLobbyRequest
-    mov    ecx,esi
-    call   R6GameServiceAddresses::UR6GSServers_ProcessRegServerLoginRequest
-    mov    ecx,esi
-    call   R6GameServiceAddresses::UR6GSServers_ProcessRegServerUpdateRequest
-    mov    ecx,esi
-    call   R6GameServiceAddresses::UR6GSServers_ProcessJoinServerRequest
-  Branch186:
-    mov    ecx,DWORD PTR [ebp-0xc]
-    pop    edi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
-    ret    0x10
+    push ebx
+    push esi
+    push edi
+    mov esi,ecx
+    mov DWORD PTR [ebp-0x10],esp
+  }
+  // These aliases bind existing native storage; inherited-frame handlers and their offsets remain unchanged.
+  byte* nativeFrame;
+  UR6GSServers* receiver;
+  __asm { mov nativeFrame,ebp }
+  __asm { mov receiver,esi }
+  const int networkInitialized = *reinterpret_cast<int*>(R6GameServiceAddresses::GMSClientInitialized);
+  *reinterpret_cast<int*>(nativeFrame - 4) = 0;
+  if (networkInitialized) {
+    const int gsInput = *reinterpret_cast<int*>(nativeFrame + 0x14);
+    const int regInput = *reinterpret_cast<int*>(nativeFrame + 0x10);
+    const int keyInput = *reinterpret_cast<int*>(nativeFrame + 0xc);
+    const int msInput = *reinterpret_cast<int*>(nativeFrame + 8);
+    receiver->PollCallbacks(msInput, keyInput, regInput, gsInput);
+    byte* list = reinterpret_cast<byte*>(receiver);
+    if (receiver->ReceiveServer()) *reinterpret_cast<uint*>(list + 0x48) |= 2;
+    if (receiver->ReceiveAltInfo()) *reinterpret_cast<uint*>(list + 0x48) |= 4;
+    if (*reinterpret_cast<int*>(0x10091c20)) *reinterpret_cast<uint*>(list + 0x48) |= 2;
+    FArray* pingQueue = reinterpret_cast<FArray*>(R6GameServiceAddresses::GServiceArray4);
+    uint ping = 0;
+    int queued;
+    for (;;) {
+      queued = *reinterpret_cast<int*>(reinterpret_cast<byte*>(pingQueue) + 4);
+      if (static_cast<int>(ping) >= queued) break;
+      uint* pending = *reinterpret_cast<uint**>(pingQueue);
+      const uint serverIndex = pending[ping];
+      byte* servers = *reinterpret_cast<byte**>(list + 0x5c);
+      FString* address = reinterpret_cast<FString*>(servers + serverIndex * 0xdcU + 0x10);
+      // Two outgoing FString values transfer to PingRequest. State 1 protects only the first during the second copy.
+      uint currentPing = ping;
+      __asm {
+        mov eax,address
+        sub esp,0xc
+        mov ecx,esp
+        mov DWORD PTR [ebp+0x14],esp
+        push eax
+        call DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot3
+      }
+      pending = *reinterpret_cast<uint**>(pingQueue);
+      const uint refreshedIndex = pending[currentPing];
+      servers = *reinterpret_cast<byte**>(list + 0x5c);
+      FString* name = reinterpret_cast<FString*>(servers + refreshedIndex * 0xdcU + 0x5c);
+      __asm {
+        mov eax,name
+        sub esp,0xc
+        mov ecx,esp
+        mov DWORD PTR [ebp+0xc],esp
+        push eax
+        mov BYTE PTR [ebp-0x4],0x1
+        call DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot3
+        mov ecx,receiver
+        mov BYTE PTR [ebp-0x4],0x0
+        call R6GameServiceAddresses::UR6GSServers_PingRequest
+      }
+      ++ping;
+    }
+    const int removeCount = queued;
+    if (queued < 0) {
+      using AssertCall = void (__cdecl *)(const char*, const char*, int);
+      AssertCall fail = *reinterpret_cast<AssertCall*>(R6GameServiceAddresses::Core__appFailAssertSlot);
+      fail(reinterpret_cast<const char*>(R6GameServiceAddresses::TextIndexArrayNum),
+          reinterpret_cast<const char*>(R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH), 0x202);
+      if (removeCount > *reinterpret_cast<int*>(reinterpret_cast<byte*>(pingQueue) + 4))
+        fail(reinterpret_cast<const char*>(R6GameServiceAddresses::TextIndexCountArrayNum),
+            reinterpret_cast<const char*>(R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH), 0x203);
+    }
+    pingQueue->Remove(0, removeCount, 4); // The captured count survives assertion callbacks.
+    if (*reinterpret_cast<int*>(0x10091d38)) {
+      bool completed = *reinterpret_cast<int*>(0x10091bf8) != 0;
+      if (!completed) {
+        byte expired;
+        // Elapsed value remains extended; equal/unordered do not expire. Restore the clock's remaining ST(0).
+        __asm {
+          call R6GameServiceAddresses::ReadCycleTimeSeconds
+          fld DWORD PTR ds:R6GameServiceAddresses::NativeFloat0_0
+          fsubr st,st(1)
+          mov esi,receiver
+          fcomp DWORD PTR [esi+0x198]
+          fnstsw ax
+          fstp st(0)
+          test ah,0x41
+          sete expired
+        }
+        completed = expired != 0;
+      }
+      if (completed && !*reinterpret_cast<int*>(0x10091d3c)) {
+        *reinterpret_cast<int*>(0x10091d38) = 0;
+        *reinterpret_cast<uint*>(list + 0x194) |= 0x400;
+      }
+    } else if (*reinterpret_cast<int*>(0x10091d30)) {
+      bool completed = *reinterpret_cast<int*>(0x10091bf8) != 0;
+      if (!completed) {
+        byte expired;
+        __asm {
+          call R6GameServiceAddresses::ReadCycleTimeSeconds
+          fld DWORD PTR ds:R6GameServiceAddresses::NativeFloat0_0
+          fsubr st,st(1)
+          mov esi,receiver
+          fcomp DWORD PTR [esi+0x198]
+          fnstsw ax
+          fstp st(0)
+          test ah,0x41
+          sete expired
+        }
+        completed = expired != 0;
+      }
+      if (completed) {
+        *reinterpret_cast<int*>(0x10091d30) = 0;
+        uint flags = *reinterpret_cast<uint*>(list + 0x194);
+        const int serverIndex = *reinterpret_cast<int*>(list + 0x44);
+        *reinterpret_cast<uint*>(list + 0x194) = flags | 0x400;
+        RemoveSTGameServerRange(list + 0x5c, serverIndex, 1);
+        const int currentIndex = *reinterpret_cast<int*>(list + 0x44);
+        RemoveFourByteArrayElements(list + 0x80, currentIndex, 1);
+      }
+    }
+    if (*reinterpret_cast<int*>(nativeFrame + 0x10)) receiver->ReceiveValidation();
+    receiver->ProcessMSClientInitRequest();
+    receiver->ProcessRegServerLoginRouterRequest();
+    receiver->ProcessRegServerGetLobbiesRequest();
+    receiver->ProcessRegServerRegOnLobbyRequest();
+    receiver->ProcessRegServerLoginRequest();
+    receiver->ProcessRegServerUpdateRequest();
+    receiver->ProcessJoinServerRequest();
+  }
+  __asm {
+    mov ecx,DWORD PTR [ebp-0xc]
+    pop edi
+    pop esi
+    mov DWORD PTR fs:0x0,ecx
+    pop ebx
+    mov esp,ebp
+    pop ebp
+    ret 0x10
   }
 }
 
@@ -18724,257 +17984,104 @@ __declspec(naked) void __thiscall UR6GSServers::PollMSClientCallbacks(UR6GSServe
     push   eax
     mov    DWORD PTR fs:0x0,esp
     sub    esp,0x6c
-    mov    eax,ds:0x10091e64
-    push   ebx
-    push   esi
-    xor    ebx,ebx
-    cmp    eax,ebx
-    push   edi
-    mov    DWORD PTR [ebp-0x10],esp
-    mov    esi,ecx
-    mov    DWORD PTR [ebp-0x4],ebx
-    je     Branch480
-    cmp    DWORD PTR [ebp+0x8],ebx
-    je     Branch480
-    push   0x320
-    push   0x1f4
-    call   R6GameServiceAddresses::DispatchMSClientState
-    mov    eax,ds:0x10091c10
-    sub    eax,0x26
-    je     Branch473
-    dec    eax
-    jne    Branch474
-    mov    eax,DWORD PTR [esi+0x194]
-    test   ah,0x1
-    je     Branch464
-    and    eax,0xfffffeff
-    or     eax,0x200
-    mov    DWORD PTR [esi+0x194],eax
-  Branch464:
-    mov    eax,ds:0x10091d2c
-    cmp    eax,0x64
-    mov    DWORD PTR ds:0x10091c14,0x3
-    mov    DWORD PTR ds:0x10091e68,ebx
-    jg     Branch468
-    je     Branch467
-    sub    eax,0x3
-    je     Branch466
-    dec    eax
-    je     Branch465
-    sub    eax,0xb
-    jne    Branch469
-    push   R6GameServiceAddresses::WideTextLOGINFAILPASSWORDNOTCORRECT
-    lea    ecx,[ebp-0x24]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot2
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::Engine__GR6GameManagerSlot
-    mov    ecx,DWORD PTR [ecx]
-    lea    eax,[ebp-0x24]
-    push   eax
-    mov    BYTE PTR [ebp-0x4],0x1
-    call   DWORD PTR ds:R6GameServiceAddresses::Engine_UR6AbstractGameManager_eventGMProcessMsgSlot
-    lea    ecx,[ebp-0x24]
-    mov    BYTE PTR [ebp-0x4],bl
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringSlot
-    jmp    Branch474
-  Branch465:
-    push   R6GameServiceAddresses::WideTextLOGINFAILNOTREGISTERED
-    lea    ecx,[ebp-0x30]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot2
-    mov    eax,ds:R6GameServiceAddresses::Engine__GR6GameManagerSlot
-    mov    ecx,DWORD PTR [eax]
-    lea    edx,[ebp-0x30]
-    push   edx
-    mov    BYTE PTR [ebp-0x4],0x2
-    call   DWORD PTR ds:R6GameServiceAddresses::Engine_UR6AbstractGameManager_eventGMProcessMsgSlot
-    lea    ecx,[ebp-0x30]
-    mov    BYTE PTR [ebp-0x4],bl
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringSlot
-    jmp    Branch474
-  Branch466:
-    push   R6GameServiceAddresses::WideTextLOGINFAILALREADYCONNECTED
-    lea    ecx,[ebp-0x3c]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot2
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::Engine__GR6GameManagerSlot
-    lea    ecx,[ebp-0x3c]
-    push   ecx
-    mov    ecx,DWORD PTR [edx]
-    mov    BYTE PTR [ebp-0x4],0x3
-    call   DWORD PTR ds:R6GameServiceAddresses::Engine_UR6AbstractGameManager_eventGMProcessMsgSlot
-    lea    ecx,[ebp-0x3c]
-    mov    BYTE PTR [ebp-0x4],bl
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringSlot
-    jmp    Branch474
-  Branch467:
-    push   R6GameServiceAddresses::WideTextLOGINFAILDATABASEFAILED
-    lea    ecx,[ebp-0x48]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot2
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::Engine__GR6GameManagerSlot
-    mov    ecx,DWORD PTR [ecx]
-    lea    eax,[ebp-0x48]
-    push   eax
-    mov    BYTE PTR [ebp-0x4],0x4
-    call   DWORD PTR ds:R6GameServiceAddresses::Engine_UR6AbstractGameManager_eventGMProcessMsgSlot
-    lea    ecx,[ebp-0x48]
-    mov    BYTE PTR [ebp-0x4],bl
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringSlot
-    jmp    Branch474
-  Branch468:
-    sub    eax,0x1f5
-    je     Branch472
-    dec    eax
-    je     Branch471
-    sub    eax,0xa
-    je     Branch470
-  Branch469:
-    push   R6GameServiceAddresses::WideTextLOGINFAILDEFAULT
-    lea    ecx,[ebp-0x54]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot2
-    mov    eax,ds:R6GameServiceAddresses::Engine__GR6GameManagerSlot
-    mov    ecx,DWORD PTR [eax]
-    lea    edx,[ebp-0x54]
-    push   edx
-    mov    BYTE PTR [ebp-0x4],0x8
-    call   DWORD PTR ds:R6GameServiceAddresses::Engine_UR6AbstractGameManager_eventGMProcessMsgSlot
-    lea    ecx,[ebp-0x54]
-    mov    BYTE PTR [ebp-0x4],bl
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringSlot
-    jmp    Branch474
-  Branch470:
-    push   R6GameServiceAddresses::WideTextLOGINFAILLOCKEDACCOUNT
-    lea    ecx,[ebp-0x60]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot2
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::Engine__GR6GameManagerSlot
-    lea    ecx,[ebp-0x60]
-    push   ecx
-    mov    ecx,DWORD PTR [edx]
-    mov    BYTE PTR [ebp-0x4],0x7
-    call   DWORD PTR ds:R6GameServiceAddresses::Engine_UR6AbstractGameManager_eventGMProcessMsgSlot
-    lea    ecx,[ebp-0x60]
-    mov    BYTE PTR [ebp-0x4],bl
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringSlot
-    jmp    Branch474
-  Branch471:
-    push   R6GameServiceAddresses::WideTextLOGINFAILBLOCKEDACCOUNT
-    lea    ecx,[ebp-0x6c]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot2
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::Engine__GR6GameManagerSlot
-    mov    ecx,DWORD PTR [ecx]
-    lea    eax,[ebp-0x6c]
-    push   eax
-    mov    BYTE PTR [ebp-0x4],0x6
-    call   DWORD PTR ds:R6GameServiceAddresses::Engine_UR6AbstractGameManager_eventGMProcessMsgSlot
-    lea    ecx,[ebp-0x6c]
-    mov    BYTE PTR [ebp-0x4],bl
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringSlot
-    jmp    Branch474
-  Branch472:
-    push   R6GameServiceAddresses::WideTextLOGINFAILBANNEDACCOUNT
-    lea    ecx,[ebp-0x78]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot2
-    mov    eax,ds:R6GameServiceAddresses::Engine__GR6GameManagerSlot
-    mov    ecx,DWORD PTR [eax]
-    lea    edx,[ebp-0x78]
-    push   edx
-    mov    BYTE PTR [ebp-0x4],0x5
-    call   DWORD PTR ds:R6GameServiceAddresses::Engine_UR6AbstractGameManager_eventGMProcessMsgSlot
-    lea    ecx,[ebp-0x78]
-    mov    BYTE PTR [ebp-0x4],bl
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringSlot
-    jmp    Branch474
-  Branch473:
-    push   0x10091d48
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appFromAnsiSlot
-    add    esp,0x4
-    push   eax
-    lea    ecx,[esi+0x34]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__4FStringNoInitSlot2
-    push   ebx
-    push   0x4000
-    mov    ecx,esi
-    mov    DWORD PTR ds:0x10091c14,0x6
-    mov    DWORD PTR ds:0x10091e68,0x1
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_UObject_SaveConfigSlot
-    and    DWORD PTR [esi+0x194],0xfffffeff
-  Branch474:
-    mov    eax,ds:0x10091be0
-    sub    eax,0x26
-    mov    DWORD PTR ds:0x10091c10,ebx
-    je     Branch477
-    dec    eax
-    jne    Branch478
-    mov    eax,ds:0x10091bfc
-    sub    eax,0x2
-    mov    DWORD PTR ds:R6GameServiceAddresses::GLoginRequested,0x3
-    je     Branch476
-    dec    eax
-    je     Branch475
-    push   R6GameServiceAddresses::WideTextJOINSERVERFAILDEFAULT
-    lea    ecx,[ebp-0x78]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot2
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::Engine__GR6GameManagerSlot
-    lea    ecx,[ebp-0x78]
-    push   ecx
-    mov    ecx,DWORD PTR [edx]
-    mov    BYTE PTR [ebp-0x4],0xb
-    call   DWORD PTR ds:R6GameServiceAddresses::Engine_UR6AbstractGameManager_eventGMProcessMsgSlot
-    lea    ecx,[ebp-0x78]
-    mov    BYTE PTR [ebp-0x4],bl
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringSlot
-    mov    DWORD PTR ds:R6GameServiceAddresses::GJoinInProgress,ebx
-    jmp    Branch478
-  Branch475:
-    push   R6GameServiceAddresses::WideTextJOINSERVERFAILROOMFULL
-    lea    ecx,[ebp-0x6c]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot2
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::Engine__GR6GameManagerSlot
-    mov    ecx,DWORD PTR [ecx]
-    lea    eax,[ebp-0x6c]
-    push   eax
-    mov    BYTE PTR [ebp-0x4],0xa
-    call   DWORD PTR ds:R6GameServiceAddresses::Engine_UR6AbstractGameManager_eventGMProcessMsgSlot
-    lea    ecx,[ebp-0x6c]
-    mov    BYTE PTR [ebp-0x4],bl
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringSlot
-    mov    DWORD PTR ds:R6GameServiceAddresses::GJoinInProgress,ebx
-    jmp    Branch478
-  Branch476:
-    push   R6GameServiceAddresses::WideTextJOINSERVERFAILPASSWORDNOTCORRECT
-    lea    ecx,[ebp-0x60]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot2
-    mov    eax,ds:R6GameServiceAddresses::Engine__GR6GameManagerSlot
-    mov    ecx,DWORD PTR [eax]
-    lea    edx,[ebp-0x60]
-    push   edx
-    mov    BYTE PTR [ebp-0x4],0x9
-    call   DWORD PTR ds:R6GameServiceAddresses::Engine_UR6AbstractGameManager_eventGMProcessMsgSlot
-    lea    ecx,[ebp-0x60]
-    mov    BYTE PTR [ebp-0x4],bl
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringSlot
-    mov    DWORD PTR ds:R6GameServiceAddresses::GJoinInProgress,ebx
-    jmp    Branch478
-  Branch477:
-    mov    DWORD PTR ds:R6GameServiceAddresses::GLoginRequested,0x6
-    mov    DWORD PTR ds:R6GameServiceAddresses::GLoggedInUbiDotCom,0x1
-  Branch478:
-    cmp    DWORD PTR ds:0x10091bf0,ebx
-    mov    DWORD PTR ds:0x10091be0,ebx
-    je     Branch479
-    mov    DWORD PTR ds:0x10091bf0,ebx
-    or     DWORD PTR [esi+0x2c],0x10
-  Branch479:
-    cmp    DWORD PTR ds:0x10091c08,ebx
-    je     Branch480
-    mov    DWORD PTR ds:0x10091c08,ebx
-    or     DWORD PTR [esi+0x2c],0x20
-  Branch480:
-    mov    ecx,DWORD PTR [ebp-0xc]
-    pop    edi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
-    ret    0x4
+    push ebx
+    push esi
+    push edi
+    mov esi,ecx
+    mov DWORD PTR [ebp-0x10],esp
+  }
+  // These aliases bind existing native storage; inherited-frame handlers and their offsets remain unchanged.
+  byte* nativeFrame;
+  UR6GSServers* receiver;
+  __asm { mov nativeFrame,ebp }
+  __asm { mov receiver,esi }
+  const int initialized = *reinterpret_cast<int*>(0x10091e64);
+  *reinterpret_cast<int*>(nativeFrame - 4) = 0;
+  if (initialized && *reinterpret_cast<int*>(nativeFrame + 8)) {
+    DispatchMSClientState(500, 800);
+    const uint loginReply = *reinterpret_cast<uint*>(0x10091c10);
+    if (loginReply == 39) {
+      uint& flags = *reinterpret_cast<uint*>(reinterpret_cast<byte*>(receiver) + 0x194);
+      if (flags & 0x100) flags = (flags & 0xfffffeff) | 0x200;
+      const int error = *reinterpret_cast<int*>(0x10091d2c);
+      *reinterpret_cast<int*>(0x10091c14) = 3;
+      *reinterpret_cast<int*>(0x10091e68) = 0;
+      uint text;
+      byte state;
+      uint offset;
+      switch (error) {
+      case 15: text = R6GameServiceAddresses::WideTextLOGINFAILPASSWORDNOTCORRECT; state = 1; offset = 0x24; break;
+      case 4: text = R6GameServiceAddresses::WideTextLOGINFAILNOTREGISTERED; state = 2; offset = 0x30; break;
+      case 3: text = R6GameServiceAddresses::WideTextLOGINFAILALREADYCONNECTED; state = 3; offset = 0x3c; break;
+      case 100: text = R6GameServiceAddresses::WideTextLOGINFAILDATABASEFAILED; state = 4; offset = 0x48; break;
+      case 501: text = R6GameServiceAddresses::WideTextLOGINFAILBANNEDACCOUNT; state = 5; offset = 0x78; break;
+      case 502: text = R6GameServiceAddresses::WideTextLOGINFAILBLOCKEDACCOUNT; state = 6; offset = 0x6c; break;
+      case 512: text = R6GameServiceAddresses::WideTextLOGINFAILLOCKEDACCOUNT; state = 7; offset = 0x60; break;
+      default: text = R6GameServiceAddresses::WideTextLOGINFAILDEFAULT; state = 8; offset = 0x54; break;
+      }
+      FString* message = reinterpret_cast<FString*>(nativeFrame - offset);
+      FString::FString(message, reinterpret_cast<const TCHAR*>(text));
+      UR6AbstractGameManager* manager = GR6GameManager;
+      *reinterpret_cast<byte*>(nativeFrame - 4) = state;
+      manager->eventGMProcessMsg(*message);
+      *reinterpret_cast<byte*>(nativeFrame - 4) = 0;
+      FString::~FString(message);
+    } else if (loginReply == 38) {
+      const TCHAR* account = appFromAnsi(reinterpret_cast<const char*>(0x10091d48));
+      *reinterpret_cast<FStringNoInit*>(reinterpret_cast<byte*>(receiver) + 0x34) = account;
+      *reinterpret_cast<int*>(0x10091c14) = 6;
+      *reinterpret_cast<int*>(0x10091e68) = 1;
+      receiver->SaveConfig(0x4000, nullptr);
+      *reinterpret_cast<uint*>(reinterpret_cast<byte*>(receiver) + 0x194) &= 0xfffffeff;
+    }
+    // Sample the join reply before clearing the login reply; no redispatch of callback-written login status.
+    const uint joinReply = *reinterpret_cast<uint*>(0x10091be0);
+    *reinterpret_cast<int*>(0x10091c10) = 0;
+    if (joinReply == 39) {
+      const uint error = *reinterpret_cast<uint*>(0x10091bfc);
+      *reinterpret_cast<int*>(R6GameServiceAddresses::GLoginRequested) = 3;
+      uint text;
+      byte state;
+      uint offset;
+      if (error == 2) {
+        text = R6GameServiceAddresses::WideTextJOINSERVERFAILPASSWORDNOTCORRECT; state = 9; offset = 0x60;
+      } else if (error == 3) {
+        text = R6GameServiceAddresses::WideTextJOINSERVERFAILROOMFULL; state = 10; offset = 0x6c;
+      } else {
+        text = R6GameServiceAddresses::WideTextJOINSERVERFAILDEFAULT; state = 11; offset = 0x78;
+      }
+      FString* message = reinterpret_cast<FString*>(nativeFrame - offset);
+      FString::FString(message, reinterpret_cast<const TCHAR*>(text));
+      UR6AbstractGameManager* manager = GR6GameManager;
+      *reinterpret_cast<byte*>(nativeFrame - 4) = state;
+      manager->eventGMProcessMsg(*message);
+      *reinterpret_cast<byte*>(nativeFrame - 4) = 0;
+      FString::~FString(message);
+      *reinterpret_cast<int*>(R6GameServiceAddresses::GJoinInProgress) = 0;
+    } else if (joinReply == 38) {
+      *reinterpret_cast<int*>(R6GameServiceAddresses::GLoginRequested) = 6;
+      *reinterpret_cast<int*>(R6GameServiceAddresses::GLoggedInUbiDotCom) = 1;
+    }
+    const int lobbyDisconnected = *reinterpret_cast<int*>(0x10091bf0);
+    *reinterpret_cast<int*>(0x10091be0) = 0;
+    if (lobbyDisconnected) {
+      *reinterpret_cast<int*>(0x10091bf0) = 0;
+      *reinterpret_cast<uint*>(reinterpret_cast<byte*>(receiver) + 0x2c) |= 0x10;
+    }
+    if (*reinterpret_cast<int*>(0x10091c08)) {
+      *reinterpret_cast<int*>(0x10091c08) = 0;
+      *reinterpret_cast<uint*>(reinterpret_cast<byte*>(receiver) + 0x2c) |= 0x20;
+    }
+  }
+  __asm {
+    mov ecx,DWORD PTR [ebp-0xc]
+    pop edi
+    pop esi
+    mov DWORD PTR fs:0x0,ecx
+    pop ebx
+    mov esp,ebp
+    pop ebp
+    ret 0x4
   }
 }
 
@@ -21189,575 +20296,218 @@ __declspec(naked) void __thiscall UR6GSServers::Init(UR6GSServers *this,FString 
     mov    ebx,ecx
     push   edi
     mov    DWORD PTR [esp+0x18],ebx
-    mov    eax,ds:R6GameServiceAddresses::TextTempDat
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::TextMpDat
-    mov    dx,WORD PTR ds:R6GameServiceAddresses::TextAt
-    mov    DWORD PTR [esp+0x1c],eax
-    mov    al,ds:0x1006db2a
-    xor    ebp,ebp
-    mov    BYTE PTR [esp+0x26],al
-    cmp    DWORD PTR ds:R6GameServiceAddresses::GMSClientInitialized,ebp
-    mov    DWORD PTR [esp+0x1530],ebp
-    mov    DWORD PTR [esp+0x20],ecx
-    mov    WORD PTR [esp+0x24],dx
-    jne    Branch594
-    push   R6GameServiceAddresses::WideText02
-    mov    ecx,R6GameServiceAddresses::GLastServerQueriedAddress
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__4FStringSlot2
-    push   R6GameServiceAddresses::GEmptyWideText
-    lea    ecx,[esp+0x153c]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    mov    edi,DWORD PTR ds:R6GameServiceAddresses::Core__appStrcmpSlot
-    push   eax
-    call   edi
-    mov    esi,DWORD PTR ds:R6GameServiceAddresses::Core__appToAnsiSlot
-    add    esp,0x8
-    test   eax,eax
-    je     Branch572
-    push   R6GameServiceAddresses::WideText0000
-    lea    ecx,[esp+0x153c]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    push   eax
-    call   edi
-    add    esp,0x8
-    test   eax,eax
-    je     Branch572
-    lea    ecx,[esp+0x1538]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    push   eax
-    call   esi
-    add    esp,0x4
-    push   eax
-    jmp    Branch573
-  Branch572:
-    push   ebp
-  Branch573:
-    call   R6GameServiceAddresses::ResolveAddressText
-    cmp    DWORD PTR ds:R6GameServiceAddresses::GServiceVerboseLogging,ebp
-    movzx  eax,al
-    je     Branch574
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    edx,DWORD PTR [ecx]
-    push   eax
-    push   R6GameServiceAddresses::WideTextInitializeSocketsI
-    push   edx
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FOutputDevice_LogfSlot
-    add    esp,0xc
-  Branch574:
-    cmp    DWORD PTR ds:R6GameServiceAddresses::GPublicSerializedStore,ebp
-    jne    Branch577
-    mov    eax,ds:R6GameServiceAddresses::Core__GMallocSlot
-    mov    ecx,DWORD PTR [eax]
-    mov    edx,DWORD PTR [ecx]
-    push   R6GameServiceAddresses::WideTextNew
-    push   0x24
-    call   DWORD PTR [edx]
-    mov    DWORD PTR [esp+0x10],eax
-    cmp    eax,ebp
-    mov    BYTE PTR [esp+0x1530],0x1
-    je     Branch575
-    mov    ecx,eax
-    call   R6GameServiceAddresses::InitializeSerializedByteStore
-    jmp    Branch576
-  Branch575:
-    xor    eax,eax
-  Branch576:
-    mov    BYTE PTR [esp+0x1530],0x0
-    mov    ds:R6GameServiceAddresses::GPublicSerializedStore,eax
-  Branch577:
-    cmp    DWORD PTR ds:R6GameServiceAddresses::GPrivateSerializedStore,ebp
-    jne    Branch580
-    mov    eax,ds:R6GameServiceAddresses::Core__GMallocSlot
-    mov    ecx,DWORD PTR [eax]
-    mov    edx,DWORD PTR [ecx]
-    push   R6GameServiceAddresses::WideTextNew
-    push   0x24
-    call   DWORD PTR [edx]
-    mov    DWORD PTR [esp+0x10],eax
-    cmp    eax,ebp
-    mov    BYTE PTR [esp+0x1530],0x2
-    je     Branch578
-    mov    ecx,eax
-    call   R6GameServiceAddresses::InitializeSerializedByteStore
-    jmp    Branch579
-  Branch578:
-    xor    eax,eax
-  Branch579:
-    mov    BYTE PTR [esp+0x1530],0x0
-    mov    ds:R6GameServiceAddresses::GPrivateSerializedStore,eax
-  Branch580:
-    cmp    DWORD PTR ds:0x10091e50,ebp
-    jne    Branch583
-    mov    eax,ds:R6GameServiceAddresses::Core__GMallocSlot
-    mov    ecx,DWORD PTR [eax]
-    mov    edx,DWORD PTR [ecx]
-    push   R6GameServiceAddresses::WideTextNew
-    push   0xc
-    call   DWORD PTR [edx]
-    mov    DWORD PTR [esp+0x10],eax
-    cmp    eax,ebp
-    mov    BYTE PTR [esp+0x1530],0x3
-    je     Branch581
-    mov    ecx,eax
-    call   R6GameServiceAddresses::InitializePingRequestArray
-    jmp    Branch582
-  Branch581:
-    xor    eax,eax
-  Branch582:
-    mov    BYTE PTR [esp+0x1530],0x0
-    mov    ds:0x10091e50,eax
-  Branch583:
-    call   R6GameServiceAddresses::TailForwardServiceWrapperRegistration
-    mov    edi,eax
-    cmp    edi,ebp
-    je     Branch594
-    mov    ecx,R6GameServiceAddresses::GServiceString1
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    push   eax
-    call   esi
-    add    esp,0x4
-    push   eax
-    lea    ecx,[ebx+0x34]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    push   eax
-    call   esi
-    add    esp,0x4
-    push   eax
-    lea    ecx,[ebx+0x1a0]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    push   eax
-    call   esi
-    add    esp,0x4
-    push   eax
-    lea    eax,[esp+0x134]
-    push   eax
-    call   DWORD PTR ds:R6GameServiceAddresses::MSVCR71_sprintfSlot
-    mov    eax,ds:R6GameServiceAddresses::GServiceVerboseLogging
-    add    esp,0x10
-    cmp    eax,ebp
-    je     Branch584
-    lea    ecx,[esp+0x128]
-    push   ecx
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appFromAnsiSlot
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::Core__GLogSlot
-    push   eax
-    mov    eax,DWORD PTR [edx]
-    push   R6GameServiceAddresses::WideTextRemoteFileNameS
-    push   eax
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FOutputDevice_LogfSlot
-    add    esp,0x10
-  Branch584:
-    push   ebp
-    push   R6GameServiceAddresses::ReportServiceDownload
-    push   0x1
-    lea    ecx,[esp+0x28]
-    push   ecx
-    lea    edx,[esp+0x138]
-    push   edx
-    push   edi
-    mov    DWORD PTR ds:0x10091be8,ebp
-    call   R6GameServiceAddresses::QueueServiceDownload
-    push   edi
-    call   R6GameServiceAddresses::ReleaseRegisteredServiceWrapper
-    cmp    DWORD PTR ds:0x10091be8,ebp
-    mov    ebp,DWORD PTR ds:R6GameServiceAddresses::Core__appSprintfSlot
-    je     Branch586
-    lea    ecx,[esp+0x1c]
-    push   R6GameServiceAddresses::WideTextR
-    push   ecx
-    call   DWORD PTR ds:R6GameServiceAddresses::MSVCR71_fopenSlot
-    push   0x2
-    mov    ebx,eax
-    push   0x0
-    push   ebx
-    call   DWORD PTR ds:R6GameServiceAddresses::MSVCR71_fseekSlot
-    push   ebx
-    call   DWORD PTR ds:R6GameServiceAddresses::MSVCR71_ftellSlot
-    mov    edi,eax
-    add    esp,0x18
-    test   edi,edi
-    mov    DWORD PTR [esp+0x14],edi
-    push   ebx
-    jg     Branch585
-    call   DWORD PTR ds:R6GameServiceAddresses::MSVCR71_fcloseSlot
-    add    esp,0x4
-    jmp    Branch594
-  Branch585:
-    call   DWORD PTR ds:R6GameServiceAddresses::MSVCR71_rewindSlot
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::Core__GMallocSlot
-    mov    ecx,DWORD PTR [edx]
-    mov    eax,DWORD PTR [ecx]
-    add    esp,0x4
-    push   R6GameServiceAddresses::WideTextGAMESERVICE
-    push   edi
-    call   DWORD PTR [eax]
-    mov    ecx,DWORD PTR [esp+0x14]
-    push   ebx
-    push   0x1
-    mov    edi,eax
-    push   ecx
-    push   edi
-    call   DWORD PTR ds:R6GameServiceAddresses::MSVCR71_freadSlot
-    push   0x0
-    lea    edx,[esp+0x23c]
-    push   R6GameServiceAddresses::WideTextRouterIPI
-    push   edx
-    call   ebp
-    add    esp,0x1c
-    lea    eax,[esp+0x628]
-    push   eax
-    lea    ecx,[esp+0x22c]
-    push   ecx
-    call   esi
-    add    esp,0x4
-    push   eax
-    push   edi
-    call   R6GameServiceAddresses::ExtractLineValue
-    push   ebx
-    mov    edi,eax
-    call   DWORD PTR ds:R6GameServiceAddresses::MSVCR71_fcloseSlot
-    add    esp,0x10
-    test   edi,edi
-    je     Branch586
-    mov    edi,DWORD PTR [esp+0x18]
-    add    edi,0x1e8
-    mov    ecx,edi
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    push   eax
-    call   esi
-    push   eax
-    call   DWORD PTR ds:R6GameServiceAddresses::MSVCR71_removeSlot
-    add    esp,0x8
-    mov    ecx,edi
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    push   eax
-    call   esi
-    push   eax
-    lea    edx,[esp+0x24]
-    push   edx
-    call   DWORD PTR ds:R6GameServiceAddresses::MSVCR71_renameSlot
-    add    esp,0xc
-    xor    ebx,ebx
-    mov    DWORD PTR [esp+0x14],ebx
-    jmp    Branch588
-  Branch586:
-    lea    eax,[esp+0x1c]
-    push   eax
-    call   DWORD PTR ds:R6GameServiceAddresses::MSVCR71_removeSlot
-    add    esp,0x4
-    xor    ebx,ebx
-    mov    DWORD PTR [esp+0x14],ebx
-    jmp    Branch588
-  Branch587:
-    mov    ebx,DWORD PTR [esp+0x14]
-  Branch588:
-    push   ebx
-    lea    ecx,[esp+0xd2c]
-    push   R6GameServiceAddresses::WideTextRouterIPI
-    push   ecx
-    call   ebp
-    push   ebx
-    lea    edx,[esp+0x938]
-    push   R6GameServiceAddresses::WideTextRouterPortI2
-    push   edx
-    call   ebp
-    push   ebx
-    lea    eax,[esp+0x1144]
-    push   R6GameServiceAddresses::WideTextRouterLauncherPortI2
-    push   eax
-    call   ebp
-    mov    edi,DWORD PTR [esp+0x3c]
-    add    edi,0x1e8
-    add    esp,0x24
-    mov    ecx,edi
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    push   eax
-    call   esi
-    add    esp,0x4
-    push   eax
-    push   0x100
-    lea    ecx,[esp+0x30]
-    push   ecx
-    lea    edx,[esp+0xd34]
-    push   R6GameServiceAddresses::GEmptyWideTextAlternate
-    push   edx
-    call   esi
-    add    esp,0x4
-    push   eax
-    push   R6GameServiceAddresses::TextServers
-    call   DWORD PTR ds:R6GameServiceAddresses::KERNEL32_GetPrivateProfileStringASlot
-    xor    ecx,ecx
-    cmp    ecx,eax
-    lea    edx,[esp+0x28]
-    sbb    ebx,ebx
-    push   edx
-    neg    ebx
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appFromAnsiSlot
-    push   eax
-    lea    eax,[esp+0xb30]
-    push   R6GameServiceAddresses::WideTextTextFormat
-    push   eax
-    call   ebp
-    add    esp,0x10
-    mov    ecx,edi
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    push   eax
-    call   esi
-    add    esp,0x4
-    push   eax
-    push   0x100
-    lea    ecx,[esp+0x30]
-    push   ecx
-    lea    edx,[esp+0x934]
-    push   R6GameServiceAddresses::GEmptyWideTextAlternate
-    push   edx
-    call   esi
-    add    esp,0x4
-    push   eax
-    push   R6GameServiceAddresses::TextServers
-    call   DWORD PTR ds:R6GameServiceAddresses::KERNEL32_GetPrivateProfileStringASlot
-    xor    ecx,ecx
-    cmp    ecx,eax
-    sbb    edx,edx
-    lea    eax,[esp+0x28]
-    neg    edx
-    push   eax
-    and    ebx,edx
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appFromAnsiSlot
-    push   eax
-    lea    ecx,[esp+0x730]
-    push   R6GameServiceAddresses::WideTextTextFormat
-    push   ecx
-    call   ebp
-    add    esp,0x10
-    mov    ecx,edi
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    push   eax
-    call   esi
-    add    esp,0x4
-    push   eax
-    push   0x100
-    lea    edx,[esp+0x30]
-    push   edx
-    lea    eax,[esp+0x1134]
-    push   R6GameServiceAddresses::GEmptyWideTextAlternate
-    push   eax
-    call   esi
-    add    esp,0x4
-    push   eax
-    push   R6GameServiceAddresses::TextServers
-    call   DWORD PTR ds:R6GameServiceAddresses::KERNEL32_GetPrivateProfileStringASlot
-    xor    ecx,ecx
-    cmp    ecx,eax
-    sbb    edx,edx
-    lea    eax,[esp+0x28]
-    neg    edx
-    push   eax
-    and    ebx,edx
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appFromAnsiSlot
-    push   eax
-    lea    ecx,[esp+0x430]
-    push   R6GameServiceAddresses::WideTextTextFormat
-    push   ecx
-    call   ebp
-    add    esp,0x10
-    test   ebx,ebx
-    je     Branch590
-    push   0x108
-    push   0x1
-    mov    ecx,R6GameServiceAddresses::GServiceArray1
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FArray_AddSlot
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray1
-    mov    edi,eax
-    imul   edi,edi,0x108
-    lea    ecx,[esp+0x428]
-    lea    eax,[edi+edx*1]
-    push   ecx
-    mov    DWORD PTR [esp+0x14],eax
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appAtoiSlot
-    mov    edx,DWORD PTR [esp+0x14]
-    mov    DWORD PTR [edx+0x104],eax
-    mov    eax,ds:R6GameServiceAddresses::GServiceArray1
-    lea    edx,[esp+0x72c]
-    lea    ecx,[edi+eax*1]
-    push   edx
-    mov    DWORD PTR [esp+0x18],ecx
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appAtoiSlot
-    mov    ecx,DWORD PTR [esp+0x18]
-    lea    edx,[esp+0xb30]
-    push   edx
-    mov    DWORD PTR [ecx+0x100],eax
-    call   esi
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray1
-    add    esp,0xc
-    add    ecx,edi
-    jmp    Branch589
-    lea    ecx,[ecx+0x0]
-  Branch589:
-    mov    dl,BYTE PTR [eax]
-    inc    eax
-    mov    BYTE PTR [ecx],dl
-    inc    ecx
-    test   dl,dl
-    jne    Branch589
-    mov    eax,ds:R6GameServiceAddresses::GServiceVerboseLogging
-    test   eax,eax
-    je     Branch590
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray1
-    lea    eax,[edi+edx*1]
-    push   eax
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appFromAnsiSlot
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    edx,DWORD PTR [ecx]
-    push   eax
-    push   R6GameServiceAddresses::WideTextRouterNameS
-    push   edx
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FOutputDevice_LogfSlot
-    mov    eax,ds:R6GameServiceAddresses::GServiceArray1
-    mov    ecx,DWORD PTR [edi+eax*1+0x104]
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    eax,DWORD PTR [edx]
-    push   ecx
-    push   R6GameServiceAddresses::WideTextRouterLauncherPortI
-    push   eax
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FOutputDevice_LogfSlot
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray1
-    mov    edx,DWORD PTR [edi+ecx*1+0x100]
-    mov    eax,ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    ecx,DWORD PTR [eax]
-    push   edx
-    push   R6GameServiceAddresses::WideTextRouterPortI
-    push   ecx
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FOutputDevice_LogfSlot
-    add    esp,0x28
-  Branch590:
-    mov    ecx,DWORD PTR [esp+0x14]
-    inc    ecx
-    test   ebx,ebx
-    mov    DWORD PTR [esp+0x14],ecx
-    jne    Branch587
-    lea    edx,[esp+0xf28]
-    push   R6GameServiceAddresses::WideTextCDKeyServerIP0
-    push   edx
-    call   ebp
-    lea    eax,[esp+0x1330]
-    push   R6GameServiceAddresses::WideTextCDKeyServerPort0
-    push   eax
-    call   ebp
-    mov    ebp,DWORD PTR [esp+0x28]
-    lea    edi,[ebp+0x1e8]
-    add    esp,0x10
-    mov    ecx,edi
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    push   eax
-    call   esi
-    add    esp,0x4
-    push   eax
-    push   0x100
-    push   0x10091c28
-    lea    ecx,[esp+0xf34]
-    push   R6GameServiceAddresses::GEmptyWideTextAlternate
-    push   ecx
-    call   esi
-    mov    ebx,DWORD PTR ds:R6GameServiceAddresses::KERNEL32_GetPrivateProfileStringASlot
-    add    esp,0x4
-    push   eax
-    push   R6GameServiceAddresses::TextServers
-    call   ebx
-    mov    ecx,edi
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    push   eax
-    call   esi
-    add    esp,0x4
-    push   eax
-    push   0x100
-    lea    edx,[esp+0x30]
-    push   edx
-    lea    eax,[esp+0x1334]
-    push   R6GameServiceAddresses::GEmptyWideTextAlternate
-    push   eax
-    call   esi
-    add    esp,0x4
-    push   eax
-    push   R6GameServiceAddresses::TextServers
-    call   ebx
-    lea    ecx,[esp+0x28]
-    push   ecx
-    call   DWORD PTR ds:R6GameServiceAddresses::MSVCR71_atoiSlot
-    mov    ds:0x10091c04,eax
-    mov    eax,ds:R6GameServiceAddresses::GServiceVerboseLogging
-    add    esp,0x4
-    test   eax,eax
-    je     Branch591
-    push   0x10091c28
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appFromAnsiSlot
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::Core__GLogSlot
-    push   eax
-    mov    eax,DWORD PTR [edx]
-    push   R6GameServiceAddresses::WideTextCDKeyNameS
-    push   eax
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FOutputDevice_LogfSlot
-    mov    ecx,DWORD PTR ds:0x10091c04
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    eax,DWORD PTR [edx]
-    push   ecx
-    push   R6GameServiceAddresses::WideTextCDKeyPortI
-    push   eax
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FOutputDevice_LogfSlot
-    add    esp,0x1c
-  Branch591:
-    mov    ecx,edi
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    push   eax
-    call   esi
-    add    esp,0x4
-    push   eax
-    push   0x100
-    lea    ecx,[esp+0x30]
-    push   ecx
-    push   R6GameServiceAddresses::GEmptyWideTextAlternate
-    push   R6GameServiceAddresses::TextGS4UserAccountURL
-    push   R6GameServiceAddresses::TextMaintenance
-    call   ebx
-    test   eax,eax
-    jbe    Branch592
-    lea    edx,[esp+0x28]
-    push   edx
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appFromAnsiSlot
-    add    esp,0x4
-    push   eax
-    lea    ecx,[ebp+0x1d0]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__4FStringNoInitSlot2
-  Branch592:
-    mov    eax,ds:R6GameServiceAddresses::GServiceVerboseLogging
-    test   eax,eax
-    je     Branch593
-    sub    esp,0xc
-    add    ebp,0x1d0
-    mov    ecx,DWORD PTR [ebp+0x0]
-    mov    edx,DWORD PTR [ebp+0x4]
-    mov    eax,esp
-    mov    DWORD PTR [eax],ecx
-    mov    ecx,DWORD PTR [ebp+0x8]
-    mov    DWORD PTR [eax+0x4],edx
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    DWORD PTR [eax+0x8],ecx
-    mov    eax,DWORD PTR [edx]
-    push   R6GameServiceAddresses::WideTextMSzUbiHomePageS
-    push   eax
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FOutputDevice_LogfSlot
-    add    esp,0x14
-  Branch593:
-    mov    eax,ds:R6GameServiceAddresses::GServiceArray1+0x4
-    xor    ecx,ecx
-    test   eax,eax
-    setg   cl
-    mov    DWORD PTR ds:R6GameServiceAddresses::GMSRouterIndex,0x0
-    mov    DWORD PTR ds:R6GameServiceAddresses::GMSClientInitialized,ecx
-  Branch594:
-    lea    ecx,[esp+0x1538]
-    mov    DWORD PTR [esp+0x1530],0xffffffff
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringSlot
+  }
+  // Native ESP-relative frame: registration state +0x1530, owned incoming FString +0x1538, saved owner +0x18.
+  byte* nativeStack;
+  __asm { mov nativeStack,esp }
+  UR6GSServers* initialReceiver;
+  __asm { mov initialReceiver,ebx }
+  char* temporaryFile = reinterpret_cast<char*>(nativeStack + 0x1c);
+  *reinterpret_cast<uint*>(temporaryFile) = *reinterpret_cast<uint*>(R6GameServiceAddresses::TextTempDat);
+  *reinterpret_cast<uint*>(temporaryFile + 4) = *reinterpret_cast<uint*>(R6GameServiceAddresses::TextMpDat);
+  *reinterpret_cast<ushort*>(temporaryFile + 8) = *reinterpret_cast<ushort*>(R6GameServiceAddresses::TextAt);
+  temporaryFile[10] = *reinterpret_cast<char*>(0x1006db2a); // "./temp.dat" including its native extra zero byte.
+  const int alreadyInitialized = *reinterpret_cast<int*>(R6GameServiceAddresses::GMSClientInitialized);
+  *reinterpret_cast<int*>(nativeStack + 0x1530) = 0;
+  if (!alreadyInitialized) {
+    *reinterpret_cast<FString*>(R6GameServiceAddresses::GLastServerQueriedAddress) =
+        reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideText02);
+    FString* localAddress = reinterpret_cast<FString*>(nativeStack + 0x1538);
+    const TCHAR* addressText = **localAddress;
+    using CompareCall = int (__cdecl *)(const TCHAR*, const TCHAR*);
+    CompareCall compare = *reinterpret_cast<CompareCall*>(R6GameServiceAddresses::Core__appStrcmpSlot);
+    const int emptyComparison = compare(addressText, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::GEmptyWideText));
+    using ToAnsiCall = char* (__cdecl *)(const TCHAR*);
+    ToAnsiCall toAnsi = *reinterpret_cast<ToAnsiCall*>(R6GameServiceAddresses::Core__appToAnsiSlot);
+    char* boundAddress = nullptr;
+    if (emptyComparison != 0 && compare(**localAddress,
+        reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideText0000)) != 0)
+      boundAddress = toAnsi(**localAddress);
+    const uint socketResult = static_cast<byte>(ResolveAddressText(boundAddress));
+    if (*reinterpret_cast<int*>(R6GameServiceAddresses::GServiceVerboseLogging))
+      GLog->Logf(reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextInitializeSocketsI), socketResult);
+    auto createStore = [&](uint globalAddress, byte constructionState) {
+      if (!*reinterpret_cast<void**>(globalAddress)) {
+        void* block = GMalloc->Malloc(0x24, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextNew));
+        *reinterpret_cast<void**>(nativeStack + 0x10) = block;
+        *reinterpret_cast<byte*>(nativeStack + 0x1530) = constructionState;
+        void* store = block ? InitializeSerializedByteStore(reinterpret_cast<uint*>(block)) : nullptr;
+        *reinterpret_cast<byte*>(nativeStack + 0x1530) = 0;
+        *reinterpret_cast<void**>(globalAddress) = store;
+      }
+    };
+    createStore(R6GameServiceAddresses::GPublicSerializedStore, 1);
+    createStore(R6GameServiceAddresses::GPrivateSerializedStore, 2);
+    if (!*reinterpret_cast<void**>(0x10091e50)) {
+      void* block = GMalloc->Malloc(12, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextNew));
+      *reinterpret_cast<void**>(nativeStack + 0x10) = block;
+      *reinterpret_cast<byte*>(nativeStack + 0x1530) = 3;
+      void* pingArray = block ? InitializePingRequestArray(reinterpret_cast<FArray*>(block)) : nullptr;
+      *reinterpret_cast<byte*>(nativeStack + 0x1530) = 0;
+      *reinterpret_cast<void**>(0x10091e50) = pingArray;
+    }
+    void* wrapper = TailForwardServiceWrapperRegistration();
+    if (wrapper) {
+      const TCHAR* gameText = **reinterpret_cast<FString*>(R6GameServiceAddresses::GServiceString1);
+      char* game = toAnsi(gameText);
+      byte* originalOwner = reinterpret_cast<byte*>(initialReceiver);
+      char* user = toAnsi(**reinterpret_cast<FString*>(originalOwner + 0x34));
+      char* format = toAnsi(**reinterpret_cast<FString*>(originalOwner + 0x1a0));
+      char* remoteFile = reinterpret_cast<char*>(nativeStack + 0x128);
+      sprintf(remoteFile, format, user, game);
+      if (*reinterpret_cast<int*>(R6GameServiceAddresses::GServiceVerboseLogging)) {
+        const TCHAR* remoteText = appFromAnsi(remoteFile);
+        GLog->Logf(reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextRemoteFileNameS), remoteText);
+      }
+      *reinterpret_cast<int*>(0x10091be8) = 0;
+      QueueServiceDownload(wrapper, remoteFile, temporaryFile, 1, ReportServiceDownload, 0);
+      ReleaseRegisteredServiceWrapper(wrapper); // Release before observing the callback's current completion flag.
+      using FormatCall = int (__cdecl *)(TCHAR*, const TCHAR*, ...);
+      FormatCall formatWide = *reinterpret_cast<FormatCall*>(R6GameServiceAddresses::Core__appSprintfSlot);
+      bool proceed = true;
+      if (*reinterpret_cast<int*>(0x10091be8)) {
+        FILE* file = fopen(temporaryFile, reinterpret_cast<const char*>(R6GameServiceAddresses::WideTextR));
+        fseek(file, 0, 2); // Native does not check fopen before using its return value.
+        const int size = ftell(file);
+        *reinterpret_cast<int*>(nativeStack + 0x14) = size;
+        if (size <= 0) {
+          fclose(file);
+          proceed = false;
+        } else {
+          rewind(file);
+          char* fileBytes = static_cast<char*>(GMalloc->Malloc(size,
+              reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextGAMESERVICE)));
+          fread(fileBytes, size, 1, file);
+          TCHAR* firstRouterKey = reinterpret_cast<TCHAR*>(nativeStack + 0x228);
+          formatWide(firstRouterKey, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextRouterIPI), 0);
+          char* firstLine = reinterpret_cast<char*>(nativeStack + 0x628);
+          const char* key = toAnsi(firstRouterKey);
+          const int extracted = ExtractLineValue(fileBytes, key, firstLine);
+          fclose(file);
+          // fileBytes has no added terminator or cleanup, including on failure; preserve this native lifetime.
+          if (extracted) {
+            byte* currentOwner = *reinterpret_cast<byte**>(nativeStack + 0x18);
+            FString* configName = reinterpret_cast<FString*>(currentOwner + 0x1e8);
+            remove(toAnsi(**configName));
+            const char* destination = toAnsi(**configName);
+            rename(temporaryFile, destination);
+          } else {
+            remove(temporaryFile);
+          }
+        }
+      } else {
+        remove(temporaryFile);
+      }
+      if (proceed) {
+        uint& routerNumber = *reinterpret_cast<uint*>(nativeStack + 0x14);
+        routerNumber = 0;
+        char* valueBuffer = reinterpret_cast<char*>(nativeStack + 0x28);
+        TCHAR* ipKey = reinterpret_cast<TCHAR*>(nativeStack + 0xd28);
+        TCHAR* portKey = reinterpret_cast<TCHAR*>(nativeStack + 0x928);
+        TCHAR* launcherKey = reinterpret_cast<TCHAR*>(nativeStack + 0x1128);
+        TCHAR* ipText = reinterpret_cast<TCHAR*>(nativeStack + 0xb28);
+        TCHAR* portText = reinterpret_cast<TCHAR*>(nativeStack + 0x728);
+        TCHAR* launcherText = reinterpret_cast<TCHAR*>(nativeStack + 0x428);
+        bool allFields;
+        do {
+          formatWide(ipKey, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextRouterIPI), routerNumber);
+          formatWide(portKey, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextRouterPortI2), routerNumber);
+          formatWide(launcherKey,
+              reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextRouterLauncherPortI2), routerNumber);
+          byte* currentOwner = *reinterpret_cast<byte**>(nativeStack + 0x18);
+          FString* configName = reinterpret_cast<FString*>(currentOwner + 0x1e8);
+          auto readRouterField = [&](TCHAR* key, TCHAR* output) {
+            const char* filename = toAnsi(**configName);
+            const char* narrowKey = toAnsi(key);
+            const uint length = GetPrivateProfileStringA(
+                reinterpret_cast<const char*>(R6GameServiceAddresses::TextServers), narrowKey,
+                reinterpret_cast<const char*>(R6GameServiceAddresses::GEmptyWideTextAlternate), valueBuffer, 256, filename);
+            const TCHAR* wideValue = appFromAnsi(valueBuffer);
+            formatWide(output, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextTextFormat), wideValue);
+            return length != 0;
+          };
+          allFields = readRouterField(ipKey, ipText);
+          const bool hasPort = readRouterField(portKey, portText);
+          allFields = allFields & hasPort;
+          const bool hasLauncher = readRouterField(launcherKey, launcherText);
+          allFields = allFields & hasLauncher; // All three providers run, even after an earlier empty field.
+          if (allFields) {
+            FArray* routers = reinterpret_cast<FArray*>(R6GameServiceAddresses::GServiceArray1);
+            const int added = routers->Add(1, 0x108);
+            const uint offset = static_cast<uint>(added) * 0x108U;
+            byte* row = *reinterpret_cast<byte**>(routers) + offset;
+            *reinterpret_cast<byte**>(nativeStack + 0x10) = row;
+            const int launcher = appAtoi(launcherText);
+            row = *reinterpret_cast<byte**>(nativeStack + 0x10);
+            *reinterpret_cast<int*>(row + 0x104) = launcher;
+            row = *reinterpret_cast<byte**>(routers) + offset;
+            *reinterpret_cast<byte**>(nativeStack + 0x10) = row;
+            const int port = appAtoi(portText);
+            row = *reinterpret_cast<byte**>(nativeStack + 0x10);
+            *reinterpret_cast<int*>(row + 0x100) = port;
+            const char* source = toAnsi(ipText);
+            char* destination = reinterpret_cast<char*>(*reinterpret_cast<byte**>(routers) + offset);
+            byte copied;
+            do { copied = *source++; *destination++ = copied; } while (copied); // No native length guard.
+            if (*reinterpret_cast<int*>(R6GameServiceAddresses::GServiceVerboseLogging)) {
+              const TCHAR* name = appFromAnsi(reinterpret_cast<char*>(*reinterpret_cast<byte**>(routers) + offset));
+              GLog->Logf(reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextRouterNameS), name);
+              row = *reinterpret_cast<byte**>(routers);
+              const int currentLauncher = *reinterpret_cast<int*>(row + offset + 0x104);
+              GLog->Logf(reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextRouterLauncherPortI), currentLauncher);
+              row = *reinterpret_cast<byte**>(routers);
+              const int currentPort = *reinterpret_cast<int*>(row + offset + 0x100);
+              GLog->Logf(reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextRouterPortI), currentPort);
+            }
+          }
+          ++routerNumber;
+        } while (allFields);
+        TCHAR* keyIP = reinterpret_cast<TCHAR*>(nativeStack + 0xf28);
+        TCHAR* keyPort = reinterpret_cast<TCHAR*>(nativeStack + 0x1328);
+        formatWide(keyIP, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextCDKeyServerIP0));
+        formatWide(keyPort, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextCDKeyServerPort0));
+        byte* currentOwner = *reinterpret_cast<byte**>(nativeStack + 0x18);
+        FString* configName = reinterpret_cast<FString*>(currentOwner + 0x1e8);
+        const char* filename = toAnsi(**configName);
+        const char* narrowKey = toAnsi(keyIP);
+        using ProfileCall = uint (__stdcall *)(const char*, const char*, const char*, char*, uint, const char*);
+        ProfileCall profile = *reinterpret_cast<ProfileCall*>(R6GameServiceAddresses::KERNEL32_GetPrivateProfileStringASlot);
+        profile(reinterpret_cast<const char*>(R6GameServiceAddresses::TextServers), narrowKey,
+            reinterpret_cast<const char*>(R6GameServiceAddresses::GEmptyWideTextAlternate),
+            reinterpret_cast<char*>(0x10091c28), 256, filename);
+        filename = toAnsi(**configName);
+        narrowKey = toAnsi(keyPort);
+        profile(reinterpret_cast<const char*>(R6GameServiceAddresses::TextServers), narrowKey,
+            reinterpret_cast<const char*>(R6GameServiceAddresses::GEmptyWideTextAlternate), valueBuffer, 256, filename);
+        *reinterpret_cast<int*>(0x10091c04) = atoi(valueBuffer);
+        if (*reinterpret_cast<int*>(R6GameServiceAddresses::GServiceVerboseLogging)) {
+          const TCHAR* keyServer = appFromAnsi(reinterpret_cast<const char*>(0x10091c28));
+          GLog->Logf(reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextCDKeyNameS), keyServer);
+          const int keyPortValue = *reinterpret_cast<int*>(0x10091c04);
+          GLog->Logf(reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextCDKeyPortI), keyPortValue);
+        }
+        filename = toAnsi(**configName);
+        if (profile(reinterpret_cast<const char*>(R6GameServiceAddresses::TextMaintenance),
+            reinterpret_cast<const char*>(R6GameServiceAddresses::TextGS4UserAccountURL),
+            reinterpret_cast<const char*>(R6GameServiceAddresses::GEmptyWideTextAlternate), valueBuffer, 256, filename)) {
+          const TCHAR* homePage = appFromAnsi(valueBuffer);
+          *reinterpret_cast<FStringNoInit*>(currentOwner + 0x1d0) = homePage;
+        }
+        if (*reinterpret_cast<int*>(R6GameServiceAddresses::GServiceVerboseLogging)) {
+          const uint* homeHeader = reinterpret_cast<const uint*>(currentOwner + 0x1d0);
+          const uint data = homeHeader[0], count = homeHeader[1], capacity = homeHeader[2];
+          GLog->Logf(reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextMSzUbiHomePageS), data, count, capacity);
+        }
+        const int routerCount = *reinterpret_cast<int*>(R6GameServiceAddresses::GServiceArray1 + 4);
+        *reinterpret_cast<int*>(R6GameServiceAddresses::GMSRouterIndex) = 0;
+        *reinterpret_cast<int*>(R6GameServiceAddresses::GMSClientInitialized) = routerCount > 0;
+      }
+    }
+  }
+  FString* ownedAddress = reinterpret_cast<FString*>(nativeStack + 0x1538);
+  *reinterpret_cast<int*>(nativeStack + 0x1530) = -1;
+  FString::~FString(ownedAddress);
+  __asm {
     mov    ecx,DWORD PTR [esp+0x1528]
     pop    edi
     pop    esi
@@ -21782,46 +20532,52 @@ __declspec(naked) void __thiscall UR6GSServers::execInitialize(UR6GSServers *thi
     push   eax
     mov    DWORD PTR fs:0x0,esp
     sub    esp,0xc
-    mov    eax,DWORD PTR [ebp+0x8]
-    mov    edx,DWORD PTR [eax+0xc]
-    push   ebx
-    inc    edx
-    push   esi
-    mov    esi,ecx
-    mov    DWORD PTR [eax+0xc],edx
-    cmp    BYTE PTR [edx],0x42
-    push   edi
-    mov    DWORD PTR [ebp-0x10],esp
-    mov    DWORD PTR [ebp-0x4],0x0
-    jne    Branch595
-    mov    ecx,DWORD PTR [eax+0x8]
-    inc    edx
-    push   0x0
-    mov    DWORD PTR [eax+0xc],edx
-    push   eax
-    mov    eax,ds:R6GameServiceAddresses::Core__GNativesSlot
-    call   DWORD PTR [eax+0x108]
-  Branch595:
-    mov    eax,ds:R6GameServiceAddresses::GMSClientInitialized
-    test   eax,eax
-    jne    Branch596
-    sub    esp,0xc
-    mov    ecx,esp
-    mov    DWORD PTR [ebp+0x8],esp
-    push   ecx
-    mov    ecx,esi
-    call   R6GameServiceAddresses::UR6GSServers_eventGetLocallyBoundIpAddr
-    mov    ecx,esi
-    call   R6GameServiceAddresses::UR6GSServers_Init
-  Branch596:
-    mov    ecx,DWORD PTR [ebp-0xc]
-    pop    edi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
-    ret    0x8
+    push ebx
+    push esi
+    push edi
+    mov esi,ecx
+    mov DWORD PTR [ebp-0x10],esp
+  }
+  // Aliases below refer to the retained native frame; they do not define a new exception layout.
+  byte* nativeFrame;
+  UR6GSServers* receiver;
+  __asm { mov nativeFrame,ebp }
+  __asm { mov receiver,esi }
+  FFrame* executionStack = *reinterpret_cast<FFrame**>(nativeFrame + 8);
+  byte*& code = *reinterpret_cast<byte**>(reinterpret_cast<byte*>(executionStack) + 0xc);
+  byte* next = code + 1;
+  code = next;
+  const bool debugInfo = *next == 0x42;
+  *reinterpret_cast<int*>(nativeFrame - 4) = 0;
+  if (debugInfo) {
+    UObject* context = *reinterpret_cast<UObject**>(reinterpret_cast<byte*>(executionStack) + 8);
+    code = next + 1;
+    using ScriptNative = void (__thiscall *)(UObject*, FFrame*, void*);
+    ScriptNative* natives = *reinterpret_cast<ScriptNative**>(R6GameServiceAddresses::Core__GNativesSlot);
+    natives[0x42](context, executionStack, nullptr);
+  }
+  if (!*reinterpret_cast<int*>(R6GameServiceAddresses::GMSClientInitialized)) {
+    // The hidden event result occupies the outgoing by-value argument. Init takes its ownership.
+    __asm {
+      sub esp,0xc
+      mov ecx,esp
+      mov DWORD PTR [ebp+0x8],esp
+      push ecx
+      mov ecx,esi
+      call R6GameServiceAddresses::UR6GSServers_eventGetLocallyBoundIpAddr
+      mov ecx,esi
+      call R6GameServiceAddresses::UR6GSServers_Init
+    }
+  }
+  __asm {
+    mov ecx,DWORD PTR [ebp-0xc]
+    pop edi
+    pop esi
+    mov DWORD PTR fs:0x0,ecx
+    pop ebx
+    mov esp,ebp
+    pop ebp
+    ret 0x8
   }
 }
 

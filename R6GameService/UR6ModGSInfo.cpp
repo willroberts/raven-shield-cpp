@@ -341,147 +341,98 @@ __declspec(naked) void __thiscall UR6ModGSInfo::execNativeInitModInfo(FFrame &fr
     push    eax
     mov    DWORD PTR fs:0x0,esp
     sub    esp,0x30
-    mov    eax,DWORD PTR [ebp+0x8]
-    mov    edx,DWORD PTR [eax+0xc]
-    push    ebx
-    inc    edx
-    push    esi
-    mov    esi,ecx
-    mov    DWORD PTR [eax+0xc],edx
-    cmp    BYTE PTR [edx],0x42
-    push    edi
-    mov    DWORD PTR [ebp-0x10],esp
-    mov    DWORD PTR [ebp-0x4],0x0
-    jne    Branch6
-    mov    ecx,DWORD PTR [eax+0x8]
-    inc    edx
-    push    0x0
-    mov    DWORD PTR [eax+0xc],edx
-    push    eax
-    mov    eax,ds:R6GameServiceAddresses::Core__GNativesSlot
-    call    DWORD PTR [eax+0x108]
-  Branch6:
-    mov    ecx,esi
-    call    R6GameServiceAddresses::UR6ModGSInfo_InitMODCDKey
-    push    R6GameServiceAddresses::WideTextRSPC12
-    mov    ecx,R6GameServiceAddresses::GServiceString2
-    call    DWORD PTR ds:R6GameServiceAddresses::Core__4FStringSlot2
-    push    R6GameServiceAddresses::WideTextR6RSCUSTOM
-    lea    ecx,[ebp-0x24]
-    call    DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot2
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::Engine__GModMgrSlot
-    mov    eax,DWORD PTR [edx]
-    lea    ecx,[ebp-0x30]
-    push    ecx
-    mov    ecx,DWORD PTR [eax+0x34]
-    add    ecx,0x94
-    mov    BYTE PTR [ebp-0x4],0x1
-    call    DWORD PTR ds:R6GameServiceAddresses::Core_FString_CapsSlot
-    mov    bl,0x2
-    lea    ecx,[ebp-0x30]
-    mov    BYTE PTR [ebp-0x4],bl
-    call    DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    mov    esi,DWORD PTR ds:R6GameServiceAddresses::Core__appStricmpSlot
-    push    R6GameServiceAddresses::WideTextATHENASWORD
-    push    eax
-    call    esi
-    add    esp,0x8
-    test    eax,eax
-    jne    Branch7
-    push    R6GameServiceAddresses::WideTextR6RSATHENASWORD
-    lea    ecx,[ebp-0x3c]
-    call    DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot2
-    mov    BYTE PTR [ebp-0x4],0x3
-    jmp    Branch9
-  Branch7:
-    lea    ecx,[ebp-0x30]
-    call    DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    push    R6GameServiceAddresses::WideTextIRONWRATH
-    push    eax
-    call    esi
-    add    esp,0x8
-    test    eax,eax
-    jne    Branch8
-    push    R6GameServiceAddresses::WideTextR6RSCRIMSONHAMMER
-    lea    ecx,[ebp-0x3c]
-    call    DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot2
-    mov    BYTE PTR [ebp-0x4],0x4
-    jmp    Branch9
-  Branch8:
-    lea    ecx,[ebp-0x30]
-    call    DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    push    R6GameServiceAddresses::WideTextRAVENSHIELD
-    push    eax
-    call    esi
-    add    esp,0x8
-    test    eax,eax
-    jne    Branch10
-    push    R6GameServiceAddresses::WideTextRAVENSHIELD
-    lea    ecx,[ebp-0x3c]
-    call    DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot2
-    mov    BYTE PTR [ebp-0x4],0x5
-  Branch9:
-    lea    ecx,[ebp-0x24]
-    push    eax
-    call    DWORD PTR ds:R6GameServiceAddresses::Core__4FStringSlot
-    lea    ecx,[ebp-0x3c]
-    mov    BYTE PTR [ebp-0x4],bl
-    call    DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringSlot
-  Branch10:
-    lea    ecx,[ebp-0x24]
-    push    ecx
-    mov    ecx,R6GameServiceAddresses::GServiceString3
-    call    DWORD PTR ds:R6GameServiceAddresses::Core__4FStringSlot
-    lea    edx,[ebp-0x24]
-    push    edx
-    mov    ecx,R6GameServiceAddresses::GServiceString1
-    call    DWORD PTR ds:R6GameServiceAddresses::Core__4FStringSlot
-    mov    eax,ds:R6GameServiceAddresses::GServiceVerboseLogging
-    test    eax,eax
-    je    Branch11
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServiceString2
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::GServiceString2+0x4
-    mov    esi,DWORD PTR ds:R6GameServiceAddresses::Core_FOutputDevice_LogfSlot
-    sub    esp,0xc
-    mov    eax,esp
-    mov    DWORD PTR [eax],ecx
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServiceString2+0x8
-    mov    DWORD PTR [eax+0x4],edx
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    DWORD PTR [eax+0x8],ecx
-    mov    eax,DWORD PTR [edx]
-    push    R6GameServiceAddresses::WideTextInitModInfoUbiClientVersionS
-    push    eax
-    call    esi
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::GServiceString1
-    mov    eax,ds:R6GameServiceAddresses::GServiceString1+0x4
-    add    esp,0x8
-    mov    ecx,esp
-    mov    DWORD PTR [ecx],edx
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::GServiceString1+0x8
-    mov    DWORD PTR [ecx+0x4],eax
-    mov    eax,ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    DWORD PTR [ecx+0x8],edx
-    mov    ecx,DWORD PTR [eax]
-    push    R6GameServiceAddresses::WideTextInitModInfoMSzGameServiceGameNameS
-    push    ecx
-    call    esi
-    add    esp,0x14
-  Branch11:
-    lea    ecx,[ebp-0x30]
-    mov    BYTE PTR [ebp-0x4],0x1
-    call    DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringSlot
-    lea    ecx,[ebp-0x24]
-    mov    BYTE PTR [ebp-0x4],0x0
-    call    DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringSlot
-    mov    ecx,DWORD PTR [ebp-0xc]
-    pop    edi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
-    ret    0x8
+    push ebx
+    push esi
+    push edi
+    mov esi,ecx
+    mov DWORD PTR [ebp-0x10],esp
+  }
+  // These aliases bind existing native storage; inherited-frame handlers and their offsets remain unchanged.
+  byte* nativeFrame;
+  UR6ModGSInfo* receiver;
+  __asm { mov nativeFrame,ebp }
+  __asm { mov receiver,esi }
+  FFrame* executionStack = *reinterpret_cast<FFrame**>(nativeFrame + 8);
+  byte*& code = *reinterpret_cast<byte**>(reinterpret_cast<byte*>(executionStack) + 0xc);
+  byte* next = code + 1;
+  code = next;
+  const bool debugInfo = *next == 0x42;
+  *reinterpret_cast<int*>(nativeFrame - 4) = 0;
+  if (debugInfo) {
+    UObject* context = *reinterpret_cast<UObject**>(reinterpret_cast<byte*>(executionStack) + 8);
+    code = next + 1;
+    using ScriptNative = void (__thiscall *)(UObject*, FFrame*, void*);
+    ScriptNative* natives = *reinterpret_cast<ScriptNative**>(R6GameServiceAddresses::Core__GNativesSlot);
+    natives[0x42](context, executionStack, nullptr);
+  }
+  // This native has no script arguments or result. Registry/mod-manager objects supply the inputs.
+  receiver->InitMODCDKey();
+  FString* version = reinterpret_cast<FString*>(R6GameServiceAddresses::GServiceString2);
+  *version = reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextRSPC12);
+  FString* serviceName = reinterpret_cast<FString*>(nativeFrame - 0x24);
+  FString::FString(serviceName, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextR6RSCUSTOM));
+  byte* modManager = *reinterpret_cast<byte**>(
+      *reinterpret_cast<uint*>(R6GameServiceAddresses::Engine__GModMgrSlot));
+  byte* currentMod = *reinterpret_cast<byte**>(modManager + 0x34);
+  FString* modName = reinterpret_cast<FString*>(currentMod + 0x94);
+  FString* uppercase = reinterpret_cast<FString*>(nativeFrame - 0x30);
+  *reinterpret_cast<byte*>(nativeFrame - 4) = 1;
+  // Caps writes a hidden FString result; do not create an additional temporary or change its cleanup state.
+  using CapsFunction = void (__thiscall *)(FString*, FString*);
+  (*reinterpret_cast<CapsFunction*>(R6GameServiceAddresses::Core_FString_CapsSlot))(modName, uppercase);
+  *reinterpret_cast<byte*>(nativeFrame - 4) = 2;
+  const TCHAR* upperText = **uppercase;
+  using CompareFunction = int (__cdecl *)(const TCHAR*, const TCHAR*);
+  CompareFunction compare = *reinterpret_cast<CompareFunction*>(R6GameServiceAddresses::Core__appStricmpSlot);
+  uint selectedText = 0;
+  byte selectedState = 0;
+  if (compare(upperText, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextATHENASWORD)) == 0) {
+    selectedText = R6GameServiceAddresses::WideTextR6RSATHENASWORD; selectedState = 3;
+  } else if (compare(**uppercase, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextIRONWRATH)) == 0) {
+    selectedText = R6GameServiceAddresses::WideTextR6RSCRIMSONHAMMER; selectedState = 4;
+  } else if (compare(**uppercase, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextRAVENSHIELD)) == 0) {
+    selectedText = R6GameServiceAddresses::WideTextRAVENSHIELD; selectedState = 5;
+  }
+  if (selectedText) {
+    FString* selection = reinterpret_cast<FString*>(nativeFrame - 0x3c);
+    // Assignment consumes the constructor's actual EAX, while destruction always targets native storage -0x3c.
+    using StringConstructor = FString* (__thiscall *)(FString*, const TCHAR*);
+    FString* constructed = (*reinterpret_cast<StringConstructor*>(
+        R6GameServiceAddresses::Core__ConstructFStringSlot2))(selection, reinterpret_cast<const TCHAR*>(selectedText));
+    *reinterpret_cast<byte*>(nativeFrame - 4) = selectedState;
+    *serviceName = *constructed;
+    *reinterpret_cast<byte*>(nativeFrame - 4) = 2;
+    FString::~FString(selection);
+  }
+  *reinterpret_cast<FString*>(R6GameServiceAddresses::GServiceString3) = *serviceName;
+  *reinterpret_cast<FString*>(R6GameServiceAddresses::GServiceString1) = *serviceName;
+  if (*reinterpret_cast<int*>(R6GameServiceAddresses::GServiceVerboseLogging)) {
+    const uint* versionHeader = reinterpret_cast<const uint*>(version);
+    const uint versionData = versionHeader[0], versionCount = versionHeader[1];
+    using LogFunction = void (__cdecl *)(FOutputDevice*, const TCHAR*, ...);
+    LogFunction log = *reinterpret_cast<LogFunction*>(R6GameServiceAddresses::Core_FOutputDevice_LogfSlot);
+    const uint versionCapacity = versionHeader[2];
+    log(GLog, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextInitModInfoUbiClientVersionS),
+        versionData, versionCount, versionCapacity);
+    // Native varargs pass the three raw header DWORDs, not operator* text; reload all of them after the first log.
+    const uint* gameHeader = reinterpret_cast<const uint*>(R6GameServiceAddresses::GServiceString1);
+    const uint gameData = gameHeader[0], gameCount = gameHeader[1], gameCapacity = gameHeader[2];
+    log(GLog, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextInitModInfoMSzGameServiceGameNameS),
+        gameData, gameCount, gameCapacity);
+  }
+  *reinterpret_cast<byte*>(nativeFrame - 4) = 1;
+  FString::~FString(uppercase);
+  *reinterpret_cast<byte*>(nativeFrame - 4) = 0;
+  FString::~FString(serviceName);
+  __asm {
+    mov ecx,DWORD PTR [ebp-0xc]
+    pop edi
+    pop esi
+    mov DWORD PTR fs:0x0,ecx
+    pop ebx
+    mov esp,ebp
+    pop ebp
+    ret 0x8
   }
 }
 
@@ -534,7 +485,6 @@ const R6GameServiceNative::FuncInfo InitMODCDKeyExceptionInfo = {
 // R6GameService.dll @ 1000c7b0 : complete native control/access order and raw ABI retained.
 __declspec(naked) void __thiscall UR6ModGSInfo::InitMODCDKey(UR6ModGSInfo *this)
 {
-  // RegGet status is ignored; callee owns its two by-value strings. Valid input does not set activation bit0.
   __asm {
     push   ebp
     mov    ebp,esp
@@ -544,90 +494,98 @@ __declspec(naked) void __thiscall UR6ModGSInfo::InitMODCDKey(UR6ModGSInfo *this)
     push   eax
     mov    DWORD PTR fs:0x0,esp
     sub    esp,0x38
-    push   ebx
-    push   esi
-    push   edi
-    mov    esi,ecx
-    lea    ecx,[ebp-0x2c]
-    mov    DWORD PTR [ebp-0x10],esp
-    mov    DWORD PTR [ebp-0x4],0x0
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot
-    push   R6GameServiceAddresses::WideTextSOFTWARERedStormEntertainment
-    lea    ecx,[ebp-0x38]
-    mov    BYTE PTR [ebp-0x4],0x1
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot2
-    mov    eax,ds:R6GameServiceAddresses::Engine__GModMgrSlot
-    mov    ecx,DWORD PTR [eax]
-    mov    edx,DWORD PTR [ecx+0x34]
-    add    edx,0x94
-    mov    bl,0x2
-    push   edx
-    lea    ecx,[ebp-0x38]
-    mov    BYTE PTR [ebp-0x4],bl
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__YFStringSlot
-    lea    eax,[ebp-0x2c]
-    push   eax
-    sub    esp,0xc
-    mov    ecx,esp
-    mov    DWORD PTR [ebp-0x18],esp
-    push   R6GameServiceAddresses::WideTextCDKey
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot2
-    sub    esp,0xc
-    lea    edx,[ebp-0x38]
-    mov    ecx,esp
-    mov    DWORD PTR [ebp-0x1c],esp
-    push   edx
-    mov    BYTE PTR [ebp-0x4],0x3
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot3
-    mov    BYTE PTR [ebp-0x4],bl
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__RegGetSlot
-    add    esp,0x10
-    lea    eax,[ebp-0x2c]
-    mov    ecx,esp
-    mov    DWORD PTR [ebp-0x1c],esp
-    push   eax
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot3
-    call   R6GameServiceAddresses::IsCDKeyValidOnMachine
-    add    esp,0xc
-    test   eax,eax
-    je     Branch12
-    sub    esp,0xc
-    lea    edx,[ebp-0x2c]
-    mov    ecx,esp
-    mov    DWORD PTR [ebp-0x1c],esp
-    push   edx
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot3
-    lea    eax,[ebp-0x44]
-    push   eax
-    call   R6GameServiceAddresses::DecryptFStringWithUeviLCore
-    add    esp,0x10
-    push   eax
-    mov    ecx,R6GameServiceAddresses::GServiceString5
-    mov    BYTE PTR [ebp-0x4],0x4
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__4FStringSlot
-    lea    ecx,[ebp-0x44]
-    mov    BYTE PTR [ebp-0x4],bl
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringSlot
-    jmp    Branch13
-  Branch12:
-    push   R6GameServiceAddresses::GEmptyWideText
-    mov    ecx,R6GameServiceAddresses::GServiceString5
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__4FStringSlot2
-    and    DWORD PTR [esi+0x3c],0xfffffffe
-  Branch13:
-    lea    ecx,[ebp-0x38]
-    mov    BYTE PTR [ebp-0x4],0x1
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringSlot
-    lea    ecx,[ebp-0x2c]
-    mov    BYTE PTR [ebp-0x4],0x0
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringSlot
-    mov    ecx,DWORD PTR [ebp-0xc]
-    pop    edi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
+    push ebx
+    push esi
+    push edi
+    mov esi,ecx
+    mov DWORD PTR [ebp-0x10],esp
+  }
+  // These aliases bind existing native storage; inherited-frame handlers and their offsets remain unchanged.
+  byte* nativeFrame;
+  UR6ModGSInfo* receiver;
+  __asm { mov nativeFrame,ebp }
+  __asm { mov receiver,esi }
+  *reinterpret_cast<int*>(nativeFrame - 4) = 0;
+  FString* key = reinterpret_cast<FString*>(nativeFrame - 0x2c);
+  FString::FString(key);
+  *reinterpret_cast<byte*>(nativeFrame - 4) = 1;
+  FString* registryPath = reinterpret_cast<FString*>(nativeFrame - 0x38);
+  FString::FString(registryPath,
+      reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextSOFTWARERedStormEntertainment));
+  byte* modManager = *reinterpret_cast<byte**>(
+      *reinterpret_cast<uint*>(R6GameServiceAddresses::Engine__GModMgrSlot));
+  byte* mod = *reinterpret_cast<byte**>(modManager + 0x34);
+  *reinterpret_cast<byte*>(nativeFrame - 4) = 2;
+  *registryPath += *reinterpret_cast<FString*>(mod + 0x94);
+  // RegGet owns its two by-value FString arguments; its output aliases key. The status is ignored.
+  __asm {
+    lea eax,[ebp-0x2c]
+    push eax
+    sub esp,0xc
+    mov ecx,esp
+    mov DWORD PTR [ebp-0x18],esp
+    push R6GameServiceAddresses::WideTextCDKey
+    call DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot2
+    sub esp,0xc
+    lea edx,[ebp-0x38]
+    mov ecx,esp
+    mov DWORD PTR [ebp-0x1c],esp
+    push edx
+    mov BYTE PTR [ebp-0x4],0x3
+    call DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot3
+    mov BYTE PTR [ebp-0x4],0x2
+    call DWORD PTR ds:R6GameServiceAddresses::Core__RegGetSlot
+    add esp,0x10
+  }
+  // Validation consumes an outgoing copy. CD-key internals remain outside this initialization trace.
+  uint valid;
+  __asm {
+    lea eax,[ebp-0x2c]
+    mov ecx,esp
+    mov DWORD PTR [ebp-0x1c],esp
+    push eax
+    call DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot3
+    call R6GameServiceAddresses::IsCDKeyValidOnMachine
+    add esp,0xc
+    mov valid,eax
+  }
+  if (valid) {
+    FString* decrypted;
+    __asm {
+      sub esp,0xc
+      lea edx,[ebp-0x2c]
+      mov ecx,esp
+      mov DWORD PTR [ebp-0x1c],esp
+      push edx
+      call DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot3
+      lea eax,[ebp-0x44]
+      push eax
+      call R6GameServiceAddresses::DecryptFStringWithUeviLCore
+      add esp,0x10
+      mov decrypted,eax
+    }
+    *reinterpret_cast<byte*>(nativeFrame - 4) = 4;
+    *reinterpret_cast<FString*>(R6GameServiceAddresses::GServiceString5) = *decrypted;
+    *reinterpret_cast<byte*>(nativeFrame - 4) = 2;
+    FString::~FString(reinterpret_cast<FString*>(nativeFrame - 0x44));
+  } else {
+    *reinterpret_cast<FString*>(R6GameServiceAddresses::GServiceString5) =
+        reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::GEmptyWideText);
+    *reinterpret_cast<uint*>(reinterpret_cast<byte*>(receiver) + 0x3c) &= 0xfffffffe;
+  }
+  // Success leaves activation bit 0 as it was; failure clears it only after publishing the empty string.
+  *reinterpret_cast<byte*>(nativeFrame - 4) = 1;
+  FString::~FString(registryPath);
+  *reinterpret_cast<byte*>(nativeFrame - 4) = 0;
+  FString::~FString(key);
+  __asm {
+    mov ecx,DWORD PTR [ebp-0xc]
+    pop edi
+    pop esi
+    mov DWORD PTR fs:0x0,ecx
+    pop ebx
+    mov esp,ebp
+    pop ebp
     ret
   }
 }

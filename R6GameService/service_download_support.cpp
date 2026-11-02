@@ -5,58 +5,21 @@
 
 // Publishes whether callback status word two is zero, then optionally logs selected callback words/low byte.
 // R6GameService.dll @ 100065c0 : complete native control/access order and raw ABI retained.
-__declspec(naked) void __stdcall ReportServiceDownload(
+void __stdcall ReportServiceDownload(
     uint word0,uint status,uint word2,uint word3,uint byteWord,uint word5)
 {
-  __asm {
-    xor    eax,eax
-    push   edi
-    mov    edi,DWORD PTR [esp+0xc]
-    test   edi,edi
-    sete   al
-    mov    ds:0x10091be8,eax
-    mov    eax,ds:R6GameServiceAddresses::GServiceVerboseLogging
-    test   eax,eax
-    je     Branch1
-    mov    ecx,DWORD PTR [esp+0x8]
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    eax,DWORD PTR [edx]
-    push   esi
-    mov    esi,DWORD PTR ds:R6GameServiceAddresses::Core_FOutputDevice_LogfSlot
-    push   ecx
-    push   R6GameServiceAddresses::WideTextCallbackHttpCompletedI
-    push   eax
-    call   esi
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    edx,DWORD PTR [ecx]
-    push   edi
-    push   R6GameServiceAddresses::WideTextCallbackHttpCompletedI
-    push   edx
-    call   esi
-    mov    eax,DWORD PTR [esp+0x30]
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    edx,DWORD PTR [ecx]
-    push   eax
-    push   R6GameServiceAddresses::WideTextCallbackHttpCompletedI
-    push   edx
-    call   esi
-    movzx  eax,BYTE PTR [esp+0x40]
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    edx,DWORD PTR [ecx]
-    push   eax
-    push   R6GameServiceAddresses::WideTextCallbackHttpCompletedI
-    push   edx
-    call   esi
-    mov    eax,ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    ecx,DWORD PTR [eax]
-    push   R6GameServiceAddresses::WideTextCallbackHttpCompleted
-    push   ecx
-    call   esi
-    add    esp,0x38
-    pop    esi
-  Branch1:
-    pop    edi
-    ret    0x18
+  const uint savedStatus = status;
+  *reinterpret_cast<int*>(0x10091be8) = savedStatus == 0;
+  if (*reinterpret_cast<int*>(R6GameServiceAddresses::GServiceVerboseLogging)) {
+    FOutputDevice* firstLogger = GLog;
+    using LogCall = void (__cdecl *)(FOutputDevice*, const TCHAR*, ...);
+    LogCall log = *reinterpret_cast<LogCall*>(R6GameServiceAddresses::Core_FOutputDevice_LogfSlot);
+    const TCHAR* wordFormat = reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextCallbackHttpCompletedI);
+    log(firstLogger, wordFormat, word0);
+    log(GLog, wordFormat, savedStatus);
+    log(GLog, wordFormat, word3);
+    log(GLog, wordFormat, static_cast<byte>(byteWord));
+    log(GLog, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextCallbackHttpCompleted));
   }
 }
 

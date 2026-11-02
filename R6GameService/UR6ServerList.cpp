@@ -1103,65 +1103,50 @@ __declspec(naked) void __thiscall UR6ServerList::InitFavorites(UR6ServerList *th
     push   eax
     mov    DWORD PTR fs:0x0,esp
     sub    esp,0x3c
-    push   ebx
-    push   esi
-    push   edi
-    mov    DWORD PTR [ebp-0x14],ecx
-    lea    ecx,[ebp-0x28]
-    mov    DWORD PTR [ebp-0x10],esp
-    mov    DWORD PTR [ebp-0x4],0x0
-    xor    ebx,ebx
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot
-    mov    BYTE PTR [ebp-0x4],0x1
-    lea    ebx,[ebx+0x0]
-  Branch8:
-    push   ebx
-    lea    eax,[ebp-0x48]
-    push   R6GameServiceAddresses::TextFavServerI
-    push   eax
-    call   DWORD PTR ds:R6GameServiceAddresses::MSVCR71_sprintfSlot
-    lea    ecx,[ebp-0x48]
-    push   ecx
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appFromAnsiSlot
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::Core__GConfigSlot
-    mov    ecx,DWORD PTR [edx]
-    mov    edx,DWORD PTR [ecx]
-    add    esp,0x10
-    push   R6GameServiceAddresses::WideTextUser
-    lea    esi,[ebp-0x28]
-    push   esi
-    push   eax
-    push   R6GameServiceAddresses::WideTextFavorites
-    call   DWORD PTR [edx+0xc]
-    mov    edi,eax
-    test   edi,edi
-    je     Branch9
-    mov    esi,DWORD PTR [ebp-0x14]
-    push   0x1
-    add    esi,0x50
-    push   0xc
-    mov    ecx,esi
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FArray_AddZeroedSlot
-    lea    edx,[eax+eax*2]
-    mov    eax,DWORD PTR [esi]
-    lea    ecx,[ebp-0x28]
-    push   ecx
-    lea    ecx,[eax+edx*4]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__4FStringSlot
-  Branch9:
-    inc    ebx
-    test   edi,edi
-    jne    Branch8
-    lea    ecx,[ebp-0x28]
-    mov    BYTE PTR [ebp-0x4],0x0
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DestroyFStringSlot
-    mov    ecx,DWORD PTR [ebp-0xc]
-    pop    edi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
+    push ebx
+    push esi
+    push edi
+    mov esi,ecx
+    mov DWORD PTR [ebp-0x10],esp
+  }
+  // These aliases bind existing native storage; inherited-frame handlers and their offsets remain unchanged.
+  byte* nativeFrame;
+  UR6ServerList* receiver;
+  __asm { mov nativeFrame,ebp }
+  __asm { mov receiver,esi }
+  *reinterpret_cast<UR6ServerList**>(nativeFrame - 0x14) = receiver;
+  *reinterpret_cast<int*>(nativeFrame - 4) = 0;
+  FString* value = reinterpret_cast<FString*>(nativeFrame - 0x28);
+  FString::FString(value);
+  *reinterpret_cast<byte*>(nativeFrame - 4) = 1;
+  uint index = 0;
+  int found;
+  do {
+    char* key = reinterpret_cast<char*>(nativeFrame - 0x48);
+    sprintf(key, reinterpret_cast<const char*>(R6GameServiceAddresses::TextFavServerI), index);
+    const TCHAR* wideKey = appFromAnsi(key);
+    found = GConfig->GetString(reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextFavorites),
+        wideKey, *value, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextUser));
+    if (found) {
+      // Saved owner and current storage are reloaded after configuration; appends survive assignment failure.
+      byte* currentOwner = *reinterpret_cast<byte**>(nativeFrame - 0x14);
+      FArray* favorites = reinterpret_cast<FArray*>(currentOwner + 0x50);
+      const int added = favorites->AddZeroed(12, 1);
+      FString* data = *reinterpret_cast<FString**>(favorites);
+      data[added] = *value;
+    }
+    ++index; // DWORD wrap, including the final missing key. No array reset or duplicate suppression.
+  } while (found);
+  *reinterpret_cast<byte*>(nativeFrame - 4) = 0;
+  FString::~FString(value);
+  __asm {
+    mov ecx,DWORD PTR [ebp-0xc]
+    pop edi
+    pop esi
+    mov DWORD PTR fs:0x0,ecx
+    pop ebx
+    mov esp,ebp
+    pop ebp
     ret
   }
 }
@@ -1229,36 +1214,40 @@ __declspec(naked) void __thiscall UR6ServerList::execNativeInitFavorites(FFrame 
     push    eax
     mov    DWORD PTR fs:0x0,esp
     sub    esp,0xc
-    mov    eax,DWORD PTR [ebp+0x8]
-    mov    edx,DWORD PTR [eax+0xc]
-    push    ebx
-    inc    edx
-    push    esi
-    mov    esi,ecx
-    mov    DWORD PTR [eax+0xc],edx
-    cmp    BYTE PTR [edx],0x42
-    push    edi
-    mov    DWORD PTR [ebp-0x10],esp
-    mov    DWORD PTR [ebp-0x4],0x0
-    jne    Branch10
-    mov    ecx,DWORD PTR [eax+0x8]
-    inc    edx
-    push    0x0
-    mov    DWORD PTR [eax+0xc],edx
-    push    eax
-    mov    eax,ds:R6GameServiceAddresses::Core__GNativesSlot
-    call    DWORD PTR [eax+0x108]
-  Branch10:
-    mov    ecx,esi
-    call    R6GameServiceAddresses::UR6ServerList_InitFavorites
-    mov    ecx,DWORD PTR [ebp-0xc]
-    pop    edi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
-    ret    0x8
+    push ebx
+    push esi
+    push edi
+    mov esi,ecx
+    mov DWORD PTR [ebp-0x10],esp
+  }
+  // These aliases bind existing native storage; inherited-frame handlers and their offsets remain unchanged.
+  byte* nativeFrame;
+  UR6ServerList* receiver;
+  __asm { mov nativeFrame,ebp }
+  __asm { mov receiver,esi }
+  FFrame* executionStack = *reinterpret_cast<FFrame**>(nativeFrame + 8);
+  byte*& code = *reinterpret_cast<byte**>(reinterpret_cast<byte*>(executionStack) + 0xc);
+  byte* next = code + 1;
+  code = next;
+  const bool debugInfo = *next == 0x42;
+  *reinterpret_cast<int*>(nativeFrame - 4) = 0;
+  if (debugInfo) {
+    UObject* context = *reinterpret_cast<UObject**>(reinterpret_cast<byte*>(executionStack) + 8);
+    code = next + 1;
+    using ScriptNative = void (__thiscall *)(UObject*, FFrame*, void*);
+    ScriptNative* natives = *reinterpret_cast<ScriptNative**>(R6GameServiceAddresses::Core__GNativesSlot);
+    natives[0x42](context, executionStack, nullptr);
+  }
+  receiver->InitFavorites();
+  __asm {
+    mov ecx,DWORD PTR [ebp-0xc]
+    pop edi
+    pop esi
+    mov DWORD PTR fs:0x0,ecx
+    pop ebx
+    mov esp,ebp
+    pop ebp
+    ret 0x8
   }
 }
 
@@ -1291,70 +1280,53 @@ __declspec(naked) void __thiscall UR6ServerList::execNativeUpdateFavorites(FFram
     push    eax
     mov    DWORD PTR fs:0x0,esp
     sub    esp,0x2c
-    mov    eax,DWORD PTR [ebp+0x8]
-    mov    edx,DWORD PTR [eax+0xc]
-    push    ebx
-    inc    edx
-    push    esi
-    mov    ebx,ecx
-    mov    DWORD PTR [eax+0xc],edx
-    cmp    BYTE PTR [edx],0x42
-    push    edi
-    mov    DWORD PTR [ebp-0x10],esp
-    mov    DWORD PTR [ebp-0x4],0x0
-    jne    Branch11
-    mov    ecx,DWORD PTR [eax+0x8]
-    inc    edx
-    push    0x0
-    mov    DWORD PTR [eax+0xc],edx
-    push    eax
-    mov    eax,ds:R6GameServiceAddresses::Core__GNativesSlot
-    call    DWORD PTR [eax+0x108]
-  Branch11:
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::Core__GConfigSlot
-    mov    ecx,DWORD PTR [ecx]
-    mov    edx,DWORD PTR [ecx]
-    push    R6GameServiceAddresses::WideTextUser
-    push    R6GameServiceAddresses::WideTextFavorites
-    call    DWORD PTR [edx+0x20]
-    xor    esi,esi
-  Branch12:
-    cmp    esi,DWORD PTR [ebx+0x54]
-    jge    Branch13
-    push    esi
-    lea    eax,[ebp-0x38]
-    push    R6GameServiceAddresses::TextFavServerI
-    push    eax
-    call    DWORD PTR ds:R6GameServiceAddresses::MSVCR71_sprintfSlot
-    mov    edx,DWORD PTR [ebx+0x50]
-    lea    ecx,[esi+esi*2]
-    add    esp,0xc
-    lea    ecx,[edx+ecx*4]
-    call    DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    mov    edi,eax
-    lea    eax,[ebp-0x38]
-    push    eax
-    call    DWORD PTR ds:R6GameServiceAddresses::Core__appFromAnsiSlot
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::Core__GConfigSlot
-    mov    ecx,DWORD PTR [ecx]
-    mov    edx,DWORD PTR [ecx]
-    add    esp,0x4
-    push    R6GameServiceAddresses::WideTextUser
-    push    edi
-    push    eax
-    push    R6GameServiceAddresses::WideTextFavorites
-    call    DWORD PTR [edx+0x30]
-    inc    esi
-    jmp    Branch12
-  Branch13:
-    mov    ecx,DWORD PTR [ebp-0xc]
-    pop    edi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
-    ret    0x8
+    push ebx
+    push esi
+    push edi
+    mov esi,ecx
+    mov DWORD PTR [ebp-0x10],esp
+  }
+  // These aliases bind existing native storage; inherited-frame handlers and their offsets remain unchanged.
+  byte* nativeFrame;
+  UR6ServerList* receiver;
+  __asm { mov nativeFrame,ebp }
+  __asm { mov receiver,esi }
+  FFrame* executionStack = *reinterpret_cast<FFrame**>(nativeFrame + 8);
+  byte*& code = *reinterpret_cast<byte**>(reinterpret_cast<byte*>(executionStack) + 0xc);
+  byte* next = code + 1;
+  code = next;
+  const bool debugInfo = *next == 0x42;
+  *reinterpret_cast<int*>(nativeFrame - 4) = 0;
+  if (debugInfo) {
+    UObject* context = *reinterpret_cast<UObject**>(reinterpret_cast<byte*>(executionStack) + 8);
+    code = next + 1;
+    using ScriptNative = void (__thiscall *)(UObject*, FFrame*, void*);
+    ScriptNative* natives = *reinterpret_cast<ScriptNative**>(R6GameServiceAddresses::Core__GNativesSlot);
+    natives[0x42](context, executionStack, nullptr);
+  }
+  const TCHAR* section = reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextFavorites);
+  const TCHAR* filename = reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextUser);
+  GConfig->EmptySection(section, filename);
+  byte* list = reinterpret_cast<byte*>(receiver);
+  uint index = 0;
+  while (static_cast<int>(index) < *reinterpret_cast<int*>(list + 0x54)) {
+    char* key = reinterpret_cast<char*>(nativeFrame - 0x38);
+    sprintf(key, reinterpret_cast<const char*>(R6GameServiceAddresses::TextFavServerI), index);
+    FString* favorites = *reinterpret_cast<FString**>(list + 0x50);
+    const TCHAR* value = *favorites[index]; // Capture before key conversion; it can invalidate this borrowed pointer.
+    const TCHAR* wideKey = appFromAnsi(key);
+    GConfig->SetString(section, wideKey, value, filename); // Current config and virtual slot, without an explicit flush.
+    ++index;
+  }
+  __asm {
+    mov ecx,DWORD PTR [ebp-0xc]
+    pop edi
+    pop esi
+    mov DWORD PTR fs:0x0,ecx
+    pop ebx
+    mov esp,ebp
+    pop ebp
+    ret 0x8
   }
 }
 
@@ -1388,761 +1360,142 @@ __declspec(naked) void __thiscall UR6ServerList::execSortServers(UR6ServerList *
     push   eax
     mov    DWORD PTR fs:0x0,esp
     sub    esp,0x1c
-    push   ebx
-    push   esi
-    push   edi
-    mov    edi,DWORD PTR [ebp+0x8]
-    mov    eax,DWORD PTR [edi+0xc]
-    xor    ebx,ebx
-    mov    DWORD PTR [ebp-0x20],ebx
-    movzx  edx,BYTE PTR [eax]
-    inc    eax
-    mov    DWORD PTR [edi+0xc],eax
-    mov    DWORD PTR [ebp-0x10],esp
-    lea    eax,[ebp-0x20]
-    push   eax
-    mov    eax,ds:R6GameServiceAddresses::Core__GNativesSlot
-    mov    esi,ecx
-    mov    ecx,DWORD PTR [edi+0x8]
-    push   edi
-    mov    DWORD PTR [ebp-0x4],ebx
-    call   DWORD PTR [eax+edx*4]
-    mov    eax,DWORD PTR [edi+0xc]
-    mov    ecx,DWORD PTR [edi+0x8]
-    mov    DWORD PTR [ebp-0x1c],ebx
-    movzx  edx,BYTE PTR [eax]
-    inc    eax
-    mov    DWORD PTR [edi+0xc],eax
-    lea    eax,[ebp-0x1c]
-    push   eax
-    mov    eax,ds:R6GameServiceAddresses::Core__GNativesSlot
-    push   edi
-    call   DWORD PTR [eax+edx*4]
-    mov    edx,DWORD PTR [edi+0xc]
-    inc    edx
-    mov    eax,edx
-    mov    DWORD PTR [edi+0xc],edx
-    cmp    BYTE PTR [eax],0x42
-    jne    Branch14
-    mov    ecx,DWORD PTR [edi+0x8]
-    inc    eax
-    push   ebx
-    mov    DWORD PTR [edi+0xc],eax
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::Core__GNativesSlot
-    push   edi
-    call   DWORD PTR [edx+0x108]
-  Branch14:
-    mov    ecx,DWORD PTR [esi+0x60]
-    cmp    ecx,DWORD PTR [esi+0x84]
-    mov    DWORD PTR [ebp-0x14],ecx
-    je    Branch17
-    mov    eax,ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    ecx,DWORD PTR [eax]
-    push   R6GameServiceAddresses::WideTextErrorMGameServerListNumMGSLSortIdxNum
-    push   ecx
-  Branch15:
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FOutputDevice_LogfSlot
-    add    esp,0x8
-  Branch16:
-    mov    ecx,DWORD PTR [ebp-0xc]
-    pop    edi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
-    ret    0x8
-  Branch17:
-    xor    eax,eax
-  Branch18:
-    cmp    eax,ecx
-    jge    Branch19
-    mov    edx,DWORD PTR [esi+0x80]
-    mov    DWORD PTR [edx+eax*4],eax
-    inc    eax
-    jmp    Branch18
-  Branch19:
-    mov    eax,DWORD PTR [ebp-0x20]
-    cmp    eax,0x9
-    ja    Branch80
-    jmp    DWORD PTR [eax*4+R6GameServiceAddresses::GSortServerCases]
-    xor    eax,eax
-  Branch20:
-    lea    edx,[ecx-0x1]
-    cmp    eax,edx
-    mov    DWORD PTR [ebp+0x8],eax
-    jge    Branch16
-    xor    edx,edx
-  Branch21:
-    mov    edi,ecx
-    sub    edi,eax
-    dec    edi
-    cmp    edx,edi
-    jge    Branch25
-    mov    eax,DWORD PTR [ebp-0x1c]
-    xor    ebx,ebx
-    test   eax,eax
-    je    Branch22
-    mov    eax,DWORD PTR [esi+0x80]
-    mov    edi,DWORD PTR [eax+edx*4+0x4]
-    mov    ecx,DWORD PTR [esi+0x5c]
-    imul   edi,edi,0xdc
-    lea    eax,[eax+edx*4]
-    mov    eax,DWORD PTR [eax]
-    imul   eax,eax,0xdc
-    mov    eax,DWORD PTR [eax+ecx*1+0xc]
-    cmp    eax,DWORD PTR [edi+ecx*1+0xc]
-    setg   bl
-    jmp    Branch23
-  Branch22:
-    mov    ecx,DWORD PTR [esi+0x80]
-    mov    edi,DWORD PTR [ecx+edx*4+0x4]
-    lea    eax,[ecx+edx*4]
-    imul   edi,edi,0xdc
-    mov    eax,DWORD PTR [eax]
-    mov    ecx,DWORD PTR [esi+0x5c]
-    imul   eax,eax,0xdc
-    mov    eax,DWORD PTR [eax+ecx*1+0xc]
-    cmp    eax,DWORD PTR [edi+ecx*1+0xc]
-    setl   bl
-  Branch23:
-    mov    eax,ebx
-    test   eax,eax
-    je    Branch24
-    mov    ecx,DWORD PTR [esi+0x80]
-    mov    edi,DWORD PTR [ecx+edx*4+0x4]
-    lea    eax,[ecx+edx*4]
-    mov    ecx,DWORD PTR [eax]
-    mov    DWORD PTR [eax],edi
-    mov    eax,DWORD PTR [esi+0x80]
-    mov    DWORD PTR [eax+edx*4+0x4],ecx
-  Branch24:
-    mov    eax,DWORD PTR [ebp+0x8]
-    mov    ecx,DWORD PTR [ebp-0x14]
-    inc    edx
-    jmp    Branch21
-  Branch25:
-    inc    eax
-    xor    ebx,ebx
-    jmp    Branch20
-    xor    eax,eax
-  Branch26:
-    lea    edx,[ecx-0x1]
-    cmp    eax,edx
-    mov    DWORD PTR [ebp+0x8],eax
-    jge    Branch16
-    xor    edx,edx
-  Branch27:
-    mov    edi,ecx
-    sub    edi,eax
-    dec    edi
-    cmp    edx,edi
-    jge    Branch31
-    mov    eax,DWORD PTR [ebp-0x1c]
-    xor    ebx,ebx
-    test   eax,eax
-    je    Branch28
-    mov    eax,DWORD PTR [esi+0x80]
-    mov    edi,DWORD PTR [eax+edx*4+0x4]
-    mov    ecx,DWORD PTR [esi+0x5c]
-    imul   edi,edi,0xdc
-    lea    eax,[eax+edx*4]
-    mov    eax,DWORD PTR [eax]
-    imul   eax,eax,0xdc
-    mov    eax,DWORD PTR [eax+ecx*1+0x78]
-    cmp    eax,DWORD PTR [edi+ecx*1+0x78]
-    setg   bl
-    jmp    Branch29
-  Branch28:
-    mov    ecx,DWORD PTR [esi+0x80]
-    mov    edi,DWORD PTR [ecx+edx*4+0x4]
-    lea    eax,[ecx+edx*4]
-    imul   edi,edi,0xdc
-    mov    eax,DWORD PTR [eax]
-    mov    ecx,DWORD PTR [esi+0x5c]
-    imul   eax,eax,0xdc
-    mov    eax,DWORD PTR [eax+ecx*1+0x78]
-    cmp    eax,DWORD PTR [edi+ecx*1+0x78]
-    setl   bl
-  Branch29:
-    mov    eax,ebx
-    test   eax,eax
-    je    Branch30
-    mov    ecx,DWORD PTR [esi+0x80]
-    mov    edi,DWORD PTR [ecx+edx*4+0x4]
-    lea    eax,[ecx+edx*4]
-    mov    ecx,DWORD PTR [eax]
-    mov    DWORD PTR [eax],edi
-    mov    eax,DWORD PTR [esi+0x80]
-    mov    DWORD PTR [eax+edx*4+0x4],ecx
-  Branch30:
-    mov    eax,DWORD PTR [ebp+0x8]
-    mov    ecx,DWORD PTR [ebp-0x14]
-    inc    edx
-    jmp    Branch27
-  Branch31:
-    inc    eax
-    xor    ebx,ebx
-    jmp    Branch26
-    mov    DWORD PTR [ebp+0x8],ebx
-  Branch32:
-    mov    eax,DWORD PTR [ebp+0x8]
-    dec    ecx
-    cmp    eax,ecx
-    jge    Branch16
-    xor    ebx,ebx
-  Branch33:
-    mov    ecx,DWORD PTR [ebp-0x14]
-    sub    ecx,DWORD PTR [ebp+0x8]
-    dec    ecx
-    cmp    ebx,ecx
-    mov    DWORD PTR [ebp-0x18],ebx
-    jge    Branch37
-    mov    eax,DWORD PTR [ebp-0x1c]
-    test   eax,eax
-    je    Branch34
-    mov    edx,DWORD PTR [esi+0x80]
-    mov    edi,DWORD PTR [edx+ebx*4]
-    mov    ecx,DWORD PTR [esi+0x5c]
-    imul   edi,edi,0xdc
-    lea    eax,[edx+ebx*4]
-    mov    eax,DWORD PTR [eax+0x4]
-    imul   eax,eax,0xdc
-    add    edi,ecx
-    lea    ecx,[eax+ecx*1+0x5c]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    lea    ecx,[edi+0x5c]
-    mov    DWORD PTR [ebp-0x18],eax
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    mov    ecx,DWORD PTR [ebp-0x18]
-    push   ecx
-    push   eax
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appStricmpSlot
-    xor    edx,edx
-    add    esp,0x8
-    test   eax,eax
-    setge  dl
-    mov    eax,edx
-    jmp    Branch35
-  Branch34:
-    mov    eax,DWORD PTR [esi+0x80]
-    mov    ecx,DWORD PTR [ebp-0x18]
-    mov    edi,DWORD PTR [eax+ecx*4]
-    mov    edx,DWORD PTR [eax+ecx*4+0x4]
-    imul   edi,edi,0xdc
-    lea    eax,[eax+ecx*4]
-    imul   edx,edx,0xdc
-    mov    ecx,DWORD PTR [esi+0x5c]
-    add    edi,ecx
-    lea    ecx,[edx+ecx*1+0x5c]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    lea    ecx,[edi+0x5c]
-    mov    ebx,eax
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    push   ebx
-    push   eax
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appStricmpSlot
-    mov    ebx,DWORD PTR [ebp-0x18]
-    xor    ecx,ecx
-    add    esp,0x8
-    test   eax,eax
-    setl   cl
-    mov    eax,ecx
-  Branch35:
-    test   eax,eax
-    je    Branch36
-    mov    edx,DWORD PTR [esi+0x80]
-    mov    ecx,DWORD PTR [edx+ebx*4]
-    lea    eax,[edx+ebx*4]
-    mov    edx,DWORD PTR [eax+0x4]
-    mov    DWORD PTR [eax],edx
-    mov    eax,DWORD PTR [esi+0x80]
-    mov    DWORD PTR [eax+ebx*4+0x4],ecx
-  Branch36:
-    inc    ebx
-    jmp    Branch33
-  Branch37:
-    mov    eax,DWORD PTR [ebp+0x8]
-    mov    ecx,DWORD PTR [ebp-0x14]
-    inc    eax
-    mov    DWORD PTR [ebp+0x8],eax
-    jmp    Branch32
-    mov    DWORD PTR [ebp+0x8],ebx
-  Branch38:
-    mov    eax,DWORD PTR [ebp+0x8]
-    dec    ecx
-    cmp    eax,ecx
-    jge    Branch16
-    xor    ebx,ebx
-  Branch39:
-    mov    ecx,DWORD PTR [ebp-0x14]
-    sub    ecx,DWORD PTR [ebp+0x8]
-    dec    ecx
-    cmp    ebx,ecx
-    mov    DWORD PTR [ebp-0x18],ebx
-    jge    Branch43
-    mov    eax,DWORD PTR [ebp-0x1c]
-    test   eax,eax
-    je    Branch40
-    mov    edx,DWORD PTR [esi+0x80]
-    mov    edi,DWORD PTR [edx+ebx*4]
-    mov    ecx,DWORD PTR [esi+0x5c]
-    imul   edi,edi,0xdc
-    lea    eax,[edx+ebx*4]
-    mov    eax,DWORD PTR [eax+0x4]
-    imul   eax,eax,0xdc
-    add    edi,ecx
-    lea    ecx,[eax+ecx*1+0x88]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    lea    ecx,[edi+0x88]
-    mov    DWORD PTR [ebp-0x18],eax
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    mov    ecx,DWORD PTR [ebp-0x18]
-    push   ecx
-    push   eax
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appStricmpSlot
-    xor    edx,edx
-    add    esp,0x8
-    test   eax,eax
-    setge  dl
-    mov    eax,edx
-    jmp    Branch41
-  Branch40:
-    mov    eax,DWORD PTR [esi+0x80]
-    mov    ecx,DWORD PTR [ebp-0x18]
-    mov    edi,DWORD PTR [eax+ecx*4]
-    mov    edx,DWORD PTR [eax+ecx*4+0x4]
-    imul   edi,edi,0xdc
-    lea    eax,[eax+ecx*4]
-    imul   edx,edx,0xdc
-    mov    ecx,DWORD PTR [esi+0x5c]
-    add    edi,ecx
-    lea    ecx,[edx+ecx*1+0x88]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    lea    ecx,[edi+0x88]
-    mov    ebx,eax
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    push   ebx
-    push   eax
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appStricmpSlot
-    mov    ebx,DWORD PTR [ebp-0x18]
-    xor    ecx,ecx
-    add    esp,0x8
-    test   eax,eax
-    setl   cl
-    mov    eax,ecx
-  Branch41:
-    test   eax,eax
-    je    Branch42
-    mov    edx,DWORD PTR [esi+0x80]
-    mov    ecx,DWORD PTR [edx+ebx*4]
-    lea    eax,[edx+ebx*4]
-    mov    edx,DWORD PTR [eax+0x4]
-    mov    DWORD PTR [eax],edx
-    mov    eax,DWORD PTR [esi+0x80]
-    mov    DWORD PTR [eax+ebx*4+0x4],ecx
-  Branch42:
-    inc    ebx
-    jmp    Branch39
-  Branch43:
-    mov    eax,DWORD PTR [ebp+0x8]
-    mov    ecx,DWORD PTR [ebp-0x14]
-    inc    eax
-    mov    DWORD PTR [ebp+0x8],eax
-    jmp    Branch38
-    xor    eax,eax
-    mov    bl,0x40
-  Branch44:
-    lea    edx,[ecx-0x1]
-    cmp    eax,edx
-    mov    DWORD PTR [ebp+0x8],eax
-    jge    Branch16
-    xor    edx,edx
-    lea    esp,[esp+0x0]
-  Branch45:
-    mov    edi,ecx
-    sub    edi,eax
-    dec    edi
-    cmp    edx,edi
-    jge    Branch49
-    mov    eax,DWORD PTR [ebp-0x1c]
-    test   eax,eax
-    je    Branch46
-    mov    eax,DWORD PTR [esi+0x80]
-    mov    edi,DWORD PTR [eax+edx*4]
-    mov    ecx,DWORD PTR [esi+0x5c]
-    imul   edi,edi,0xdc
-    test   BYTE PTR [edi+ecx*1+0x4c],bl
-    lea    eax,[eax+edx*4]
-    jne    Branch48
-    mov    eax,DWORD PTR [eax+0x4]
-    imul   eax,eax,0xdc
-    test   BYTE PTR [eax+ecx*1+0x4c],bl
-    jne    Branch47
-    mov    ecx,DWORD PTR [ebp-0x14]
-    mov    eax,DWORD PTR [ebp+0x8]
-    inc    edx
-    jmp    Branch45
-  Branch46:
-    mov    ecx,DWORD PTR [esi+0x80]
-    mov    edi,DWORD PTR [ecx+edx*4]
-    lea    eax,[ecx+edx*4]
-    imul   edi,edi,0xdc
-    mov    ecx,DWORD PTR [esi+0x5c]
-    test   BYTE PTR [edi+ecx*1+0x4c],bl
-    je    Branch48
-    mov    eax,DWORD PTR [eax+0x4]
-    imul   eax,eax,0xdc
-    test   BYTE PTR [eax+ecx*1+0x4c],bl
-    jne    Branch48
-  Branch47:
-    mov    ecx,DWORD PTR [esi+0x80]
-    mov    edi,DWORD PTR [ecx+edx*4+0x4]
-    lea    eax,[ecx+edx*4]
-    mov    ecx,DWORD PTR [eax]
-    mov    DWORD PTR [eax],edi
-    mov    eax,DWORD PTR [esi+0x80]
-    mov    DWORD PTR [eax+edx*4+0x4],ecx
-  Branch48:
-    mov    ecx,DWORD PTR [ebp-0x14]
-    mov    eax,DWORD PTR [ebp+0x8]
-    inc    edx
-    jmp    Branch45
-  Branch49:
-    inc    eax
-    jmp    Branch44
-    mov    DWORD PTR [ebp+0x8],ebx
-  Branch50:
-    mov    eax,DWORD PTR [ebp+0x8]
-    dec    ecx
-    cmp    eax,ecx
-    jge    Branch16
-    xor    ebx,ebx
-  Branch51:
-    mov    ecx,DWORD PTR [ebp-0x14]
-    sub    ecx,DWORD PTR [ebp+0x8]
-    dec    ecx
-    cmp    ebx,ecx
-    mov    DWORD PTR [ebp-0x18],ebx
-    jge    Branch55
-    mov    eax,DWORD PTR [ebp-0x1c]
-    test   eax,eax
-    je    Branch52
-    mov    edx,DWORD PTR [esi+0x80]
-    mov    edi,DWORD PTR [edx+ebx*4]
-    mov    ecx,DWORD PTR [esi+0x5c]
-    imul   edi,edi,0xdc
-    lea    eax,[edx+ebx*4]
-    mov    eax,DWORD PTR [eax+0x4]
-    imul   eax,eax,0xdc
-    add    edi,ecx
-    lea    ecx,[eax+ecx*1+0x94]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    lea    ecx,[edi+0x94]
-    mov    DWORD PTR [ebp-0x18],eax
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    mov    ecx,DWORD PTR [ebp-0x18]
-    push   ecx
-    push   eax
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appStricmpSlot
-    xor    edx,edx
-    add    esp,0x8
-    test   eax,eax
-    setge  dl
-    mov    eax,edx
-    jmp    Branch53
-  Branch52:
-    mov    eax,DWORD PTR [esi+0x80]
-    mov    ecx,DWORD PTR [ebp-0x18]
-    mov    edi,DWORD PTR [eax+ecx*4]
-    mov    edx,DWORD PTR [eax+ecx*4+0x4]
-    imul   edi,edi,0xdc
-    lea    eax,[eax+ecx*4]
-    imul   edx,edx,0xdc
-    mov    ecx,DWORD PTR [esi+0x5c]
-    add    edi,ecx
-    lea    ecx,[edx+ecx*1+0x94]
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    lea    ecx,[edi+0x94]
-    mov    ebx,eax
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__DFStringSlot
-    push   ebx
-    push   eax
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appStricmpSlot
-    mov    ebx,DWORD PTR [ebp-0x18]
-    xor    ecx,ecx
-    add    esp,0x8
-    test   eax,eax
-    setl   cl
-    mov    eax,ecx
-  Branch53:
-    test   eax,eax
-    je    Branch54
-    mov    edx,DWORD PTR [esi+0x80]
-    mov    ecx,DWORD PTR [edx+ebx*4]
-    lea    eax,[edx+ebx*4]
-    mov    edx,DWORD PTR [eax+0x4]
-    mov    DWORD PTR [eax],edx
-    mov    eax,DWORD PTR [esi+0x80]
-    mov    DWORD PTR [eax+ebx*4+0x4],ecx
-  Branch54:
-    inc    ebx
-    jmp    Branch51
-  Branch55:
-    mov    eax,DWORD PTR [ebp+0x8]
-    mov    ecx,DWORD PTR [ebp-0x14]
-    inc    eax
-    mov    DWORD PTR [ebp+0x8],eax
-    jmp    Branch50
-    xor    eax,eax
-    mov    bl,0x4
-  Branch56:
-    lea    edx,[ecx-0x1]
-    cmp    eax,edx
-    mov    DWORD PTR [ebp+0x8],eax
-    jge    Branch16
-    xor    edx,edx
-    jmp    Branch57
-    lea    ecx,[ecx+0x0]
-  Branch57:
-    mov    edi,ecx
-    sub    edi,eax
-    dec    edi
-    cmp    edx,edi
-    jge    Branch61
-    mov    eax,DWORD PTR [ebp-0x1c]
-    test   eax,eax
-    je    Branch58
-    mov    eax,DWORD PTR [esi+0x80]
-    mov    edi,DWORD PTR [eax+edx*4]
-    mov    ecx,DWORD PTR [esi+0x5c]
-    imul   edi,edi,0xdc
-    test   BYTE PTR [edi+ecx*1+0x28],bl
-    lea    eax,[eax+edx*4]
-    jne    Branch60
-    mov    eax,DWORD PTR [eax+0x4]
-    imul   eax,eax,0xdc
-    test   BYTE PTR [eax+ecx*1+0x28],bl
-    jne    Branch59
-    mov    ecx,DWORD PTR [ebp-0x14]
-    mov    eax,DWORD PTR [ebp+0x8]
-    inc    edx
-    jmp    Branch57
-  Branch58:
-    mov    ecx,DWORD PTR [esi+0x80]
-    mov    edi,DWORD PTR [ecx+edx*4]
-    lea    eax,[ecx+edx*4]
-    imul   edi,edi,0xdc
-    mov    ecx,DWORD PTR [esi+0x5c]
-    test   BYTE PTR [edi+ecx*1+0x28],bl
-    je    Branch60
-    mov    eax,DWORD PTR [eax+0x4]
-    imul   eax,eax,0xdc
-    test   BYTE PTR [eax+ecx*1+0x28],bl
-    jne    Branch60
-  Branch59:
-    mov    ecx,DWORD PTR [esi+0x80]
-    mov    edi,DWORD PTR [ecx+edx*4+0x4]
-    lea    eax,[ecx+edx*4]
-    mov    ecx,DWORD PTR [eax]
-    mov    DWORD PTR [eax],edi
-    mov    eax,DWORD PTR [esi+0x80]
-    mov    DWORD PTR [eax+edx*4+0x4],ecx
-  Branch60:
-    mov    ecx,DWORD PTR [ebp-0x14]
-    mov    eax,DWORD PTR [ebp+0x8]
-    inc    edx
-    jmp    Branch57
-  Branch61:
-    inc    eax
-    jmp    Branch56
-    xor    eax,eax
-    mov    bl,0x1
-  Branch62:
-    lea    edx,[ecx-0x1]
-    cmp    eax,edx
-    mov    DWORD PTR [ebp+0x8],eax
-    jge    Branch16
-    xor    edx,edx
-  Branch63:
-    mov    edi,ecx
-    sub    edi,eax
-    dec    edi
-    cmp    edx,edi
-    jge    Branch67
-    mov    eax,DWORD PTR [ebp-0x1c]
-    test   eax,eax
-    je    Branch64
-    mov    eax,DWORD PTR [esi+0x80]
-    mov    edi,DWORD PTR [eax+edx*4]
-    mov    ecx,DWORD PTR [esi+0x5c]
-    imul   edi,edi,0xdc
-    test   BYTE PTR [edi+ecx*1+0x38],bl
-    lea    eax,[eax+edx*4]
-    jne    Branch66
-    mov    eax,DWORD PTR [eax+0x4]
-    imul   eax,eax,0xdc
-    test   BYTE PTR [eax+ecx*1+0x38],bl
-    jne    Branch65
-    mov    ecx,DWORD PTR [ebp-0x14]
-    mov    eax,DWORD PTR [ebp+0x8]
-    inc    edx
-    jmp    Branch63
-  Branch64:
-    mov    ecx,DWORD PTR [esi+0x80]
-    mov    edi,DWORD PTR [ecx+edx*4]
-    lea    eax,[ecx+edx*4]
-    imul   edi,edi,0xdc
-    mov    ecx,DWORD PTR [esi+0x5c]
-    test   BYTE PTR [edi+ecx*1+0x38],bl
-    je    Branch66
-    mov    eax,DWORD PTR [eax+0x4]
-    imul   eax,eax,0xdc
-    test   BYTE PTR [eax+ecx*1+0x38],bl
-    jne    Branch66
-  Branch65:
-    mov    ecx,DWORD PTR [esi+0x80]
-    mov    edi,DWORD PTR [ecx+edx*4+0x4]
-    lea    eax,[ecx+edx*4]
-    mov    ecx,DWORD PTR [eax]
-    mov    DWORD PTR [eax],edi
-    mov    eax,DWORD PTR [esi+0x80]
-    mov    DWORD PTR [eax+edx*4+0x4],ecx
-  Branch66:
-    mov    ecx,DWORD PTR [ebp-0x14]
-    mov    eax,DWORD PTR [ebp+0x8]
-    inc    edx
-    jmp    Branch63
-  Branch67:
-    inc    eax
-    jmp    Branch62
-    xor    eax,eax
-    mov    bl,0x2
-  Branch68:
-    lea    edx,[ecx-0x1]
-    cmp    eax,edx
-    mov    DWORD PTR [ebp+0x8],eax
-    jge    Branch16
-    xor    edx,edx
-  Branch69:
-    mov    edi,ecx
-    sub    edi,eax
-    dec    edi
-    cmp    edx,edi
-    jge    Branch73
-    mov    eax,DWORD PTR [ebp-0x1c]
-    test   eax,eax
-    je    Branch70
-    mov    eax,DWORD PTR [esi+0x80]
-    mov    edi,DWORD PTR [eax+edx*4]
-    mov    ecx,DWORD PTR [esi+0x5c]
-    imul   edi,edi,0xdc
-    test   BYTE PTR [edi+ecx*1+0x38],bl
-    lea    eax,[eax+edx*4]
-    jne    Branch72
-    mov    eax,DWORD PTR [eax+0x4]
-    imul   eax,eax,0xdc
-    test   BYTE PTR [eax+ecx*1+0x38],bl
-    jne    Branch71
-    mov    eax,DWORD PTR [ebp+0x8]
-    mov    ecx,DWORD PTR [ebp-0x14]
-    inc    edx
-    jmp    Branch69
-  Branch70:
-    mov    ecx,DWORD PTR [esi+0x80]
-    mov    edi,DWORD PTR [ecx+edx*4]
-    lea    eax,[ecx+edx*4]
-    imul   edi,edi,0xdc
-    mov    ecx,DWORD PTR [esi+0x5c]
-    test   BYTE PTR [edi+ecx*1+0x38],bl
-    je    Branch72
-    mov    eax,DWORD PTR [eax+0x4]
-    imul   eax,eax,0xdc
-    test   BYTE PTR [eax+ecx*1+0x38],bl
-    jne    Branch72
-  Branch71:
-    mov    ecx,DWORD PTR [esi+0x80]
-    mov    edi,DWORD PTR [ecx+edx*4+0x4]
-    lea    eax,[ecx+edx*4]
-    mov    ecx,DWORD PTR [eax]
-    mov    DWORD PTR [eax],edi
-    mov    eax,DWORD PTR [esi+0x80]
-    mov    DWORD PTR [eax+edx*4+0x4],ecx
-  Branch72:
-    mov    eax,DWORD PTR [ebp+0x8]
-    mov    ecx,DWORD PTR [ebp-0x14]
-    inc    edx
-    jmp    Branch69
-  Branch73:
-    inc    eax
-    jmp    Branch68
-    xor    eax,eax
-    mov    edi,0x400
-  Branch74:
-    lea    edx,[ecx-0x1]
-    cmp    eax,edx
-    mov    DWORD PTR [ebp+0x8],eax
-    jge    Branch16
-    xor    edx,edx
-    lea    esp,[esp+0x0]
-  Branch75:
-    mov    ebx,ecx
-    sub    ebx,eax
-    dec    ebx
-    cmp    edx,ebx
-    jge    Branch79
-    mov    eax,DWORD PTR [ebp-0x1c]
-    test   eax,eax
-    je    Branch76
-    mov    eax,DWORD PTR [esi+0x80]
-    mov    ebx,DWORD PTR [eax+edx*4]
-    mov    ecx,DWORD PTR [esi+0x5c]
-    imul   ebx,ebx,0xdc
-    test   DWORD PTR [ebx+ecx*1+0x4c],edi
-    lea    eax,[eax+edx*4]
-    jne    Branch78
-    mov    eax,DWORD PTR [eax+0x4]
-    imul   eax,eax,0xdc
-    test   DWORD PTR [eax+ecx*1+0x4c],edi
-    jne    Branch77
-    mov    eax,DWORD PTR [ebp+0x8]
-    mov    ecx,DWORD PTR [ebp-0x14]
-    inc    edx
-    jmp    Branch75
-  Branch76:
-    mov    ecx,DWORD PTR [esi+0x80]
-    mov    ebx,DWORD PTR [ecx+edx*4]
-    lea    eax,[ecx+edx*4]
-    imul   ebx,ebx,0xdc
-    mov    ecx,DWORD PTR [esi+0x5c]
-    test   DWORD PTR [ebx+ecx*1+0x4c],edi
-    je    Branch78
-    mov    eax,DWORD PTR [eax+0x4]
-    imul   eax,eax,0xdc
-    test   DWORD PTR [eax+ecx*1+0x4c],edi
-    jne    Branch78
-  Branch77:
-    mov    ecx,DWORD PTR [esi+0x80]
-    mov    ebx,DWORD PTR [ecx+edx*4+0x4]
-    lea    eax,[ecx+edx*4]
-    mov    ecx,DWORD PTR [eax]
-    mov    DWORD PTR [eax],ebx
-    mov    eax,DWORD PTR [esi+0x80]
-    mov    DWORD PTR [eax+edx*4+0x4],ecx
-  Branch78:
-    mov    eax,DWORD PTR [ebp+0x8]
-    mov    ecx,DWORD PTR [ebp-0x14]
-    inc    edx
-    jmp    Branch75
-  Branch79:
-    inc    eax
-    jmp    Branch74
-  Branch80:
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    edx,DWORD PTR [ecx]
-    push   R6GameServiceAddresses::WideTextErrorSortTypeIsNotDefine
-    push   edx
-    jmp    Branch15
+    push ebx
+    push esi
+    push edi
+    mov esi,ecx
+    mov DWORD PTR [ebp-0x10],esp
+  }
+  // These aliases bind existing native storage; inherited-frame handlers and their offsets remain unchanged.
+  byte* nativeFrame;
+  UR6ServerList* receiver;
+  __asm { mov nativeFrame,ebp }
+  __asm { mov receiver,esi }
+  FFrame* executionStack = *reinterpret_cast<FFrame**>(nativeFrame + 8);
+  byte*& code = *reinterpret_cast<byte**>(reinterpret_cast<byte*>(executionStack) + 0xc);
+  int& sortType = *reinterpret_cast<int*>(nativeFrame - 0x20);
+  uint& ascending = *reinterpret_cast<uint*>(nativeFrame - 0x1c);
+  sortType = 0;
+  const byte typeOpcode = *code++;
+  using ScriptNative = void (__thiscall *)(UObject*, FFrame*, void*);
+  ScriptNative* natives = *reinterpret_cast<ScriptNative**>(R6GameServiceAddresses::Core__GNativesSlot);
+  UObject* context = *reinterpret_cast<UObject**>(reinterpret_cast<byte*>(executionStack) + 8);
+  *reinterpret_cast<int*>(nativeFrame - 4) = 0;
+  natives[typeOpcode](context, executionStack, &sortType);
+  byte* ascendingCode = code;
+  context = *reinterpret_cast<UObject**>(reinterpret_cast<byte*>(executionStack) + 8);
+  ascending = 0;
+  const byte ascendingOpcode = *ascendingCode;
+  code = ascendingCode + 1;
+  natives = *reinterpret_cast<ScriptNative**>(R6GameServiceAddresses::Core__GNativesSlot);
+  natives[ascendingOpcode](context, executionStack, &ascending);
+  byte* next = code + 1;
+  code = next;
+  if (*next == 0x42) {
+    context = *reinterpret_cast<UObject**>(reinterpret_cast<byte*>(executionStack) + 8);
+    code = next + 1;
+    natives = *reinterpret_cast<ScriptNative**>(R6GameServiceAddresses::Core__GNativesSlot);
+    natives[0x42](context, executionStack, nullptr);
+  }
+  byte* list = reinterpret_cast<byte*>(receiver);
+  int& count = *reinterpret_cast<int*>(nativeFrame - 0x14);
+  count = *reinterpret_cast<int*>(list + 0x60);
+  if (count != *reinterpret_cast<int*>(list + 0x84)) {
+    GLog->Logf(reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextErrorMGameServerListNumMGSLSortIdxNum));
+  } else {
+    for (uint i = 0; static_cast<int>(i) < count; ++i)
+      (*reinterpret_cast<uint**>(list + 0x80))[i] = i;
+    const uint kind = static_cast<uint>(sortType); // Dispatch once, after resetting every index.
+    if (kind > 9) {
+      GLog->Logf(reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextErrorSortTypeIsNotDefine));
+    } else {
+      uint& pass = *reinterpret_cast<uint*>(nativeFrame + 8); // Native reuses the incoming frame slot.
+      pass = 0;
+      while (static_cast<int>(pass) < static_cast<int>(static_cast<uint>(count) - 1U)) {
+        uint pair = 0;
+        while (static_cast<int>(pair) < static_cast<int>(static_cast<uint>(count) - pass - 1U)) {
+          const bool ascendingNow = ascending != 0;
+          bool swapPair;
+          if (kind == 4 || kind == 9) {
+            uint* indices = *reinterpret_cast<uint**>(list + 0x80);
+            const uint rightIndex = indices[pair + 1];
+            uint leftIndex;
+            byte* records;
+            if (ascendingNow) {
+              records = *reinterpret_cast<byte**>(list + 0x5c);
+              leftIndex = indices[pair];
+            } else {
+              leftIndex = indices[pair];
+              records = *reinterpret_cast<byte**>(list + 0x5c);
+            }
+            const uint offset = kind == 4 ? 0xc : 0x78;
+            const int left = *reinterpret_cast<int*>(records + leftIndex * 0xdcU + offset);
+            const int right = *reinterpret_cast<int*>(records + rightIndex * 0xdcU + offset);
+            swapPair = ascendingNow ? left > right : left < right;
+          } else if (kind == 5 || kind == 6 || kind == 8) {
+            *reinterpret_cast<uint*>(nativeFrame - 0x18) = pair;
+            uint* indices = *reinterpret_cast<uint**>(list + 0x80);
+            const uint leftIndex = indices[pair];
+            uint rightIndex;
+            byte* records;
+            if (ascendingNow) {
+              records = *reinterpret_cast<byte**>(list + 0x5c);
+              rightIndex = indices[pair + 1];
+            } else {
+              rightIndex = indices[pair + 1];
+              records = *reinterpret_cast<byte**>(list + 0x5c);
+            }
+            const uint offset = kind == 5 ? 0x5c : kind == 6 ? 0x88 : 0x94;
+            FString* leftString = reinterpret_cast<FString*>(records + leftIndex * 0xdcU + offset);
+            FString* rightString = reinterpret_cast<FString*>(records + rightIndex * 0xdcU + offset);
+            const TCHAR* right = **rightString; // Right dereference runs first; both object addresses were captured.
+            if (ascendingNow) *reinterpret_cast<const TCHAR**>(nativeFrame - 0x18) = right;
+            const TCHAR* left = **leftString;
+            if (ascendingNow) right = *reinterpret_cast<const TCHAR**>(nativeFrame - 0x18);
+            const int comparison = appStricmp(left, right);
+            if (!ascendingNow) pair = *reinterpret_cast<uint*>(nativeFrame - 0x18);
+            swapPair = ascendingNow ? comparison >= 0 : comparison < 0;
+          } else {
+            const uint offset = kind == 0 ? 0x28 : (kind == 1 || kind == 2) ? 0x38 : 0x4c;
+            const uint mask = kind == 0 ? 4 : kind == 1 ? 1 : kind == 2 ? 2 : kind == 3 ? 0x400 : 0x40;
+            uint* indices = *reinterpret_cast<uint**>(list + 0x80);
+            const uint leftIndex = indices[pair];
+            byte* records = *reinterpret_cast<byte**>(list + 0x5c);
+            byte* leftField = records + leftIndex * 0xdcU + offset;
+            const bool left = kind == 3 ? (*reinterpret_cast<uint*>(leftField) & mask) != 0 : (*leftField & mask) != 0;
+            swapPair = false;
+            // The right index and field are not accessed when the left bit already rules out a swap.
+            if (ascendingNow ? !left : left) {
+              const uint rightIndex = indices[pair + 1];
+              byte* rightField = records + rightIndex * 0xdcU + offset;
+              const bool right = kind == 3 ? (*reinterpret_cast<uint*>(rightField) & mask) != 0 : (*rightField & mask) != 0;
+              swapPair = ascendingNow ? right : !right;
+            }
+          }
+          if (swapPair) {
+            uint* indices = *reinterpret_cast<uint**>(list + 0x80);
+            const uint left = indices[pair];
+            const uint right = indices[pair + 1];
+            indices[pair] = right;
+            // Preserve the separate current-base reload and partially committed first store.
+            (*reinterpret_cast<uint**>(list + 0x80))[pair + 1] = left;
+          }
+          ++pair;
+        }
+        ++pass;
+      }
+    }
+  }
+  // Numeric/bit ties do not swap; ascending text ties swap, so sorting is not generally stable.
+  __asm {
+    mov ecx,DWORD PTR [ebp-0xc]
+    pop edi
+    pop esi
+    mov DWORD PTR fs:0x0,ecx
+    pop ebx
+    mov esp,ebp
+    pop ebp
+    ret 0x8
   }
 }
 
@@ -2245,53 +1598,47 @@ __declspec(naked) void __thiscall UR6ServerList::execGetDisplayListSize
     push   eax
     mov    DWORD PTR fs:0x0,esp
     sub    esp,0xc
-    mov    eax,DWORD PTR [ebp+0x8]
-    mov    edx,DWORD PTR [eax+0xc]
-    push   ebx
-    inc    edx
-    push   esi
-    mov    esi,ecx
-    mov    DWORD PTR [eax+0xc],edx
-    cmp    BYTE PTR [edx],0x42
-    push   edi
-    mov    DWORD PTR [ebp-0x10],esp
-    mov    DWORD PTR [ebp-0x4],0x0
-    jne    Branch81
-    mov    ecx,DWORD PTR [eax+0x8]
-    inc    edx
-    push   0x0
-    mov    DWORD PTR [eax+0xc],edx
-    push   eax
-    mov    eax,ds:R6GameServiceAddresses::Core__GNativesSlot
-    call   DWORD PTR [eax+0x108]
-  Branch81:
-    xor    ecx,ecx
-    xor    eax,eax
-    mov    dl,0x2
-  Branch82:
-    cmp    eax,DWORD PTR [esi+0x60]
-    jge    Branch84
-    mov    ebx,DWORD PTR [esi+0x5c]
-    mov    edi,eax
-    imul   edi,edi,0xdc
-    test   BYTE PTR [edi+ebx*1+0x28],dl
-    je     Branch83
-    inc    ecx
-  Branch83:
-    inc    eax
-    jmp    Branch82
-    // Native continuation @1000961e follows the physical catch bodies; part of this same method.
-  Branch84:
-    mov    eax,DWORD PTR [ebp+0xc]
-    pop    edi
-    mov    DWORD PTR [eax],ecx
-    mov    ecx,DWORD PTR [ebp-0xc]
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
-    ret    0x8
+    push ebx
+    push esi
+    push edi
+    mov esi,ecx
+    mov DWORD PTR [ebp-0x10],esp
+  }
+  // These aliases bind existing native storage; inherited-frame handlers and their offsets remain unchanged.
+  byte* nativeFrame;
+  UR6ServerList* receiver;
+  __asm { mov nativeFrame,ebp }
+  __asm { mov receiver,esi }
+  FFrame* executionStack = *reinterpret_cast<FFrame**>(nativeFrame + 8);
+  byte*& code = *reinterpret_cast<byte**>(reinterpret_cast<byte*>(executionStack) + 0xc);
+  byte* next = code + 1;
+  code = next;
+  const bool debugInfo = *next == 0x42;
+  *reinterpret_cast<int*>(nativeFrame - 4) = 0;
+  if (debugInfo) {
+    UObject* context = *reinterpret_cast<UObject**>(reinterpret_cast<byte*>(executionStack) + 8);
+    code = next + 1;
+    using ScriptNative = void (__thiscall *)(UObject*, FFrame*, void*);
+    ScriptNative* natives = *reinterpret_cast<ScriptNative**>(R6GameServiceAddresses::Core__GNativesSlot);
+    natives[0x42](context, executionStack, nullptr);
+  }
+  byte* list = reinterpret_cast<byte*>(receiver);
+  uint displayed = 0;
+  for (uint index = 0; static_cast<int>(index) < *reinterpret_cast<int*>(list + 0x60); ++index) {
+    byte* servers = *reinterpret_cast<byte**>(list + 0x5c);
+    if (*(servers + index * 0xdcU + 0x28) & 2) ++displayed;
+  }
+  uint* output = *reinterpret_cast<uint**>(nativeFrame + 0xc);
+  *output = displayed; // Count bDisplay in server storage; this does not count or rewrite the sort-index array.
+  __asm {
+    mov ecx,DWORD PTR [ebp-0xc]
+    pop edi
+    pop esi
+    mov DWORD PTR fs:0x0,ecx
+    pop ebx
+    mov esp,ebp
+    pop ebp
+    ret 0x8
   }
 }
 

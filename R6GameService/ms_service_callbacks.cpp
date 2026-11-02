@@ -8,46 +8,25 @@
 // Other values leave state unchanged; arguments2/3 unused. RET12; raw EAX is debug0 or logger result.
 // Log precedes state writes, so a throwing logger leaves its effects and skips those writes.
 // R6GameService.dll @ 10006c90 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __stdcall MSError(uint error,uint unused2,uint unused3)
+uint __stdcall MSError(uint error,uint unused2,uint unused3)
 {
-  __asm {
-    mov    eax,ds:R6GameServiceAddresses::GServiceVerboseLogging
-    test   eax,eax
-    push   esi
-    mov    esi,DWORD PTR [esp+0x8]
-    je     Branch1
-    mov    eax,ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    ecx,DWORD PTR [eax]
-    push   esi
-    push   R6GameServiceAddresses::WideTextCallbackMSErrorI
-    push   ecx
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FOutputDevice_LogfSlot
-    add    esp,0xc
-  Branch1:
-    cmp    esi,0x14
-    ja     Branch2
-    movzx  edx,BYTE PTR [esi+R6GameServiceAddresses::GMSErrorCases]
-    jmp    DWORD PTR [edx*4+R6GameServiceAddresses::GMSErrorTargets]
-    mov    DWORD PTR ds:0x10091bf0,0x1
-    pop    esi
-    ret    0xc
-    mov    DWORD PTR ds:0x10091bf8,0x1
-    pop    esi
-    ret    0xc
-    mov    DWORD PTR ds:0x10091bfc,0x2
-    mov    DWORD PTR ds:0x10091be0,0x27
-    pop    esi
-    ret    0xc
-    mov    DWORD PTR ds:0x10091bfc,0x3
-    mov    DWORD PTR ds:0x10091be0,0x27
-    pop    esi
-    ret    0xc
-    mov    DWORD PTR ds:0x10091bfc,0x0
-    mov    DWORD PTR ds:0x10091be0,0x27
-  Branch2:
-    pop    esi
-    ret    0xc
+  const uint savedError = error;
+  uint returnValue = *reinterpret_cast<uint*>(R6GameServiceAddresses::GServiceVerboseLogging);
+  if (returnValue) {
+    using RawLogCall = uint (__cdecl *)(FOutputDevice*, const TCHAR*, ...);
+    RawLogCall log = *reinterpret_cast<RawLogCall*>(R6GameServiceAddresses::Core_FOutputDevice_LogfSlot);
+    returnValue = log(GLog, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextCallbackMSErrorI), savedError);
   }
+  switch (savedError) {
+  case 0: *reinterpret_cast<int*>(0x10091bfc) = 0; *reinterpret_cast<int*>(0x10091be0) = 39; break;
+  case 5: case 6: case 7:
+    *reinterpret_cast<int*>(0x10091bfc) = 3; *reinterpret_cast<int*>(0x10091be0) = 39; break;
+  case 11: *reinterpret_cast<int*>(0x10091bfc) = 2; *reinterpret_cast<int*>(0x10091be0) = 39; break;
+  case 1: *reinterpret_cast<int*>(0x10091bf8) = 1; break;
+  case 20: *reinterpret_cast<int*>(0x10091bf0) = 1; break;
+  default: break;
+  }
+  return returnValue;
 }
 
 // Native MSError dispatch targets, including the shared default-return path.
@@ -63,128 +42,87 @@ const uchar GMSErrorCases[21] = {0,1,5,5,5,2,2,2,5,5,5,3,5,5,5,5,5,5,5,5,4};
 // Result word is captured before copy/log, debug gate is read afterward; publication/partial copy survive faults.
 // RET12; incoming ECX unused, raw EAX is late debug0 or current logger result; no guard/ownership/rollback.
 // R6GameService.dll @ 10006d60 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __stdcall MSInitFinished(uint resultKind,uint resultWord,const char *accountId)
+uint __stdcall MSInitFinished(uint resultKind,uint resultWord,const char *accountId)
 {
-  __asm {
-    mov    al,BYTE PTR [esp+0x4]
-    cmp    al,0x26
-    movzx  ecx,al
-    push   esi
-    mov    esi,DWORD PTR [esp+0xc]
-    mov    DWORD PTR ds:0x10091c10,ecx
-    jne    Branch4
-    mov    eax,DWORD PTR [esp+0x10]
-    mov    edx,0x10091d48
-    sub    edx,eax
-  Branch3:
-    mov    cl,BYTE PTR [eax]
-    mov    BYTE PTR [edx+eax*1],cl
-    inc    eax
-    test   cl,cl
-    jne    Branch3
-    jmp    Branch5
-  Branch4:
-    mov    DWORD PTR ds:0x10091d2c,esi
-  Branch5:
-    mov    eax,ds:R6GameServiceAddresses::GServiceVerboseLogging
-    test   eax,eax
-    je     Branch6
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    eax,DWORD PTR [edx]
-    push   esi
-    push   R6GameServiceAddresses::WideTextCallbackMSInitFinishedI
-    push   eax
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FOutputDevice_LogfSlot
-    add    esp,0xc
-  Branch6:
-    pop    esi
-    ret    0xc
+  const byte kind = static_cast<byte>(resultKind);
+  const uint savedResult = resultWord;
+  *reinterpret_cast<uint*>(0x10091c10) = kind;
+  if (kind == 38) {
+    char* destination = reinterpret_cast<char*>(0x10091d48);
+    const char* source = accountId;
+    byte copied;
+    do { copied = *source++; *destination++ = copied; } while (copied);
+  } else {
+    *reinterpret_cast<uint*>(0x10091d2c) = savedResult;
   }
+  uint returnValue = *reinterpret_cast<uint*>(R6GameServiceAddresses::GServiceVerboseLogging);
+  if (returnValue) {
+    using RawLogCall = uint (__cdecl *)(FOutputDevice*, const TCHAR*, ...);
+    RawLogCall log = *reinterpret_cast<RawLogCall*>(R6GameServiceAddresses::Core_FOutputDevice_LogfSlot);
+    returnValue = log(GLog, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextCallbackMSInitFinishedI), savedResult);
+  }
+  return returnValue;
 }
 
 // Optionally log, then set request-finished DWORD91bf8 to1. RET0, raw EAX/debug gate retained.
 // A throwing logger prevents the pending-state store; no input, ownership, own guard or normalization.
 // R6GameService.dll @ 10006dc0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __stdcall MSRequestFinished(void)
+uint __stdcall MSRequestFinished(void)
 {
-  __asm {
-    mov    eax,ds:R6GameServiceAddresses::GServiceVerboseLogging
-    test   eax,eax
-    je     Branch7
-    mov    eax,ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    ecx,DWORD PTR [eax]
-    push   R6GameServiceAddresses::WideTextCallbackMSRequestFinished
-    push   ecx
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FOutputDevice_LogfSlot
-    add    esp,0x8
-  Branch7:
-    mov    DWORD PTR ds:0x10091bf8,0x1
-    ret
+  uint returnValue = *reinterpret_cast<uint*>(R6GameServiceAddresses::GServiceVerboseLogging);
+  if (returnValue) {
+    using RawLogCall = uint (__cdecl *)(FOutputDevice*, const TCHAR*, ...); // Captures incidental native EAX.
+    RawLogCall log = *reinterpret_cast<RawLogCall*>(R6GameServiceAddresses::Core_FOutputDevice_LogfSlot);
+    returnValue = log(GLog, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextCallbackMSRequestFinished));
   }
+  *reinterpret_cast<uint*>(0x10091bf8) = 1;
+  return returnValue;
 }
 
 // Optionally log, then publish join result-kind DWORD91be0=0x26. Seven words unused, RET28.
 // A throwing logger prevents publication; raw EAX/debug gate retained, no own guard or input ownership.
 // R6GameService.dll @ 10006df0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __stdcall MSJoinFinished(
+uint __stdcall MSJoinFinished(
     uint unused1,uint unused2,uint unused3,uint unused4,uint unused5,uint unused6,uint unused7)
 {
-  __asm {
-    mov    eax,ds:R6GameServiceAddresses::GServiceVerboseLogging
-    test   eax,eax
-    je     Branch8
-    mov    eax,ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    ecx,DWORD PTR [eax]
-    push   R6GameServiceAddresses::WideTextCallbackMSJoinFinished
-    push   ecx
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FOutputDevice_LogfSlot
-    add    esp,0x8
-  Branch8:
-    mov    DWORD PTR ds:0x10091be0,0x26
-    ret    0x1c
+  uint returnValue = *reinterpret_cast<uint*>(R6GameServiceAddresses::GServiceVerboseLogging);
+  if (returnValue) {
+    using RawLogCall = uint (__cdecl *)(FOutputDevice*, const TCHAR*, ...); // Captures incidental native EAX.
+    RawLogCall log = *reinterpret_cast<RawLogCall*>(R6GameServiceAddresses::Core_FOutputDevice_LogfSlot);
+    returnValue = log(GLog, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextCallbackMSJoinFinished));
   }
+  *reinterpret_cast<uint*>(0x10091be0) = 38;
+  return returnValue;
 }
 
 // Optionally log, then set login-disconnect DWORD91c08 to1. RET0, raw EAX/debug gate retained.
 // A throwing logger prevents the pending-state store; no own guard or resource ownership.
 // R6GameService.dll @ 10006e20 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __stdcall MSLoginDisconnect(void)
+uint __stdcall MSLoginDisconnect(void)
 {
-  __asm {
-    mov    eax,ds:R6GameServiceAddresses::GServiceVerboseLogging
-    test   eax,eax
-    je     Branch9
-    mov    eax,ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    ecx,DWORD PTR [eax]
-    push   R6GameServiceAddresses::WideTextCallbackMSLoginDisconnect
-    push   ecx
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FOutputDevice_LogfSlot
-    add    esp,0x8
-  Branch9:
-    mov    DWORD PTR ds:0x10091c08,0x1
-    ret
+  uint returnValue = *reinterpret_cast<uint*>(R6GameServiceAddresses::GServiceVerboseLogging);
+  if (returnValue) {
+    using RawLogCall = uint (__cdecl *)(FOutputDevice*, const TCHAR*, ...); // Captures incidental native EAX.
+    RawLogCall log = *reinterpret_cast<RawLogCall*>(R6GameServiceAddresses::Core_FOutputDevice_LogfSlot);
+    returnValue = log(GLog, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextCallbackMSLoginDisconnect));
   }
+  *reinterpret_cast<uint*>(0x10091c08) = 1;
+  return returnValue;
 }
 
 // Optionally log, then set lobby-disconnect DWORD91bf0 to1. RET0, raw EAX/debug gate retained.
 // A throwing logger prevents the pending-state store; no own guard or resource ownership.
 // R6GameService.dll @ 10006e50 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __stdcall MSLobbyDisconnect(void)
+uint __stdcall MSLobbyDisconnect(void)
 {
-  __asm {
-    mov    eax,ds:R6GameServiceAddresses::GServiceVerboseLogging
-    test   eax,eax
-    je     Branch10
-    mov    eax,ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    ecx,DWORD PTR [eax]
-    push   R6GameServiceAddresses::WideTextCallbackMSLobbyDisconnect
-    push   ecx
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FOutputDevice_LogfSlot
-    add    esp,0x8
-  Branch10:
-    mov    DWORD PTR ds:0x10091bf0,0x1
-    ret
+  uint returnValue = *reinterpret_cast<uint*>(R6GameServiceAddresses::GServiceVerboseLogging);
+  if (returnValue) {
+    using RawLogCall = uint (__cdecl *)(FOutputDevice*, const TCHAR*, ...); // Captures incidental native EAX.
+    RawLogCall log = *reinterpret_cast<RawLogCall*>(R6GameServiceAddresses::Core_FOutputDevice_LogfSlot);
+    returnValue = log(GLog, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextCallbackMSLobbyDisconnect));
   }
+  *reinterpret_cast<uint*>(0x10091bf0) = 1;
+  return returnValue;
 }
 
 // Append a raw838-byte server record, copy an optional payload and eight NUL-terminated byte strings.
@@ -200,205 +138,86 @@ __declspec(naked) uint __stdcall MSLobbyDisconnect(void)
 // Alignment LEAs9c5d/9c9d/9cdd are dead padding after jumps; reachable alignment remains.
 // Final EAX retains last data pointer upper bits with AL0; no local guard, rollback or failed-copy deallocation.
 // R6GameService.dll @ 10009aa0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __stdcall MSGameServer(uint lobbyServerId,uint groupId,uint word3,const char *serverName,
+uint __stdcall MSGameServer(uint lobbyServerId,uint groupId,uint word3,const char *serverName,
     uint word5,const char *text6,const char *text7,const char *text8,const char *gameVersion,const char *text10,
     const void *payload,uint payloadSize,uint word13,uint playerCount,uint word15,uint word16,
     const char *ipAddress,const char *altIpAddress,uint word19)
 {
-  __asm {
-    mov    eax,ds:R6GameServiceAddresses::GServiceVerboseLogging
-    test   eax,eax
-    push   ebx
-    push   ebp
-    push   esi
-    je     Branch13
-    mov    eax,ds:R6GameServiceAddresses::GServiceArray3+0x4
-    test   eax,eax
-    jne    Branch11
-    xor    eax,eax
-    jmp    Branch12
-  Branch11:
-    mov    eax,ds:0x100933c0
-  Branch12:
-    mov    esi,DWORD PTR ds:R6GameServiceAddresses::Core_FOutputDevice_LogfSlot
-    inc    eax
-    push   eax
-    mov    ds:0x100933c0,eax
-    mov    eax,ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    ecx,DWORD PTR [eax]
-    push   R6GameServiceAddresses::WideTextAddAServerInTheListTotalWillBeD
-    push   ecx
-    call   esi
-    mov    edx,DWORD PTR [esp+0x28]
-    push   edx
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__appFromAnsiSlot
-    push   eax
-    mov    eax,ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    ecx,DWORD PTR [eax]
-    push   R6GameServiceAddresses::WideTextCallbackMSGameServerS
-    push   ecx
-    call   esi
-    add    esp,0x1c
-  Branch13:
-    push   0x838
-    push   0x1
-    mov    ecx,R6GameServiceAddresses::GServiceArray3
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FArray_AddSlot
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray3
-    mov    ebp,DWORD PTR [esp+0x3c]
-    mov    ebx,eax
-    mov    eax,DWORD PTR [esp+0x14]
-    imul   ebx,ebx,0x838
-    test   ebp,ebp
-    mov    DWORD PTR [ebx+edx*1+0x108],eax
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray3
-    mov    edx,DWORD PTR [esp+0x10]
-    movsx  eax,WORD PTR [esp+0x18]
-    mov    DWORD PTR [ebx+ecx*1+0x10c],edx
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray3
-    mov    edx,DWORD PTR [esp+0x20]
-    mov    DWORD PTR [ebx+ecx*1+0x4],eax
-    mov    eax,ds:R6GameServiceAddresses::GServiceArray3
-    mov    DWORD PTR [ebx+eax*1+0x114],edx
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray3
-    jle    Branch14
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::Core__GMallocSlot
-    push   edi
-    lea    esi,[ebx+ecx*1]
-    mov    ecx,DWORD PTR [edx]
-    mov    eax,DWORD PTR [ecx]
-    push   R6GameServiceAddresses::WideTextGAMESERVICE
-    push   ebp
-    call   DWORD PTR [eax]
-    mov    DWORD PTR [esi+0x61c],eax
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray3
-    mov    edi,DWORD PTR [ebx+edx*1+0x61c]
-    mov    esi,DWORD PTR [esp+0x3c]
-    mov    ecx,ebp
-    mov    eax,ecx
-    shr    ecx,0x2
-    rep    movs DWORD PTR es:[edi],DWORD PTR ds:[esi]
-    mov    ecx,eax
-    and    ecx,0x3
-    rep    movs BYTE PTR es:[edi],BYTE PTR ds:[esi]
-    pop    edi
-    jmp    Branch15
-  Branch14:
-    mov    DWORD PTR [ebx+ecx*1+0x61c],0x0
-  Branch15:
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray3
-    mov    ecx,DWORD PTR [esp+0x40]
-    mov    DWORD PTR [ebx+edx*1+0x620],ebp
-    mov    eax,ds:R6GameServiceAddresses::GServiceArray3
-    mov    DWORD PTR [ebx+eax*1+0x624],ecx
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray3
-    mov    eax,DWORD PTR [esp+0x44]
-    mov    DWORD PTR [ebx+edx*1+0x628],eax
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray3
-    mov    edx,DWORD PTR [esp+0x48]
-    mov    DWORD PTR [ebx+ecx*1+0x62c],edx
-    mov    eax,ds:R6GameServiceAddresses::GServiceArray3
-    mov    ecx,DWORD PTR [esp+0x4c]
-    mov    DWORD PTR [ebx+eax*1+0x630],ecx
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray3
-    mov    eax,DWORD PTR [esp+0x58]
-    mov    ecx,DWORD PTR [esp+0x1c]
-    mov    DWORD PTR [ebx+edx*1+0x834],eax
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray3
-    lea    edx,[ebx+edx*1+0x8]
-    lea    ebx,[ebx+0x0]
-  Branch16:
-    mov    al,BYTE PTR [ecx]
-    inc    ecx
-    mov    BYTE PTR [edx],al
-    inc    edx
-    test   al,al
-    jne    Branch16
-    mov    eax,ds:R6GameServiceAddresses::GServiceArray3
-    mov    ecx,DWORD PTR [esp+0x24]
-    lea    edx,[ebx+eax*1+0x11c]
-    lea    ebx,[ebx+0x0]
-  Branch17:
-    mov    al,BYTE PTR [ecx]
-    inc    ecx
-    mov    BYTE PTR [edx],al
-    inc    edx
-    test   al,al
-    jne    Branch17
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray3
-    mov    ecx,DWORD PTR [esp+0x28]
-    lea    edx,[ebx+edx*1+0x21c]
-    jmp    Branch18
-    lea    ecx,[ecx+0x0]
-  Branch18:
-    mov    al,BYTE PTR [ecx]
-    inc    ecx
-    mov    BYTE PTR [edx],al
-    inc    edx
-    test   al,al
-    jne    Branch18
-    mov    eax,ds:R6GameServiceAddresses::GServiceArray3
-    mov    ecx,DWORD PTR [esp+0x2c]
-    lea    edx,[ebx+eax*1+0x31c]
-    lea    ebx,[ebx+0x0]
-  Branch19:
-    mov    al,BYTE PTR [ecx]
-    inc    ecx
-    mov    BYTE PTR [edx],al
-    inc    edx
-    test   al,al
-    jne    Branch19
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray3
-    mov    ecx,DWORD PTR [esp+0x30]
-    lea    edx,[ebx+edx*1+0x41c]
-    jmp    Branch20
-    lea    ecx,[ecx+0x0]
-  Branch20:
-    mov    al,BYTE PTR [ecx]
-    inc    ecx
-    mov    BYTE PTR [edx],al
-    inc    edx
-    test   al,al
-    jne    Branch20
-    mov    eax,ds:R6GameServiceAddresses::GServiceArray3
-    mov    ecx,DWORD PTR [esp+0x34]
-    lea    edx,[ebx+eax*1+0x51c]
-    lea    ebx,[ebx+0x0]
-  Branch21:
-    mov    al,BYTE PTR [ecx]
-    inc    ecx
-    mov    BYTE PTR [edx],al
-    inc    edx
-    test   al,al
-    jne    Branch21
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray3
-    mov    ecx,DWORD PTR [esp+0x50]
-    lea    edx,[ebx+edx*1+0x634]
-    jmp    Branch22
-    lea    ecx,[ecx+0x0]
-  Branch22:
-    mov    al,BYTE PTR [ecx]
-    inc    ecx
-    mov    BYTE PTR [edx],al
-    inc    edx
-    test   al,al
-    jne    Branch22
-    mov    eax,ds:R6GameServiceAddresses::GServiceArray3
-    mov    ecx,DWORD PTR [esp+0x54]
-    pop    esi
-    pop    ebp
-    lea    edx,[ebx+eax*1+0x734]
-    pop    ebx
-    lea    ecx,[ecx+0x0]
-  Branch23:
-    mov    al,BYTE PTR [ecx]
-    inc    ecx
-    mov    BYTE PTR [edx],al
-    inc    edx
-    test   al,al
-    jne    Branch23
-    ret    0x4c
+  FArray* queue = reinterpret_cast<FArray*>(R6GameServiceAddresses::GServiceArray3);
+  if (*reinterpret_cast<int*>(R6GameServiceAddresses::GServiceVerboseLogging)) {
+    const int queued = *reinterpret_cast<int*>(reinterpret_cast<byte*>(queue) + 4);
+    uint counter = queued == 0 ? 0 : *reinterpret_cast<uint*>(0x100933c0);
+    using LogCall = void (__cdecl *)(FOutputDevice*, const TCHAR*, ...);
+    LogCall log = *reinterpret_cast<LogCall*>(R6GameServiceAddresses::Core_FOutputDevice_LogfSlot);
+    ++counter;
+    *reinterpret_cast<uint*>(0x100933c0) = counter;
+    log(GLog, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextAddAServerInTheListTotalWillBeD), counter);
+    const TCHAR* name = appFromAnsi(serverName);
+    log(GLog, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextCallbackMSGameServerS), name);
   }
+  const int added = queue->Add(1, 0x838); // Raw storage: untouched record bytes are not initialized.
+  byte* data = *reinterpret_cast<byte**>(queue);
+  const uint size = payloadSize;
+  const uint offset = static_cast<uint>(added) * 0x838U;
+  *reinterpret_cast<uint*>(data + offset + 0x108) = groupId;
+  data = *reinterpret_cast<byte**>(queue);
+  const uint server = lobbyServerId;
+  const int lowWord = static_cast<short>(word3);
+  *reinterpret_cast<uint*>(data + offset + 0x10c) = server;
+  data = *reinterpret_cast<byte**>(queue);
+  const uint fifth = word5;
+  *reinterpret_cast<int*>(data + offset + 4) = lowWord;
+  *reinterpret_cast<uint*>(*reinterpret_cast<byte**>(queue) + offset + 0x114) = fifth;
+  data = *reinterpret_cast<byte**>(queue);
+  if (static_cast<int>(size) > 0) {
+    byte* savedRow = data + offset;
+    void* allocated = GMalloc->Malloc(size,
+        reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextGAMESERVICE));
+    *reinterpret_cast<void**>(savedRow + 0x61c) = allocated;
+    data = *reinterpret_cast<byte**>(queue);
+    void* destination = *reinterpret_cast<void**>(data + offset + 0x61c);
+    const void* source = payload; // Late argument read after allocation/current queue reload.
+    // Retained forward DWORD/remainder kernel: borrowed source, current destination, full captured byte count.
+    // It inherits DF, has no null guard, and preserves overlap/order effects that a generic memcpy contract would lose.
+    __asm {
+      mov esi,source
+      mov edi,destination
+      mov ecx,size
+      mov eax,ecx
+      shr ecx,0x2
+      rep movs DWORD PTR es:[edi],DWORD PTR ds:[esi]
+      mov ecx,eax
+      and ecx,0x3
+      rep movs BYTE PTR es:[edi],BYTE PTR ds:[esi]
+    }
+  } else {
+    *reinterpret_cast<void**>(data + offset + 0x61c) = nullptr;
+  }
+  *reinterpret_cast<uint*>(*reinterpret_cast<byte**>(queue) + offset + 0x620) = size;
+  *reinterpret_cast<uint*>(*reinterpret_cast<byte**>(queue) + offset + 0x624) = word13;
+  *reinterpret_cast<uint*>(*reinterpret_cast<byte**>(queue) + offset + 0x628) = playerCount;
+  *reinterpret_cast<uint*>(*reinterpret_cast<byte**>(queue) + offset + 0x62c) = word15;
+  *reinterpret_cast<uint*>(*reinterpret_cast<byte**>(queue) + offset + 0x630) = word16;
+  *reinterpret_cast<uint*>(*reinterpret_cast<byte**>(queue) + offset + 0x834) = word19;
+  auto copyText = [&](const char* source, uint field) {
+    char* destination = reinterpret_cast<char*>(*reinterpret_cast<byte**>(queue) + offset + field);
+    byte copied;
+    do { copied = *source++; *destination++ = copied; } while (copied);
+  };
+  copyText(serverName, 8);
+  copyText(text6, 0x11c);
+  copyText(text7, 0x21c);
+  copyText(text8, 0x31c);
+  copyText(gameVersion, 0x41c);
+  copyText(text10, 0x51c);
+  copyText(ipAddress, 0x634);
+  byte* finalData = *reinterpret_cast<byte**>(queue);
+  const char* source = altIpAddress;
+  char* destination = reinterpret_cast<char*>(finalData + offset + 0x734);
+  byte copied;
+  do { copied = *source++; *destination++ = copied; } while (copied);
+  // The callback's original return declaration is unknown; preserve native EAX's data-pointer high bytes and final AL=0.
+  return reinterpret_cast<uint>(finalData) & 0xffffff00U;
 }
 
 // Append a16-byte alternate-info record and copy its signed-positive-sized payload after allocation.
@@ -409,71 +228,45 @@ __declspec(naked) uint __stdcall MSGameServer(uint lobbyServerId,uint groupId,ui
 // Nonpositive sizes store pointer0 and return raw current data EAX; positive path returns captured full size.
 // Forward DWORD/remainder copy, no bounds/NULL check, own guard or failed-copy deallocation; prefixes persist.
 // R6GameService.dll @ 10009d10 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __stdcall MSAlternateInfo(uint lobbyServerId,uint groupId,const void *payload,uint payloadSize)
+uint __stdcall MSAlternateInfo(uint lobbyServerId,uint groupId,const void *payload,uint payloadSize)
 {
-  __asm {
-    mov    eax,ds:R6GameServiceAddresses::GServiceVerboseLogging
-    push   ebx
-    xor    ebx,ebx
-    cmp    eax,ebx
-    push   esi
-    push   edi
-    je     Branch24
-    mov    eax,ds:R6GameServiceAddresses::Core__GLogSlot
-    mov    ecx,DWORD PTR [eax]
-    push   R6GameServiceAddresses::WideTextCallbackMSAlternateInfo
-    push   ecx
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FOutputDevice_LogfSlot
-    add    esp,0x8
-  Branch24:
-    push   0x10
-    push   0x1
-    mov    ecx,R6GameServiceAddresses::GServiceArray2
-    mov    DWORD PTR ds:R6GameServiceAddresses::GCreateLobbyRequested,ebx
-    call   DWORD PTR ds:R6GameServiceAddresses::Core_FArray_AddSlot
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray2
-    mov    esi,DWORD PTR [esp+0x1c]
-    shl    eax,0x4
-    cmp    esi,ebx
-    mov    edi,eax
-    mov    eax,DWORD PTR [esp+0x10]
-    mov    DWORD PTR [edi+edx*1+0x4],eax
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray2
-    mov    edx,DWORD PTR [esp+0x14]
-    mov    DWORD PTR [edi+ecx*1],edx
-    mov    eax,ds:R6GameServiceAddresses::GServiceArray2
-    mov    DWORD PTR [edi+eax*1+0xc],esi
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray2
-    jle    Branch25
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::Core__GMallocSlot
-    lea    ebx,[edi+ecx*1]
-    mov    ecx,DWORD PTR [edx]
-    mov    eax,DWORD PTR [ecx]
-    push   R6GameServiceAddresses::WideTextGAMESERVICE
-    push   esi
-    call   DWORD PTR [eax]
-    mov    DWORD PTR [ebx+0x8],eax
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::GServiceArray2
-    mov    edi,DWORD PTR [edi+edx*1+0x8]
-    mov    ecx,esi
-    mov    esi,DWORD PTR [esp+0x18]
-    mov    eax,ecx
-    shr    ecx,0x2
-    rep    movs DWORD PTR es:[edi],DWORD PTR ds:[esi]
-    mov    ecx,eax
-    and    ecx,0x3
-    rep    movs BYTE PTR es:[edi],BYTE PTR ds:[esi]
-    pop    edi
-    pop    esi
-    pop    ebx
-    ret    0x10
-  Branch25:
-    mov    DWORD PTR [edi+ecx*1+0x8],ebx
-    pop    edi
-    pop    esi
-    pop    ebx
-    ret    0x10
+  if (*reinterpret_cast<int*>(R6GameServiceAddresses::GServiceVerboseLogging))
+    GLog->Logf(reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextCallbackMSAlternateInfo));
+  FArray* queue = reinterpret_cast<FArray*>(R6GameServiceAddresses::GServiceArray2);
+  *reinterpret_cast<int*>(R6GameServiceAddresses::GCreateLobbyRequested) = 0;
+  const int added = queue->Add(1, 16);
+  byte* data = *reinterpret_cast<byte**>(queue);
+  const uint size = payloadSize;
+  const uint offset = static_cast<uint>(added) * 16U;
+  *reinterpret_cast<uint*>(data + offset + 4) = lobbyServerId;
+  *reinterpret_cast<uint*>(*reinterpret_cast<byte**>(queue) + offset) = groupId;
+  *reinterpret_cast<uint*>(*reinterpret_cast<byte**>(queue) + offset + 0xc) = size;
+  data = *reinterpret_cast<byte**>(queue);
+  if (static_cast<int>(size) > 0) {
+    byte* savedRow = data + offset;
+    void* allocated = GMalloc->Malloc(size,
+        reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextGAMESERVICE));
+    *reinterpret_cast<void**>(savedRow + 8) = allocated;
+    data = *reinterpret_cast<byte**>(queue);
+    void* destination = *reinterpret_cast<void**>(data + offset + 8);
+    const void* source = payload;
+    // Retained forward DWORD/remainder kernel: borrowed source, current destination, full captured byte count.
+    // It inherits DF, has no null guard, and preserves overlap/order effects that a generic memcpy contract would lose.
+    __asm {
+      mov esi,source
+      mov edi,destination
+      mov ecx,size
+      mov eax,ecx
+      shr ecx,0x2
+      rep movs DWORD PTR es:[edi],DWORD PTR ds:[esi]
+      mov ecx,eax
+      and ecx,0x3
+      rep movs BYTE PTR es:[edi],BYTE PTR ds:[esi]
+    }
+    return size;
   }
+  *reinterpret_cast<void**>(data + offset + 8) = nullptr;
+  return reinterpret_cast<uint>(data);
 }
 
 // Publish match IDs and initialize result submission when the current context permits it; retry AL0 once.
