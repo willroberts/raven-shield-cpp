@@ -84,80 +84,53 @@ __declspec(naked) void * __thiscall AssignSTGameServer(void *destination,const v
   }
 }
 
-// Destroys nested game data followed by options and address strings under three staged parent cleanup states.
-// R6GameService.dll @ 10003380 : RET0; exact member order and partial-construction cleanup states.
-__declspec(naked) void __thiscall DestroySTGameServer(void *server)
-{
-  byte *nativeStack,*receiver;
-  __asm {
-    // The nested record owns its cleanup frame; parent state2 covers its call, then byte state1/0 precede the next strings.
-    push   0xffffffff
-    push   R6GameServiceAddresses::SelectGameServerExceptionInfo
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    push   ecx
-    push   esi
-    mov    esi,ecx
-    mov    DWORD PTR [esp+0x4],esi
-    mov    nativeStack,esp
-    mov    receiver,esi
+namespace {
+// Inferred scope guard representing the three server-string unwind actions.
+struct GameServerCleanup {
+  byte *record;
+  int state;
+  // Destroy only the members still armed in the native lifetime map.
+  ~GameServerCleanup() noexcept(false) {
+    using DestroyABI = void (__thiscall *)(void *);
+    static const unsigned offsets[] = {0x10, 0x1c, 0x2c};
+    while (state >= 0) {
+      unsigned offset = offsets[state--];
+      (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(record + offset);
+    }
   }
-  using MemberABI = uint (__thiscall *)(void *);
-  *(uint *)(nativeStack + 0x10) = 2;
-  ((MemberABI)R6GameServiceAddresses::DestroySTGameData)(receiver + 0x38);
-  *(byte *)(nativeStack + 0x10) = 1;
-  (*(MemberABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(receiver + 0x2c);
-  *(byte *)(nativeStack + 0x10) = 0;
-  (*(MemberABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(receiver + 0x1c);
-  *(uint *)(nativeStack + 0x10) = 0xffffffff;
-  uint rawEax = (*(MemberABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(receiver + 0x10);
-  __asm {
-    mov    eax,rawEax
-    mov    ecx,DWORD PTR [esp+0x8]
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x10
-    ret
+};
+}
+
+// Destroys nested game data followed by options and address strings under three staged parent cleanup states.
+// R6GameService.dll @ 10003380 : receiver in ECX, no stack arguments; member order and exception cleanup preserved.
+void __thiscall DestroySTGameServer(void *server)
+{
+  byte *record = (byte *)server;
+  GameServerCleanup cleanup{record, 2};
+  using DestroyABI = void (__thiscall *)(void *);
+  ((DestroyABI)R6GameServiceAddresses::DestroySTGameData)(record + 0x38);
+  static const unsigned offsets[] = {0x2c, 0x1c, 0x10};
+  for (unsigned offset : offsets) {
+    --cleanup.state;
+    (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(record + offset);
   }
 }
 
 // Constructs three no-init server strings and nested game data, leaving other storage untouched.
-// R6GameService.dll @ 100033f0 : RET0; exact member order and partial-construction cleanup states.
-__declspec(naked) void * __thiscall ConstructServerInfo(void *server)
+// R6GameService.dll @ 100033f0 : receiver in ECX, no stack arguments; member order and exception cleanup preserved.
+void * __thiscall ConstructServerInfo(void *server)
 {
-  byte *nativeStack,*receiver;
-  __asm {
-    // Parent state2 covers game-data construction, whose own map additionally accounts for its strings and untouched arrays.
-    push   0xffffffff
-    push   R6GameServiceAddresses::SelectGameServerExceptionInfo
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    push   ecx
-    push   esi
-    mov    esi,ecx
-    lea    ecx,[esi+0x10]
-    mov    DWORD PTR [esp+0x4],esi
-    mov    nativeStack,esp
-    mov    receiver,esi
+  byte *record = (byte *)server;
+  GameServerCleanup cleanup{record, -1};
+  using ConstructABI = void (__thiscall *)(void *);
+  static const unsigned offsets[] = {0x10, 0x1c, 0x2c};
+  for (unsigned offset : offsets) {
+    (*(ConstructABI *)R6GameServiceAddresses::Core__ConstructFStringNoInitSlot)(record + offset);
+    ++cleanup.state;
   }
-  using MemberABI = uint (__thiscall *)(void *);
-  (*(MemberABI *)R6GameServiceAddresses::Core__ConstructFStringNoInitSlot)(receiver + 0x10);
-  *(uint *)(nativeStack + 0x10) = 0;
-  (*(MemberABI *)R6GameServiceAddresses::Core__ConstructFStringNoInitSlot)(receiver + 0x1c);
-  *(byte *)(nativeStack + 0x10) = 1;
-  (*(MemberABI *)R6GameServiceAddresses::Core__ConstructFStringNoInitSlot)(receiver + 0x2c);
-  *(byte *)(nativeStack + 0x10) = 2;
-  ((MemberABI)R6GameServiceAddresses::ConstructServerGameData)(receiver + 0x38);
-  __asm {
-    mov    ecx,DWORD PTR [esp+0x8]
-    mov    eax,esi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x10
-    ret
-  }
+  ((ConstructABI)R6GameServiceAddresses::ConstructServerGameData)(record + 0x38);
+  cleanup.state = -1;
+  return server;
 }
 
 // Copy-constructs server scalars, reflected flag bits, strings and nested game data with three staged string actions.

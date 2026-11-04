@@ -99,57 +99,54 @@ __declspec(naked) clMSClientClass::clMSClientClass(void)
 // One full physical flag word/RET4; flag BYTE is read after destruction. Base allocator wrapper1180 is cdecl.
 // Returns the saved receiver; no own guard, so a throwing destructor prevents object deallocation.
 // R6GameService.dll @ 10032710 : complete native control/access order and raw ABI retained.
-__declspec(naked) void * __thiscall DeleteServiceClient(void *client,uint deleteFlags)
+void *__thiscall DeleteServiceClient(void *client,uint deleteFlags)
 {
-  __asm {
-    push   esi
-    mov    esi,ecx
-    call   R6GameServiceAddresses::DestroyServiceClient
-    test   BYTE PTR [esp+0x8],0x1
-    je     Branch6
-    push   esi
-    call   R6GameServiceAddresses::FreeThroughGlobalAllocator
-    add    esp,0x4
-  Branch6:
-    mov    eax,esi
-    pop    esi
-    ret    0x4
+  void *savedClient = client;
+  using DestroyABI = void (__thiscall *)(void *);
+  ((DestroyABI)R6GameServiceAddresses::DestroyServiceClient)(savedClient);
+  byte flags = *(byte *)&deleteFlags;
+  if ((flags & 1) != 0) {
+    using FreeABI = uint (__cdecl *)(void *);
+    ((FreeABI)R6GameServiceAddresses::FreeThroughGlobalAllocator)(savedClient);
   }
+  return savedClient;
+}
+
+namespace {
+// Inferred saved receiver/state0 guard for the GL base while service resources are released.
+struct ServiceClientBaseCleanup {
+  void *savedClient;
+  bool armed;
+  // Destroy the current saved GL base without retrying resource cleanup or freeing the client object.
+  ~ServiceClientBaseCleanup() noexcept(false) {
+    if (armed) {
+      using DestroyABI = void (__thiscall *)(void *);
+      ((DestroyABI)R6GameServiceAddresses::DestroyGLClient)(savedClient);
+    }
+  }
+};
 }
 
 // Restore class callback tables, release current resources, then destroy the GL base exactly once.
-// Raw uint view preserves GL destructor EAX; original destructor return declaration is not claimed.
+// Cleanup has no consumed return value; deleting wrappers return their saved receiver after it completes.
 // State0 protects the base during resource release; state-1 precedes normal base destruction and prevents retry.
 // Runtime EBP for the sole action is entryESP, with saved receiver at-10; partial frees/clears remain on failure.
 // R6GameService.dll @ 10032730 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall DestroyServiceClient(void *client)
+void __thiscall DestroyServiceClient(void *client)
 {
-  __asm {
-    push   0xffffffff
-    push   R6GameServiceAddresses::DestroyServiceClientSelectExceptionInfo
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    push   ecx
-    push   esi
-    mov    esi,ecx
-    mov    DWORD PTR [esp+0x4],esi
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clMSClientClassVTable
-    mov    DWORD PTR [esi+0x4],R6GameServiceAddresses::clMSClientClassVTableAdjusted4
-    mov    DWORD PTR [esi+0x8],R6GameServiceAddresses::clMSClientClassVTableAdjusted8
-    mov    DWORD PTR [esi+0xc],R6GameServiceAddresses::clMSClientClassVTableAdjusted12
-    mov    DWORD PTR [esi+0x10],R6GameServiceAddresses::clMSClientClassVTableAdjusted16
-    mov    DWORD PTR [esp+0x10],0x0
-    call   R6GameServiceAddresses::ReleaseServiceClientResources
-    mov    ecx,esi
-    mov    DWORD PTR [esp+0x10],0xffffffff
-    call   R6GameServiceAddresses::DestroyGLClient
-    mov    ecx,DWORD PTR [esp+0x8]
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x10
-    ret
-  }
+  ServiceClientBaseCleanup cleanup{client, false};
+  uint base = (uint)client;
+  *(uint *)base = R6GameServiceAddresses::clMSClientClassVTable;
+  *(uint *)(base + 4) = R6GameServiceAddresses::clMSClientClassVTableAdjusted4;
+  *(uint *)(base + 8) = R6GameServiceAddresses::clMSClientClassVTableAdjusted8;
+  *(uint *)(base + 0xc) = R6GameServiceAddresses::clMSClientClassVTableAdjusted12;
+  *(uint *)(base + 0x10) = R6GameServiceAddresses::clMSClientClassVTableAdjusted16;
+  cleanup.armed = true;
+  using MethodABI = uint (__thiscall *)(void *);
+  ((MethodABI)R6GameServiceAddresses::ReleaseServiceClientResources)(client);
+  cleanup.armed = false;
+  using BaseABI = void (__thiscall *)(void *);
+  ((BaseABI)R6GameServiceAddresses::DestroyGLClient)(client);
 }
 
 // Tail-destroy the saved GL base when resource release unwinds; no own frame or additional object free.

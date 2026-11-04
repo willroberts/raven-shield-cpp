@@ -15,97 +15,65 @@ void * __thiscall InitializeClGameMessageFields(void *message,uint contextWord,i
   return message;
 }
 
-// Install clGameMessage/header fields, cache full size BEFORE allocation, then reload CURRENT payload pointer and copy forward.
-// Retain7 full physical words/RET28, partial WORD/BYTE stores, unchecked allocation, size+14 publication only after complete copy.
-// No own EH: outer allocation guard does not release a partially copied owned payload.
-// R6GameService.dll @ 1005b830 : complete native control/access order and raw ABI retained.
-__declspec(naked) void *__thiscall ConstructPayloadRecord(void *message,uint context,uint word18,uint byte0d,uint byte0e,void *payload,uint size,uint initializeBaseWord)
+// Allocate and copy an owned payload forward in DWORD/tail order, publishing its cached size only after copying.
+// R6GameService.dll @ 1005b830 : source pointer is read after allocation; no local rollback or null-allocation guard.
+void * __thiscall ConstructPayloadRecord(
+    void *message,uint context,uint word18,uint byte0d,uint byte0e,void *payload,uint size,uint initializeBaseWord)
 {
-  __asm {
-    push    ecx
-    mov    eax,DWORD PTR [esp+0x20]
-    push    ebx
-    push    ebp
-    push    esi
-    test    eax,eax
-    push    edi
-    mov    ebx,ecx
-    mov    DWORD PTR [esp+0x10],0x0
-    je    Branch1
-    mov    DWORD PTR [ebx+0x4],R6GameServiceAddresses::ClGameMessageBaseOffsets
-  Branch1:
-    mov    eax,DWORD PTR [esp+0x18]
-    mov    ebp,DWORD PTR [esp+0x2c]
-    mov    cl,BYTE PTR [esp+0x20]
-    mov    dl,BYTE PTR [esp+0x24]
-    mov    DWORD PTR [ebx+0x8],eax
-    mov    ax,WORD PTR [esp+0x1c]
-    push    ebp
-    mov    DWORD PTR [ebx],R6GameServiceAddresses::PTR_FUN
-    mov    BYTE PTR [ebx+0xc],0x1
-    mov    BYTE PTR [ebx+0xd],cl
-    mov    BYTE PTR [ebx+0xe],dl
-    mov    WORD PTR [ebx+0x18],ax
-    call    R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    esi,DWORD PTR [esp+0x28]
-    mov    ecx,ebp
-    mov    edx,ecx
-    mov    edi,eax
-    shr    ecx,0x2
-    mov    DWORD PTR [ebx+0x10],eax
-    mov    eax,ebx
-    rep    movs DWORD PTR es:[edi],DWORD PTR ds:[esi]
-    mov    ecx,edx
-    and    ecx,0x3
-    rep    movs BYTE PTR es:[edi],BYTE PTR ds:[esi]
-    pop    edi
-    mov    DWORD PTR [ebx+0x14],ebp
-    pop    esi
-    pop    ebp
-    pop    ebx
-    pop    ecx
-    ret    0x1c
+  if (initializeBaseWord != 0) *(uint *)((byte *)message + 4) = R6GameServiceAddresses::ClGameMessageBaseOffsets;
+  uint contextValue = context;
+  uint length = size;
+  byte field0d = (byte)byte0d;
+  byte field0e = (byte)byte0e;
+  *(uint *)((byte *)message + 8) = contextValue;
+  ushort field18 = (ushort)word18;
+  *(uint *)message = R6GameServiceAddresses::PTR_FUN;
+  *((byte *)message + 0xc) = 1;
+  *((byte *)message + 0xd) = field0d;
+  *((byte *)message + 0xe) = field0e;
+  *(ushort *)((byte *)message + 0x18) = field18;
+  uint destination = (uint)AllocateGameServiceBytes(length);
+  uint source = (uint)payload;
+  *(uint *)((byte *)message + 0x10) = destination;
+  uint words = length >> 2;
+  while (words != 0) {
+    uint value = *(const uint *)source;
+    *(uint *)destination = value;
+    source += 4;
+    destination += 4;
+    --words;
   }
+  uint tail = length & 3;
+  while (tail != 0) {
+    byte value = *(const byte *)source;
+    *(byte *)destination = value;
+    ++source;
+    ++destination;
+    --tail;
+  }
+  *(uint *)((byte *)message + 0x14) = length;
+  return message;
 }
 
-// Destroy owned payload, then read CURRENT full flag low-byte bit0 for optional cached-message free; return cached message/RET4.
-// R6GameService.dll @ 1005b8b0 : complete native control/access order and raw ABI retained.
-__declspec(naked) void *__thiscall clGameMessageDelete(void *message,uint deleteFlags)
+// Destroy owned members, then inspect the current deletion flag and optionally free the cached message allocation.
+// R6GameService.dll @ 1005b8b0 : flag bit 0 controls storage release; returns the original receiver.
+void * __thiscall clGameMessageDelete(void *message,uint deleteFlags)
 {
-  __asm {
-    push    esi
-    mov    esi,ecx
-    call    R6GameServiceAddresses::clGameMessageDestroy
-    test    BYTE PTR [esp+0x8],0x1
-    je    Branch2
-    push    esi
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch2:
-    mov    eax,esi
-    pop    esi
-    ret    0x4
-  }
+  using DestroyABI = uint (__fastcall *)(void *);
+  ((DestroyABI)R6GameServiceAddresses::clGameMessageDestroy)(message);
+  if ((deleteFlags & 1) != 0) TailFreeThroughGlobalAllocator(message);
+  return message;
 }
 
-// Cache payload+10 before class table restore, free non-NULL, then install clMessage base table.
-// Retain dangling payload/size fields and raw free or NULL EAX; failed free leaves clGameMessage table/no local guard.
-// R6GameService.dll @ 1005b990 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall clGameMessageDestroy(void *message)
+// Capture the owned buffer before restoring class identity; free it, then install the base table without clearing fields.
+// R6GameService.dll @ 1005b990 : returns zero or raw allocator result; a failed free leaves the derived table installed.
+uint __fastcall clGameMessageDestroy(void *message)
 {
-  __asm {
-    push    esi
-    mov    esi,ecx
-    mov    eax,DWORD PTR [esi+0x10]
-    mov    DWORD PTR [esi],R6GameServiceAddresses::PTR_FUN
-    test    eax,eax
-    je    Branch3
-    push    eax
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch3:
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clMessageVTable
-    pop    esi
-    ret
-  }
+  uint result = *(uint *)((byte *)message + 0x10);
+  *(uint *)message = R6GameServiceAddresses::PTR_FUN;
+  if (result != 0) result = TailFreeThroughGlobalAllocator((void *)result);
+  *(uint *)message = R6GameServiceAddresses::clMessageVTable;
+  return result;
 }
 
 // Copy clGameMessage metadata and publish source size BEFORE allocation; copy CURRENT destination size from late source payload pointer.
@@ -165,220 +133,135 @@ __declspec(naked) void *__thiscall clGameMessageCopyConstruct(void *message,cons
 // Otherwise copy only when *size==count, using cached count and forward DWORD/BYTE REP; return count even on mismatch.
 // RET16.
 // R6GameService.dll @ 1005baa0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __stdcall CopyOrQueryPayloadBytes(
-    const byte *source,uint count,byte *destination,uint *size)
+uint __stdcall CopyOrQueryPayloadBytes(const byte *source,uint count,byte *destination,uint *size)
 {
-  __asm {
-    push    edi
-    mov    edi,DWORD PTR [esp+0x10]
-    test    edi,edi
-    jne    Branch5
-    mov    eax,DWORD PTR [esp+0x14]
-    mov    ecx,DWORD PTR [esp+0xc]
-    pop    edi
-    mov    DWORD PTR [eax],ecx
-    ret    0x10
-  Branch5:
-    mov    edx,DWORD PTR [esp+0x14]
-    mov    eax,DWORD PTR [esp+0xc]
-    mov    ecx,DWORD PTR [edx]
-    cmp    ecx,eax
-    jne    Branch6
-    mov    eax,ecx
-    push    esi
-    mov    esi,DWORD PTR [esp+0xc]
-    shr    ecx,0x2
-    rep    movs DWORD PTR es:[edi],DWORD PTR ds:[esi]
-    mov    ecx,eax
-    and    ecx,0x3
-    rep    movs BYTE PTR es:[edi],BYTE PTR ds:[esi]
-    pop    esi
-  Branch6:
-    pop    edi
-    ret    0x10
+  byte *out = destination;
+  if (out == nullptr) {
+    uint *sizeWord = size;
+    uint reportedBytes = count;
+    *sizeWord = reportedBytes;
+    return (uint)sizeWord;
   }
+  uint *sizeWord = size;
+  uint copiedBytes = count;
+  uint availableBytes = *sizeWord;
+  if (availableBytes == copiedBytes) {
+    const byte *first = source;
+    uint words = availableBytes >> 2;
+    while (words != 0) {
+      uint word = *(const uint *)first;
+      *(uint *)out = word;
+      first += 4;
+      out += 4;
+      --words;
+    }
+    uint tailBytes = copiedBytes & 3;
+    while (tailBytes != 0) {
+      byte value = *first;
+      *out = value;
+      ++first;
+      ++out;
+      --tailBytes;
+    }
+  }
+  return copiedBytes;
 }
 
-// Unsigned size>=7 and exact three-byte size equality gate header BYTEe/d and little-endian WORD18 updates.
-// Query CURRENT slot18 into owner14, allocate reported size, publish owner10 before second CURRENT slot18, then set
-// only AL1.
-// Keep old buffer/partial effects, raw upper EAX and unconditional success after second return; no parent EH/NULL
-// repair. RET8.
-// R6GameService.dll @ 1005bae0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall ParseHeaderAndPayload(void *message,const byte *input,uint sizeWord)
+// Require unsigned size>=7 and exact decoded size, then publish header fields and query the current virtual codec.
+// Allocate the queried size without freeing the old buffer; capture the second table before publishing the new buffer.
+// R6GameService.dll @ 1005bae0 : ECX/EAX input view, two native stack words/thiscall RET8; no local guard.
+uint ParseHeaderAndPayload(
+    [[r6abi::register_input("ecx")]] void *message,const byte *input,uint sizeWord,
+    [[r6abi::register_input("eax")]] uint eaxAtEntry)
 {
-  __asm {
-    push    ebx
-    mov    ebx,DWORD PTR [esp+0xc]
-    push    esi
-    cmp    ebx,0x7
-    push    edi
-    mov    esi,ecx
-    jae    Branch7
-    pop    edi
-    pop    esi
-    xor    al,al
-    pop    ebx
-    ret    0x8
-  Branch7:
-    mov    edi,DWORD PTR [esp+0x10]
-    push    edi
-    call    R6GameServiceAddresses::ReadHeaderSize24
-    mov    ecx,eax
-    cmp    ecx,ebx
-    je    Branch8
-    pop    edi
-    pop    esi
-    xor    al,al
-    pop    ebx
-    ret    0x8
-  Branch8:
-    push    ebp
-    push    edi
-    call    R6GameServiceAddresses::ReadHeaderByte3LowBits
-    push    edi
-    mov    BYTE PTR [esi+0xe],al
-    call    R6GameServiceAddresses::ReadHeaderByte4
-    push    edi
-    mov    BYTE PTR [esi+0xd],al
-    call    R6GameServiceAddresses::ReadHeaderWord5
-    lea    ebx,[esi+0x14]
-    lea    ebp,[ecx-0x7]
-    push    ebx
-    mov    WORD PTR [esi+0x18],ax
-    mov    eax,DWORD PTR [esi]
-    add    edi,0x7
-    push    0x0
-    push    ebp
-    push    edi
-    mov    ecx,esi
-    call    DWORD PTR [eax+0x18]
-    mov    ecx,DWORD PTR [ebx]
-    push    ecx
-    call    R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    edx,DWORD PTR [esi]
-    push    ebx
-    push    eax
-    push    ebp
-    push    edi
-    mov    ecx,esi
-    mov    DWORD PTR [esi+0x10],eax
-    call    DWORD PTR [edx+0x18]
-    pop    ebp
-    pop    edi
-    pop    esi
-    mov    al,0x1
-    pop    ebx
-    ret    0x8
-  }
+  uint size = sizeWord;
+  if (size < 7) return eaxAtEntry & 0xffffff00;
+  uint base = (uint)message;
+  const byte *header = input;
+  uint decodedSize = ReadHeaderSize24(header);
+  if (decodedSize != size) return decodedSize & 0xffffff00;
+  byte lowBits = (byte)ReadHeaderByte3LowBits(header);
+  *(byte *)(base + 0xe) = lowBits;
+  byte byte4 = (byte)ReadHeaderByte4(header);
+  *(byte *)(base + 0xd) = byte4;
+  ushort word5 = (ushort)ReadHeaderWord5(header);
+  uint *sizeSlot = (uint *)(base + 0x14);
+  uint payloadBytes = decodedSize - 7;
+  *(ushort *)(base + 0x18) = word5;
+  uint firstTable = *(uint *)base;
+  const byte *payload = (const byte *)((uint)header + 7);
+  using CodecABI = uint (__thiscall *)(void *,const byte *,uint,void *,uint *);
+  (*(CodecABI *)(firstTable + 0x18))(message,payload,payloadBytes,nullptr,sizeSlot);
+  uint allocationBytes = *sizeSlot;
+  uint allocation = (uint)AllocateGameServiceBytes(allocationBytes);
+  uint secondTable = *(uint *)base;
+  *(uint *)(base + 0x10) = allocation;
+  uint result = (*(CodecABI *)(secondTable + 0x18))(message,payload,payloadBytes,(void *)allocation,sizeSlot);
+  return (result & 0xffffff00) | 1;
 }
 
-// Query/current slot14 then allocate transformed bytes and reload current owner10/14 for output call, ignoring raw
-// status.
-// Build cleared seven-byte header from current owner fields, use current total/copy counts and reuse original output
-// argument for result.
-// LocalS-4 begins saved incoming ECX, not zero. Free cached header/transformed allocations and return saved result.
-// POP ECX restores current reported-size scratch. No
-// parent EH. RET4.
+// Queries current slot14, transforms payload bytes and prepends a seven-byte header built from current owner fields.
+// Reported-size scratch begins with the receiver word; original output argument becomes the late result slot.
+// Copies DWORDs then bytes forward, frees cached temporaries without a parent guard and restores scratch in native ECX.
+// Header writers consume only the supplied low BYTE/WORD; unused native argument high bits are not semantic inputs.
 // R6GameService.dll @ 1005b9b0 : complete native control/access order and raw ABI retained.
-__declspec(naked) void *__thiscall SerializeRawPayloadRecord(void *message,uint *sizeOutput)
+void * __thiscall SerializeRawPayloadRecord(void *message,uint *sizeOutput)
 {
-  __asm {
-    push    ecx
-    push    ebx
-    push    ebp
-    push    esi
-    mov    esi,ecx
-    lea    ecx,[esp+0xc]
-    push    edi
-    mov    edx,DWORD PTR [esi+0x14]
-    mov    eax,DWORD PTR [esi]
-    push    ecx
-    mov    ecx,DWORD PTR [esi+0x10]
-    push    0x0
-    push    edx
-    push    ecx
-    mov    ecx,esi
-    call    DWORD PTR [eax+0x14]
-    mov    edx,DWORD PTR [esp+0x10]
-    push    edx
-    call    R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    edx,DWORD PTR [esi+0x14]
-    lea    ecx,[esp+0x10]
-    mov    ebp,eax
-    mov    eax,DWORD PTR [esi]
-    push    ecx
-    mov    ecx,DWORD PTR [esi+0x10]
-    push    ebp
-    push    edx
-    push    ecx
-    mov    ecx,esi
-    call    DWORD PTR [eax+0x14]
-    mov    edx,DWORD PTR [esp+0x10]
-    mov    edi,DWORD PTR [esp+0x18]
-    add    edx,0x7
-    push    0x7
-    mov    DWORD PTR [edi],edx
-    call    R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    ebx,eax
-    xor    eax,eax
-    mov    ecx,ebx
-    mov    DWORD PTR [ecx],eax
-    mov    WORD PTR [ecx+0x4],ax
-    mov    BYTE PTR [ecx+0x6],al
-    mov    edx,DWORD PTR [edi]
-    push    edx
-    push    ebx
-    call    R6GameServiceAddresses::WriteHeaderSize24
-    mov    al,BYTE PTR [esi+0xc]
-    push    eax
-    push    ebx
-    call    R6GameServiceAddresses::WriteHeaderByte3HighBits
-    mov    cl,BYTE PTR [esi+0xe]
-    push    ecx
-    push    ebx
-    call    R6GameServiceAddresses::SetHeaderByte3Bit5
-    mov    dl,BYTE PTR [esi+0xd]
-    push    edx
-    push    ebx
-    call    R6GameServiceAddresses::WriteHeaderByte4
-    mov    ax,WORD PTR [esi+0x18]
-    push    eax
-    push    ebx
-    call    R6GameServiceAddresses::WriteHeaderWord5
-    mov    ecx,DWORD PTR [edi]
-    push    ecx
-    call    R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    edx,ebx
-    mov    ecx,eax
-    mov    DWORD PTR [esp+0x18],eax
-    lea    edi,[eax+0x7]
-    mov    esi,DWORD PTR [edx]
-    mov    DWORD PTR [ecx],esi
-    mov    si,WORD PTR [edx+0x4]
-    mov    WORD PTR [ecx+0x4],si
-    mov    esi,ebp
-    mov    dl,BYTE PTR [edx+0x6]
-    mov    BYTE PTR [ecx+0x6],dl
-    mov    ecx,DWORD PTR [esp+0x10]
-    mov    eax,ecx
-    shr    ecx,0x2
-    rep    movs DWORD PTR es:[edi],DWORD PTR ds:[esi]
-    mov    ecx,eax
-    and    ecx,0x3
-    rep    movs BYTE PTR es:[edi],BYTE PTR ds:[esi]
-    push    ebx
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    push    ebp
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    eax,DWORD PTR [esp+0x18]
-    pop    edi
-    pop    esi
-    pop    ebp
-    pop    ebx
-    pop    ecx
-    ret    0x4
+  void *savedMessage = message;
+  uint reportedBytes = (uint)message;
+  using CodecABI = uint (__thiscall *)(void *,const byte *,uint,byte *,uint *);
+  uint inputBytes = *(uint *)((byte *)savedMessage + 0x14);
+  uint table = *(uint *)savedMessage;
+  const byte *input = *(const byte **)((byte *)savedMessage + 0x10);
+  (*(CodecABI *)(table + 0x14))(savedMessage,input,inputBytes,nullptr,&reportedBytes);
+  uint allocationBytes = reportedBytes;
+  byte *transformed = (byte *)AllocateGameServiceBytes(allocationBytes);
+  inputBytes = *(uint *)((byte *)savedMessage + 0x14);
+  table = *(uint *)savedMessage;
+  input = *(const byte **)((byte *)savedMessage + 0x10);
+  (*(CodecABI *)(table + 0x14))(savedMessage,input,inputBytes,transformed,&reportedBytes);
+  uint totalBytes = reportedBytes + 7;
+  uint *totalCell = sizeOutput;
+  *totalCell = totalBytes;
+  byte *header = (byte *)AllocateGameServiceBytes(7);
+  *(uint *)header = 0;
+  *(ushort *)(header + 4) = 0;
+  header[6] = 0;
+  WriteHeaderSize24(header,*totalCell);
+  WriteHeaderByte3HighBits(header,*((byte *)savedMessage + 0xc));
+  SetHeaderByte3Bit5(header,*((byte *)savedMessage + 0xe));
+  WriteHeaderByte4(header,*((byte *)savedMessage + 0xd));
+  WriteHeaderWord5(header,*(ushort *)((byte *)savedMessage + 0x18));
+  byte *packet = (byte *)AllocateGameServiceBytes(*totalCell);
+  sizeOutput = (uint *)packet;
+  byte *out = packet + 7;
+  uint firstWord = *(uint *)header;
+  *(uint *)packet = firstWord;
+  ushort middleWord = *(ushort *)(header + 4);
+  *(ushort *)(packet + 4) = middleWord;
+  const byte *first = transformed;
+  byte lastByte = header[6];
+  packet[6] = lastByte;
+  uint copyBytes = reportedBytes;
+  uint words = copyBytes >> 2;
+  while (words != 0) {
+    uint word = *(const uint *)first;
+    *(uint *)out = word;
+    first += 4;
+    out += 4;
+    --words;
   }
+  uint tailBytes = copyBytes & 3;
+  while (tailBytes != 0) {
+    byte value = *first;
+    *out = value;
+    ++first;
+    ++out;
+    --tailBytes;
+  }
+  TailFreeThroughGlobalAllocator(header);
+  TailFreeThroughGlobalAllocator(transformed);
+  return sizeOutput;
 }
 
 // Read CURRENT payload10 BYTE0 without consulting count14; dispatch event label or zero-extended decimal fallback.

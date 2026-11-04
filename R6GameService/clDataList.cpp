@@ -1161,275 +1161,271 @@ __declspec(naked) void __cdecl ClDataListParseExceptionHandler(void)
 // R6GameService.dll data @ 10029234 : native storage identity retained.
 const uint GClDataListCloneTagTargets[6] = {R6GameServiceAddresses::clDataListBranch10,R6GameServiceAddresses::clDataListBranch13,R6GameServiceAddresses::clDataListBranch14,R6GameServiceAddresses::clDataListBranch16,R6GameServiceAddresses::clDataListBranch17,R6GameServiceAddresses::clDataListBranch19};
 
+// Inferred clone locals: flags/child/owner/allocation/output occupy native EBP-20/-1c/-18/-14/-10.
+struct ClDataListCloneLocals {
+  byte padding[3];
+  byte rangeTag;
+  uint flags;
+  uint child;
+  uint savedOwner;
+  uint allocation;
+  uint insertionOutput;
+};
+
+// Releases only the child construction state that is active, then the constructed outer list and base.
+struct ClDataListCloneCleanup {
+  ClDataListCloneLocals *frame;
+  int state;
+  ~ClDataListCloneCleanup() noexcept(false)
+  {
+    using ContextABI = void (__fastcall *)(void *);
+    while (state >= 0) {
+      switch (state) {
+        case 0:
+          state = -1;
+          if ((frame->flags & 1) != 0)
+            ((ContextABI)R6GameServiceAddresses::list_node_support_NoOp)((void *)(frame->savedOwner + 0x18));
+          break;
+        case 1:
+          state = 0;
+          ResetClDataVtable((undefined4 *)frame->savedOwner);
+          break;
+        case 2: state = 1; break;
+        case 3:
+          state = 1;
+          DestroyClDataPointerList((void *)(frame->savedOwner + 0xc));
+          break;
+        case 4: case 8: case 12: case 13: case 15:
+          state = 3;
+          ForwardToAllocatorTail((void *)frame->allocation);
+          break;
+        case 5:
+          state = 4;
+          if ((frame->flags & 8) != 0)
+            ((ContextABI)R6GameServiceAddresses::list_node_support_NoOp)((void *)(frame->allocation + 0x18));
+          break;
+        case 6:
+          state = 5;
+          ResetClDataVtable((undefined4 *)frame->allocation);
+          break;
+        case 7:
+          state = 6;
+          ReleaseFirstWordBuffer((void *)(frame->allocation + 0xc));
+          break;
+        case 9:
+          state = 8;
+          if ((frame->flags & 0x10) != 0)
+            ((ContextABI)R6GameServiceAddresses::list_node_support_NoOp)((void *)(frame->allocation + 0x1c));
+          break;
+        case 10:
+          state = 9;
+          ResetClDataVtable((undefined4 *)frame->allocation);
+          break;
+        case 11:
+          state = 10;
+          ReleaseNonNullFirstWordBuffer((void *)(frame->allocation + 0xc));
+          break;
+        case 14:
+          state = 13;
+          if ((frame->flags & 0x20) != 0)
+            ((ContextABI)R6GameServiceAddresses::list_node_support_NoOp)((void *)(frame->allocation + 0x14));
+          break;
+        case 16:
+          state = 15;
+          if ((frame->flags & 0x40) != 0)
+            ((ContextABI)R6GameServiceAddresses::list_node_support_NoOp)((void *)(frame->allocation + 0x10));
+          break;
+      }
+    }
+  }
+};
+
 // Clones supported child tags and appends the saved child, retaining stale-child reuse for unsupported tags.
 // R6GameService.dll @ 10028ef0 : native register/frame/state accesses and raw ABI retained.
-__declspec(naked) void * __thiscall CopyConstructClDataList(
-    void *owner,const void *source,uint initializeVirtualBaseWord)
+void * __thiscall CopyConstructClDataList(void *owner,const void *source,uint initializeVirtualBaseWord)
 {
-  __asm {
-    push   0xffffffff
-    push   R6GameServiceAddresses::ClDataListCloneExceptionHandler
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x18
-    push   ebx
-    xor    ebx,ebx
-    mov    DWORD PTR [esp+0x8],ebx
-    mov    eax,DWORD PTR [esp+0x30]
-    push   ebp
-    mov    ebp,ecx
-    push   esi
-    cmp    eax,ebx
-    push   edi
-    mov    DWORD PTR [esp+0x1c],ebp
-    je Branch8
-    mov    DWORD PTR [ebp+0x4],R6GameServiceAddresses::ClDataListBaseOffsets
-    mov    DWORD PTR [ebp+0x14],R6GameServiceAddresses::ClDataListInnerBaseOffsets
-    mov    DWORD PTR [esp+0x14],0x1
-    // Construct kind3 and its embedded list; overwrite the incoming flag argument with owner+0x0c.
-  Branch8:
-    mov    edi,0x3
-    mov    DWORD PTR [ebp+0x0],R6GameServiceAddresses::PTR_LAB
-    mov    DWORD PTR [ebp+0x8],edi
-    lea    esi,[ebp+0xc]
-    push   ebx
-    mov    DWORD PTR [esp+0x34],0x1
-    mov    DWORD PTR [esp+0x40],esi
-    lea    ecx,[esi+0x4]
-    call   R6GameServiceAddresses::InitializePayloadListSentinel
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clDataListPTR_FUN2
-    mov    eax,DWORD PTR [esp+0x38]
-    mov    DWORD PTR [ebp+0x0],R6GameServiceAddresses::clDataListPTR_FUN
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clDataListPTR_LAB
-    // Source head read precedes full-list state3; a fault here leaves the constructed sentinel outside cleanup.
-    mov    DWORD PTR [esp+0x18],ebx
-    mov    eax,DWORD PTR [eax+0x10]
-    mov    DWORD PTR [esp+0x30],edi
-    mov    ebx,DWORD PTR [eax]
-    cmp    ebx,eax
-    je Branch24
-    // Tags outside1..6 retain the previous saved child instead of clearing it.
-  Branch9:
-    mov    ecx,DWORD PTR [ebx+0x8]
-    mov    eax,DWORD PTR [ecx+0x8]
-    dec    eax
-    cmp    eax,0x5
-    ja Branch22
-    jmp    DWORD PTR [eax*4+R6GameServiceAddresses::GClDataListCloneTagTargets]
-    // Type1: string descriptor, empty string, then append the source byte range.
-  Branch10:
-    push   0x18
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    esi,eax
-    mov    DWORD PTR [esp+0x20],esi
-    test   esi,esi
-    je Branch18
-    mov    edi,DWORD PTR [esp+0x14]
-    mov    ebp,DWORD PTR [ebx+0x8]
-    or     edi,0x8
-    mov    DWORD PTR [esi+0x4],R6GameServiceAddresses::ClDataStrBaseOffsets
-    mov    DWORD PTR [esp+0x14],edi
-    push   0x0
-    push   0x1
-    mov    ecx,esi
-    mov    BYTE PTR [esp+0x38],0x5
-    call   R6GameServiceAddresses::InitializeClDataFields
-    lea    edi,[esi+0xc]
-    mov    DWORD PTR [esp+0x30],0x6
-    mov    ecx,edi
-    call   R6GameServiceAddresses::InitializeEmptyByteString
-    test   ebp,ebp
-    mov    BYTE PTR [esp+0x30],0x7
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clDataStrPTR_FUN
-    je Branch11
-    lea    eax,[ebp+0xc]
-    jmp Branch12
-  Branch11:
-    xor    eax,eax
-  Branch12:
-    mov    ecx,DWORD PTR [eax+0x4]
-    mov    eax,DWORD PTR [eax]
-    lea    edx,[esp+0x3c]
-    push   edx
-    push   ecx
-    push   eax
-    mov    ecx,edi
-    call   R6GameServiceAddresses::AppendByteRangeWithLocalGrowthTag
-    mov    ebp,DWORD PTR [esp+0x1c]
-    mov    BYTE PTR [esp+0x30],0x3
-    mov    DWORD PTR [esp+0x18],esi
-    jmp Branch22
-    // Type2: binary descriptor and range insertion with a native local tag byte.
-  Branch13:
-    push   0x1c
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    esi,eax
-    mov    DWORD PTR [esp+0x20],esi
-    test   esi,esi
-    je Branch18
-    mov    edi,DWORD PTR [esp+0x14]
-    mov    ebp,DWORD PTR [ebx+0x8]
-    or     edi,0x10
-    mov    DWORD PTR [esi+0x4],R6GameServiceAddresses::ClDataBinOwnerBaseOffsets
-    mov    DWORD PTR [esi+0x18],R6GameServiceAddresses::ClDataBinBaseOffsets
-    mov    DWORD PTR [esp+0x14],edi
-    push   0x0
-    push   0x2
-    mov    ecx,esi
-    mov    BYTE PTR [esp+0x38],0x9
-    call   R6GameServiceAddresses::InitializeClDataFields
-    lea    edi,[esi+0xc]
-    push   0x0
-    mov    ecx,edi
-    mov    DWORD PTR [esp+0x34],0xa
-    call   R6GameServiceAddresses::InitializeEmptyByteBufferTriplet
-    mov    ecx,DWORD PTR [edi]
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clDataBinPTR_FUN
-    mov    eax,DWORD PTR [ebp+0x10]
-    mov    ebp,DWORD PTR [ebp+0xc]
-    lea    edx,[esp+0x13]
-    mov    BYTE PTR [esp+0x30],0xb
-    push   edx
-    push   eax
-    push   ebp
-    push   ecx
-    mov    ecx,edi
-    call   R6GameServiceAddresses::InsertByteRangeWithLocalTag
-    mov    ebp,DWORD PTR [esp+0x1c]
-    mov    BYTE PTR [esp+0x30],0x3
-    mov    DWORD PTR [esp+0x18],esi
-    jmp Branch22
-    // Type3: recursively copy-construct a new list.
-  Branch14:
-    push   0x18
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    DWORD PTR [esp+0x20],eax
-    test   eax,eax
-    mov    BYTE PTR [esp+0x30],0xc
-    je Branch15
-    mov    ecx,DWORD PTR [ebx+0x8]
-    push   0x1
-    push   ecx
-    mov    ecx,eax
-    call   R6GameServiceAddresses::CopyConstructClDataList
-    mov    BYTE PTR [esp+0x30],0x3
-    jmp Branch21
-  Branch15:
-    xor    eax,eax
-    mov    BYTE PTR [esp+0x30],0x3
-    jmp Branch21
-    // Type4: copy the high word at+0x10 before the low word at+0x0c.
-  Branch16:
-    push   0x14
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    esi,eax
-    mov    DWORD PTR [esp+0x20],esi
-    test   esi,esi
-    je Branch18
-    mov    edx,DWORD PTR [esp+0x14]
-    mov    edi,DWORD PTR [ebx+0x8]
-    or     edx,0x20
-    mov    DWORD PTR [esi+0x4],0x10076b34
-    mov    DWORD PTR [esp+0x14],edx
-    push   0x0
-    push   0x4
-    mov    ecx,esi
-    mov    BYTE PTR [esp+0x38],0xe
-    call   R6GameServiceAddresses::InitializeClDataFields
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clDataLongVTable
-    mov    edx,DWORD PTR [edi+0x10]
-    mov    DWORD PTR [esi+0x10],edx
-    mov    eax,DWORD PTR [edi+0xc]
-    mov    DWORD PTR [esi+0xc],eax
-    mov    DWORD PTR [esp+0x30],0xd
-    mov    BYTE PTR [esp+0x30],0x3
-    mov    DWORD PTR [esp+0x18],esi
-    jmp Branch22
-    // Type5: copy one full word after base initialization.
-  Branch17:
-    push   0x10
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    esi,eax
-    mov    DWORD PTR [esp+0x20],esi
-    test   esi,esi
-    je Branch18
-    mov    edx,DWORD PTR [esp+0x14]
-    mov    edi,DWORD PTR [ebx+0x8]
-    or     edx,0x40
-    mov    DWORD PTR [esi+0x4],0x10076b10
-    mov    DWORD PTR [esp+0x14],edx
-    push   0x0
-    push   0x5
-    mov    ecx,esi
-    mov    BYTE PTR [esp+0x38],0x10
-    call   R6GameServiceAddresses::InitializeClDataFields
-    mov    ecx,DWORD PTR [edi+0xc]
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clDataStrRefVTable
-    mov    DWORD PTR [esi+0xc],ecx
-    mov    DWORD PTR [esp+0x30],0xf
-    mov    BYTE PTR [esp+0x30],0x3
-    mov    DWORD PTR [esp+0x18],esi
-    jmp Branch22
-    // Supported allocation failure clears the saved child; unsupported tags do not take this path.
-  Branch18:
-    xor    esi,esi
-    mov    BYTE PTR [esp+0x30],0x3
-    mov    DWORD PTR [esp+0x18],esi
-    jmp Branch22
-    // Type6: initialize inline without a staged allocation action; retain flag bit7.
-  Branch19:
-    push   0x10
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    test   eax,eax
-    je Branch20
-    mov    edx,DWORD PTR [esp+0x14]
-    mov    ecx,DWORD PTR [ebx+0x8]
-    or     dl,0x80
-    mov    DWORD PTR [eax+0x4],0x10076aec
-    mov    DWORD PTR [esp+0x14],edx
-    mov    DWORD PTR [eax+0x8],0x6
-    mov    DWORD PTR [eax],R6GameServiceAddresses::clDataRefVTable
-    mov    edx,DWORD PTR [ecx+0xc]
-    mov    DWORD PTR [eax+0xc],edx
-    jmp Branch21
-  Branch20:
-    xor    eax,eax
-  Branch21:
-    mov    DWORD PTR [esp+0x18],eax
-  Branch22:
-    mov    eax,DWORD PTR [esp+0x18]
-    test   eax,eax
-    je Branch23
-    // Use a pushed ECX scratch word as the sentinel output slot, then pass output/position/payload slot.
-    lea    eax,[esp+0x18]
-    lea    esi,[ebp+0x10]
-    push   eax
-    push   ecx
-    push   esp
-    mov    ecx,esi
-    call   R6GameServiceAddresses::CopyListHeadSlot
-    lea    ecx,[esp+0x2c]
-    push   ecx
-    mov    ecx,esi
-    call   R6GameServiceAddresses::InsertPayloadNodeBefore
-    // Reload the source argument/head and current next link only after child work and insertion.
-  Branch23:
-    mov    edx,DWORD PTR [esp+0x38]
-    mov    ebx,DWORD PTR [ebx]
-    cmp    ebx,DWORD PTR [edx+0x10]
-    jne Branch9
-  Branch24:
-    mov    ecx,DWORD PTR [esp+0x28]
-    pop    edi
-    mov    eax,ebp
-    pop    esi
-    pop    ebp
-    pop    ebx
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x24
-    ret    0x8
+  ClDataListCloneLocals frame;
+  ClDataListCloneCleanup cleanup{&frame,-1};
+  frame.flags = 0;
+  uint cachedOwner = (uint)owner;
+  uint initialize = initializeVirtualBaseWord;
+  frame.savedOwner = cachedOwner;
+  if (initialize != 0) {
+    *(uint *)(cachedOwner + 4) = R6GameServiceAddresses::ClDataListBaseOffsets;
+    *(uint *)(cachedOwner + 0x14) = R6GameServiceAddresses::ClDataListInnerBaseOffsets;
+    frame.flags = 1;
   }
+  *(uint *)cachedOwner = R6GameServiceAddresses::PTR_LAB;
+  *(uint *)(cachedOwner + 8) = 3;
+  uint inner = cachedOwner + 0xc;
+  cleanup.state = 1;
+  initializeVirtualBaseWord = inner;
+  InitializePayloadListSentinel((void *)(inner + 4),0);
+  *(uint *)inner = R6GameServiceAddresses::clDataListPTR_FUN2;
+  uint initialSource = (uint)source;
+  *(uint *)cachedOwner = R6GameServiceAddresses::clDataListPTR_FUN;
+  *(uint *)inner = R6GameServiceAddresses::clDataListPTR_LAB;
+  frame.child = 0;
+  uint head = *(uint *)(initialSource + 0x10);
+  cleanup.state = 3;
+  uint node = *(uint *)head;
+  if (node != head) {
+    do {
+      uint payload = *(uint *)(node + 8);
+      uint tag = *(uint *)(payload + 8);
+      switch (tag) {
+        case 1: {
+          uint child = (uint)AllocateGameServiceBytes(0x18);
+          frame.allocation = child;
+          if (child == 0) {
+            cleanup.state = 3;
+            frame.child = 0;
+            break;
+          }
+          uint flags = frame.flags;
+          uint sourcePayload = *(uint *)(node + 8);
+          flags |= 8;
+          *(uint *)(child + 4) = R6GameServiceAddresses::ClDataStrBaseOffsets;
+          frame.flags = flags;
+          cleanup.state = 5;
+          InitializeClDataFields((void *)child,1,0);
+          uint triplet = child + 0xc;
+          cleanup.state = 6;
+          InitializeEmptyByteString((void *)triplet);
+          cleanup.state = 7;
+          *(uint *)child = R6GameServiceAddresses::clDataStrPTR_FUN;
+          uint sourceTriplet = sourcePayload != 0 ? sourcePayload + 0xc : 0;
+          uint last = *(uint *)(sourceTriplet + 4);
+          uint first = *(uint *)sourceTriplet;
+          AppendByteRangeWithLocalGrowthTag(
+              (void *)triplet,(undefined1 *)first,(undefined1 *)last,(uint)&initializeVirtualBaseWord);
+          cachedOwner = frame.savedOwner;
+          cleanup.state = 3;
+          frame.child = child;
+          break;
+        }
+        case 2: {
+          uint child = (uint)AllocateGameServiceBytes(0x1c);
+          frame.allocation = child;
+          if (child == 0) {
+            cleanup.state = 3;
+            frame.child = 0;
+            break;
+          }
+          uint flags = frame.flags;
+          uint sourcePayload = *(uint *)(node + 8);
+          flags |= 0x10;
+          *(uint *)(child + 4) = R6GameServiceAddresses::ClDataBinOwnerBaseOffsets;
+          *(uint *)(child + 0x18) = R6GameServiceAddresses::ClDataBinBaseOffsets;
+          frame.flags = flags;
+          cleanup.state = 9;
+          InitializeClDataFields((void *)child,2,0);
+          uint triplet = child + 0xc;
+          cleanup.state = 10;
+          InitializeEmptyByteBufferTriplet((void *)triplet,0);
+          uint position = *(uint *)triplet;
+          *(uint *)child = R6GameServiceAddresses::clDataBinPTR_FUN;
+          uint last = *(uint *)(sourcePayload + 0x10);
+          uint first = *(uint *)(sourcePayload + 0xc);
+          cleanup.state = 11;
+          InsertByteRangeWithLocalTag((void *)triplet,(void *)position,(void *)first,(void *)last,&frame.rangeTag);
+          cachedOwner = frame.savedOwner;
+          cleanup.state = 3;
+          frame.child = child;
+          break;
+        }
+        case 3: {
+          uint child = (uint)AllocateGameServiceBytes(0x18);
+          frame.allocation = child;
+          cleanup.state = 12;
+          uint result = 0;
+          if (child != 0) {
+            uint sourcePayload = *(uint *)(node + 8);
+            result = (uint)CopyConstructClDataList((void *)child,(void *)sourcePayload,1);
+          }
+          cleanup.state = 3;
+          frame.child = result;
+          break;
+        }
+        case 4: {
+          uint child = (uint)AllocateGameServiceBytes(0x14);
+          frame.allocation = child;
+          if (child == 0) {
+            cleanup.state = 3;
+            frame.child = 0;
+            break;
+          }
+          uint flags = frame.flags;
+          uint sourcePayload = *(uint *)(node + 8);
+          flags |= 0x20;
+          *(uint *)(child + 4) = 0x10076b34;
+          frame.flags = flags;
+          cleanup.state = 14;
+          InitializeClDataFields((void *)child,4,0);
+          *(uint *)child = R6GameServiceAddresses::clDataLongVTable;
+          uint high = *(uint *)(sourcePayload + 0x10);
+          *(uint *)(child + 0x10) = high;
+          uint low = *(uint *)(sourcePayload + 0xc);
+          *(uint *)(child + 0xc) = low;
+          cleanup.state = 13;
+          cleanup.state = 3;
+          frame.child = child;
+          break;
+        }
+        case 5: {
+          uint child = (uint)AllocateGameServiceBytes(0x10);
+          frame.allocation = child;
+          if (child == 0) {
+            cleanup.state = 3;
+            frame.child = 0;
+            break;
+          }
+          uint flags = frame.flags;
+          uint sourcePayload = *(uint *)(node + 8);
+          flags |= 0x40;
+          *(uint *)(child + 4) = 0x10076b10;
+          frame.flags = flags;
+          cleanup.state = 16;
+          InitializeClDataFields((void *)child,5,0);
+          uint value = *(uint *)(sourcePayload + 0xc);
+          *(uint *)child = R6GameServiceAddresses::clDataStrRefVTable;
+          *(uint *)(child + 0xc) = value;
+          cleanup.state = 15;
+          cleanup.state = 3;
+          frame.child = child;
+          break;
+        }
+        case 6: {
+          uint child = (uint)AllocateGameServiceBytes(0x10);
+          if (child != 0) {
+            uint flags = frame.flags;
+            uint sourcePayload = *(uint *)(node + 8);
+            flags |= 0x80;
+            *(uint *)(child + 4) = 0x10076aec;
+            frame.flags = flags;
+            *(uint *)(child + 8) = 6;
+            *(uint *)child = R6GameServiceAddresses::clDataRefVTable;
+            uint value = *(uint *)(sourcePayload + 0xc);
+            *(uint *)(child + 0xc) = value;
+          }
+          frame.child = child;
+          break;
+        }
+        default: break;
+      }
+      if (frame.child != 0) {
+        uint headSlot = cachedOwner + 0x10;
+        uint position;
+        CopyListHeadSlot((void *)headSlot,&position);
+        InsertPayloadNodeBefore(&frame.insertionOutput,(uint *)position,&frame.child);
+      }
+      uint currentSource = (uint)source;
+      node = *(uint *)node;
+      head = *(uint *)(currentSource + 0x10);
+    } while (node != head);
+  }
+  cleanup.state = -1;
+  return (void *)cachedOwner;
 }
 
 // For flag bit0, tail-forwards saved owner+0x18 to the genuine empty allocation-base cleanup.
@@ -1652,21 +1648,16 @@ __declspec(naked) void __cdecl ClDataListCloneExceptionHandler(void)
 
 // Destroys clDataList, reloads delete bit zero after destruction, optionally frees storage, and returns the object.
 // R6GameService.dll @ 100270a0 : native accesses, callback ordering and raw register results retained.
-__declspec(naked) void * __thiscall DeleteClDataList(void *object,uint deleteFlagWord)
+void *__thiscall DeleteClDataList(void *object,uint deleteFlagWord)
 {
-  __asm {
-    push   esi
-    mov    esi,ecx
-    call   R6GameServiceAddresses::DestroyClDataList
-    test   BYTE PTR [esp+0x8],0x1
-    je Branch30
-    push   esi
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch30:
-    mov    eax,esi
-    pop    esi
-    ret    0x4
+  void *savedObject = object;
+  using DestroyABI = uint (__thiscall *)(void *);
+  ((DestroyABI)R6GameServiceAddresses::DestroyClDataList)(savedObject);
+  if ((deleteFlagWord & 1) != 0) {
+    using FreeABI = uint (__stdcall *)(void *);
+    ((FreeABI)R6GameServiceAddresses::TailFreeThroughGlobalAllocator)(savedObject);
   }
+  return savedObject;
 }
 
 // Native assignment tag targets: string, binary, nested list, two-word scalar, word and inline word.
@@ -1675,259 +1666,251 @@ const uint GClDataListAssignmentTagTargets[6] = {
   R6GameServiceAddresses::clDataListBranch32,R6GameServiceAddresses::clDataListBranch35,R6GameServiceAddresses::clDataListBranch36,R6GameServiceAddresses::clDataListBranch38,R6GameServiceAddresses::clDataListBranch39,R6GameServiceAddresses::clDataListBranch41
 };
 
-// Clears the destination and clones supported tags, clearing the saved child after each source entry.
-// R6GameService.dll @ 10029250 : native register/frame/state accesses and raw ABI retained.
-__declspec(naked) uint __thiscall AssignClDataList(void *destination,const void *source)
-{
-  __asm {
-    push   0xffffffff
-    push   R6GameServiceAddresses::ClDataListAssignmentExceptionHandler
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x18
-    push   ebx
-    push   ebp
-    push   esi
-    // Frame: flags-0x20, child-0x1c, destination-0x18, allocation-0x14, iterator-0x10, EH-0x0c/-8/-4.
-    mov    esi,DWORD PTR [esp+0x34]
-    xor    ebp,ebp
-    cmp    esi,ecx
-    mov    DWORD PTR [esp+0x10],ebp
-    // Capture source head/first before the self check and destination clear callback.
-    mov    eax,DWORD PTR [esi+0x10]
-    mov    DWORD PTR [esp+0x14],ebp
-    mov    DWORD PTR [esp+0x18],ecx
-    mov    ebx,DWORD PTR [eax]
-    je Branch47
-    // Invoke inner-list slot+4 with destination+0x0c; empty source retains this call EAX.
-    mov    edx,DWORD PTR [ecx+0xc]
-    add    ecx,0xc
-    call   DWORD PTR [edx+0x4]
-    cmp    ebx,DWORD PTR [esi+0x10]
-    je Branch47
-    mov    esi,DWORD PTR [esp+0x14]
-    push   edi
-    // Tags1..6 construct children; unsupported tags reach insertion with saved ESI already zero.
-  Branch31:
-    mov    eax,DWORD PTR [ebx+0x8]
-    mov    eax,DWORD PTR [eax+0x8]
-    dec    eax
-    cmp    eax,0x5
-    ja Branch45
-    jmp    DWORD PTR [eax*4+R6GameServiceAddresses::GClDataListAssignmentTagTargets]
-    // Type1: staged string allocation, clData/empty-string construction, then actual source-range append.
-  Branch32:
-    push   0x18
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    esi,eax
-    mov    DWORD PTR [esp+0x20],esi
-    cmp    esi,ebp
-    mov    DWORD PTR [esp+0x30],ebp
-    je Branch40
-    mov    edi,DWORD PTR [esp+0x14]
-    mov    ebp,DWORD PTR [ebx+0x8]
-    or     edi,0x1
-    mov    DWORD PTR [esi+0x4],R6GameServiceAddresses::ClDataStrBaseOffsets
-    mov    DWORD PTR [esp+0x14],edi
-    push   0x0
-    push   0x1
-    mov    ecx,esi
-    mov    BYTE PTR [esp+0x38],0x1
-    call   R6GameServiceAddresses::InitializeClDataFields
-    lea    edi,[esi+0xc]
-    mov    DWORD PTR [esp+0x30],0x2
-    mov    ecx,edi
-    call   R6GameServiceAddresses::InitializeEmptyByteString
-    test   ebp,ebp
-    mov    BYTE PTR [esp+0x30],0x3
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clDataStrPTR_FUN
-    je Branch33
-    lea    eax,[ebp+0xc]
-    jmp Branch34
-  Branch33:
-    xor    eax,eax
-  Branch34:
-    mov    ecx,DWORD PTR [eax+0x4]
-    mov    eax,DWORD PTR [eax]
-    lea    edx,[esp+0x12]
-    push   edx
-    push   ecx
-    push   eax
-    mov    ecx,edi
-    call   R6GameServiceAddresses::AppendByteRangeWithLocalGrowthTag
-    mov    DWORD PTR [esp+0x30],0xffffffff
-    jmp Branch44
-    // Type2: staged binary allocation, clData/empty-triplet construction, then source-range insertion.
-  Branch35:
-    push   0x1c
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    esi,eax
-    mov    DWORD PTR [esp+0x20],esi
-    cmp    esi,ebp
-    mov    DWORD PTR [esp+0x30],0x4
-    je Branch40
-    mov    edi,DWORD PTR [esp+0x14]
-    mov    ebp,DWORD PTR [ebx+0x8]
-    or     edi,0x2
-    mov    DWORD PTR [esi+0x4],R6GameServiceAddresses::ClDataBinOwnerBaseOffsets
-    mov    DWORD PTR [esi+0x18],R6GameServiceAddresses::ClDataBinBaseOffsets
-    mov    DWORD PTR [esp+0x14],edi
-    push   0x0
-    push   0x2
-    mov    ecx,esi
-    mov    BYTE PTR [esp+0x38],0x5
-    call   R6GameServiceAddresses::InitializeClDataFields
-    lea    edi,[esi+0xc]
-    push   0x0
-    mov    ecx,edi
-    mov    DWORD PTR [esp+0x34],0x6
-    call   R6GameServiceAddresses::InitializeEmptyByteBufferTriplet
-    mov    ecx,DWORD PTR [edi]
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clDataBinPTR_FUN
-    mov    eax,DWORD PTR [ebp+0x10]
-    mov    ebp,DWORD PTR [ebp+0xc]
-    lea    edx,[esp+0x13]
-    mov    BYTE PTR [esp+0x30],0x7
-    push   edx
-    push   eax
-    push   ebp
-    push   ecx
-    mov    ecx,edi
-    call   R6GameServiceAddresses::InsertByteRangeWithLocalTag
-    mov    DWORD PTR [esp+0x30],0xffffffff
-    jmp Branch44
-    // Type3: use the real recursive copy constructor under state8.
-  Branch36:
-    push   0x18
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    DWORD PTR [esp+0x20],eax
-    cmp    eax,ebp
-    mov    DWORD PTR [esp+0x30],0x8
-    je Branch37
-    mov    ecx,DWORD PTR [ebx+0x8]
-    push   0x1
-    push   ecx
-    mov    ecx,eax
-    call   R6GameServiceAddresses::CopyConstructClDataList
-    mov    DWORD PTR [esp+0x30],0xffffffff
-    jmp Branch43
-  Branch37:
-    xor    eax,eax
-    mov    DWORD PTR [esp+0x30],0xffffffff
-    jmp Branch43
-    // Type4: copy source+0x10 before source+0x0c under state10.
-  Branch38:
-    push   0x14
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    esi,eax
-    mov    DWORD PTR [esp+0x20],esi
-    cmp    esi,ebp
-    mov    DWORD PTR [esp+0x30],0x9
-    je Branch40
-    mov    edx,DWORD PTR [esp+0x14]
-    mov    edi,DWORD PTR [ebx+0x8]
-    or     edx,0x4
-    mov    DWORD PTR [esi+0x4],0x10076b34
-    mov    DWORD PTR [esp+0x14],edx
-    push   ebp
-    push   0x4
-    mov    ecx,esi
-    mov    BYTE PTR [esp+0x38],0xa
-    call   R6GameServiceAddresses::InitializeClDataFields
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clDataLongVTable
-    mov    edx,DWORD PTR [edi+0x10]
-    mov    DWORD PTR [esi+0x10],edx
-    mov    eax,DWORD PTR [edi+0xc]
-    mov    DWORD PTR [esi+0xc],eax
-    mov    DWORD PTR [esp+0x30],0xffffffff
-    jmp Branch44
-    // Type5: copy source+0x0c after base initialization under state12.
-  Branch39:
-    push   0x10
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    esi,eax
-    mov    DWORD PTR [esp+0x20],esi
-    cmp    esi,ebp
-    mov    DWORD PTR [esp+0x30],0xb
-    je Branch40
-    mov    edx,DWORD PTR [esp+0x14]
-    mov    edi,DWORD PTR [ebx+0x8]
-    or     edx,0x8
-    mov    DWORD PTR [esi+0x4],0x10076b10
-    mov    DWORD PTR [esp+0x14],edx
-    push   ebp
-    push   0x5
-    mov    ecx,esi
-    mov    BYTE PTR [esp+0x38],0xc
-    call   R6GameServiceAddresses::InitializeClDataFields
-    mov    ecx,DWORD PTR [edi+0xc]
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clDataStrRefVTable
-    mov    DWORD PTR [esi+0xc],ecx
-    mov    DWORD PTR [esp+0x30],0xffffffff
-    jmp Branch44
-  Branch40:
-    xor    esi,esi
-    mov    DWORD PTR [esp+0x30],0xffffffff
-    jmp Branch44
-    // Type6: initialize inline, accumulating flag0x10 without a staged child cleanup state.
-  Branch41:
-    push   0x10
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    cmp    eax,ebp
-    je Branch42
-    mov    edx,DWORD PTR [esp+0x14]
-    mov    ecx,DWORD PTR [ebx+0x8]
-    or     edx,0x10
-    mov    DWORD PTR [eax+0x4],0x10076aec
-    mov    DWORD PTR [esp+0x14],edx
-    mov    DWORD PTR [eax+0x8],0x6
-    mov    DWORD PTR [eax],R6GameServiceAddresses::clDataRefVTable
-    mov    edx,DWORD PTR [ecx+0xc]
-    mov    DWORD PTR [eax+0xc],edx
-    jmp Branch43
-  Branch42:
-    xor    eax,eax
-  Branch43:
-    mov    esi,eax
-  Branch44:
-    mov    DWORD PTR [esp+0x18],esi
-  Branch45:
-    xor    ebp,ebp
-    cmp    esi,ebp
-    je Branch46
-    // Use the pushed scratch word as head-copy output, then pass output/position/payload-slot to insertion.
-    mov    eax,DWORD PTR [esp+0x1c]
-    lea    ecx,[esp+0x18]
-    push   ecx
-    push   ecx
-    lea    esi,[eax+0x10]
-    push   esp
-    mov    ecx,esi
-    call   R6GameServiceAddresses::CopyListHeadSlot
-    lea    edx,[esp+0x2c]
-    mov    ecx,esi
-    push   edx
-    call   R6GameServiceAddresses::InsertPayloadNodeBefore
-    // Reload source argument and sentinel after callbacks; clear the saved child before the next iteration.
-  Branch46:
-    mov    eax,DWORD PTR [esp+0x38]
-    mov    ebx,DWORD PTR [ebx]
-    xor    esi,esi
-    mov    ecx,DWORD PTR [eax+0x10]
-    mov    DWORD PTR [esp+0x18],esi
-    cmp    ebx,ecx
-    jne Branch31
-    pop    edi
-  Branch47:
-    mov    ecx,DWORD PTR [esp+0x24]
-    pop    esi
-    pop    ebp
-    pop    ebx
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x24
-    ret    0x4
+// Inferred assignment locals share the clone's word offsets but use separate string/binary tag bytes.
+struct ClDataListAssignmentLocals {
+  byte padding[2];
+  byte stringTag;
+  byte rangeTag;
+  uint flags;
+  uint child;
+  uint destination;
+  uint allocation;
+  uint insertionOutput;
+};
+
+// Cleans an interrupted child constructor without rolling back the already-cleared or partially-filled destination.
+struct ClDataListAssignmentCleanup {
+  ClDataListAssignmentLocals *frame;
+  int state;
+  ~ClDataListAssignmentCleanup() noexcept(false)
+  {
+    using ContextABI = void (__fastcall *)(void *);
+    while (state >= 0) {
+      switch (state) {
+        case 0: case 4: case 8: case 9: case 11:
+          state = -1;
+          ForwardToAllocatorTail((void *)frame->allocation);
+          break;
+        case 1:
+          state = 0;
+          if ((frame->flags & 1) != 0)
+            ((ContextABI)R6GameServiceAddresses::list_node_support_NoOp)((void *)(frame->allocation + 0x18));
+          break;
+        case 2:
+          state = 1;
+          ResetClDataVtable((undefined4 *)frame->allocation);
+          break;
+        case 3:
+          state = 2;
+          ReleaseFirstWordBuffer((void *)(frame->allocation + 0xc));
+          break;
+        case 5:
+          state = 4;
+          if ((frame->flags & 2) != 0)
+            ((ContextABI)R6GameServiceAddresses::list_node_support_NoOp)((void *)(frame->allocation + 0x1c));
+          break;
+        case 6:
+          state = 5;
+          ResetClDataVtable((undefined4 *)frame->allocation);
+          break;
+        case 7:
+          state = 6;
+          ReleaseNonNullFirstWordBuffer((void *)(frame->allocation + 0xc));
+          break;
+        case 10:
+          state = 9;
+          if ((frame->flags & 4) != 0)
+            ((ContextABI)R6GameServiceAddresses::list_node_support_NoOp)((void *)(frame->allocation + 0x14));
+          break;
+        case 12:
+          state = 11;
+          if ((frame->flags & 8) != 0)
+            ((ContextABI)R6GameServiceAddresses::list_node_support_NoOp)((void *)(frame->allocation + 0x10));
+          break;
+      }
+    }
   }
+};
+
+// Clears and clones supported entries without rollback; each iteration clears its child, so unknown tags are skipped.
+// Self returns the source sentinel; empty source returns clear EAX; a completed loop returns current source.
+// R6GameService.dll @ 10029250 : native register/frame/state accesses and raw ABI retained.
+uint __thiscall AssignClDataList(void *destination,const void *source)
+{
+  ClDataListAssignmentLocals frame;
+  ClDataListAssignmentCleanup cleanup{&frame,-1};
+  uint initialSource = (uint)source;
+  bool self = initialSource == (uint)destination;
+  frame.flags = 0;
+  uint head = *(uint *)(initialSource + 0x10);
+  frame.child = 0;
+  frame.destination = (uint)destination;
+  uint node = *(uint *)head;
+  if (self) return head;
+  uint table = *(uint *)((uint)destination + 0xc);
+  void *inner = (void *)((uint)destination + 0xc);
+  using ClearABI = uint (__fastcall *)(void *);
+  uint result = (*(ClearABI *)(table + 4))(inner);
+  if (node == *(uint *)(initialSource + 0x10)) return result;
+  do {
+    uint child = 0;
+    uint payload = *(uint *)(node + 8);
+    uint tag = *(uint *)(payload + 8);
+    switch (tag) {
+      case 1: {
+        child = (uint)AllocateGameServiceBytes(0x18);
+        frame.allocation = child;
+        cleanup.state = 0;
+        if (child == 0) {
+          cleanup.state = -1;
+          frame.child = 0;
+          break;
+        }
+        uint flags = frame.flags;
+        uint sourcePayload = *(uint *)(node + 8);
+        flags |= 1;
+        *(uint *)(child + 4) = R6GameServiceAddresses::ClDataStrBaseOffsets;
+        frame.flags = flags;
+        cleanup.state = 1;
+        InitializeClDataFields((void *)child,1,0);
+        uint triplet = child + 0xc;
+        cleanup.state = 2;
+        InitializeEmptyByteString((void *)triplet);
+        cleanup.state = 3;
+        *(uint *)child = R6GameServiceAddresses::clDataStrPTR_FUN;
+        uint sourceTriplet = sourcePayload != 0 ? sourcePayload + 0xc : 0;
+        uint last = *(uint *)(sourceTriplet + 4);
+        uint first = *(uint *)sourceTriplet;
+        AppendByteRangeWithLocalGrowthTag(
+            (void *)triplet,(undefined1 *)first,(undefined1 *)last,(uint)&frame.stringTag);
+        cleanup.state = -1;
+        frame.child = child;
+        break;
+      }
+      case 2: {
+        child = (uint)AllocateGameServiceBytes(0x1c);
+        frame.allocation = child;
+        cleanup.state = 4;
+        if (child == 0) {
+          cleanup.state = -1;
+          frame.child = 0;
+          break;
+        }
+        uint flags = frame.flags;
+        uint sourcePayload = *(uint *)(node + 8);
+        flags |= 2;
+        *(uint *)(child + 4) = R6GameServiceAddresses::ClDataBinOwnerBaseOffsets;
+        *(uint *)(child + 0x18) = R6GameServiceAddresses::ClDataBinBaseOffsets;
+        frame.flags = flags;
+        cleanup.state = 5;
+        InitializeClDataFields((void *)child,2,0);
+        uint triplet = child + 0xc;
+        cleanup.state = 6;
+        InitializeEmptyByteBufferTriplet((void *)triplet,0);
+        uint position = *(uint *)triplet;
+        *(uint *)child = R6GameServiceAddresses::clDataBinPTR_FUN;
+        uint last = *(uint *)(sourcePayload + 0x10);
+        uint first = *(uint *)(sourcePayload + 0xc);
+        cleanup.state = 7;
+        InsertByteRangeWithLocalTag((void *)triplet,(void *)position,(void *)first,(void *)last,&frame.rangeTag);
+        cleanup.state = -1;
+        frame.child = child;
+        break;
+      }
+      case 3: {
+        child = (uint)AllocateGameServiceBytes(0x18);
+        frame.allocation = child;
+        cleanup.state = 8;
+        uint result = 0;
+        if (child != 0) {
+          uint sourcePayload = *(uint *)(node + 8);
+          result = (uint)CopyConstructClDataList((void *)child,(void *)sourcePayload,1);
+        }
+        cleanup.state = -1;
+        child = result;
+        frame.child = child;
+        break;
+      }
+      case 4: {
+        child = (uint)AllocateGameServiceBytes(0x14);
+        frame.allocation = child;
+        cleanup.state = 9;
+        if (child == 0) {
+          cleanup.state = -1;
+          frame.child = 0;
+          break;
+        }
+        uint flags = frame.flags;
+        uint sourcePayload = *(uint *)(node + 8);
+        flags |= 4;
+        *(uint *)(child + 4) = 0x10076b34;
+        frame.flags = flags;
+        cleanup.state = 10;
+        InitializeClDataFields((void *)child,4,0);
+        *(uint *)child = R6GameServiceAddresses::clDataLongVTable;
+        uint high = *(uint *)(sourcePayload + 0x10);
+        *(uint *)(child + 0x10) = high;
+        uint low = *(uint *)(sourcePayload + 0xc);
+        *(uint *)(child + 0xc) = low;
+        cleanup.state = -1;
+        frame.child = child;
+        break;
+      }
+      case 5: {
+        child = (uint)AllocateGameServiceBytes(0x10);
+        frame.allocation = child;
+        cleanup.state = 11;
+        if (child == 0) {
+          cleanup.state = -1;
+          frame.child = 0;
+          break;
+        }
+        uint flags = frame.flags;
+        uint sourcePayload = *(uint *)(node + 8);
+        flags |= 8;
+        *(uint *)(child + 4) = 0x10076b10;
+        frame.flags = flags;
+        cleanup.state = 12;
+        InitializeClDataFields((void *)child,5,0);
+        uint value = *(uint *)(sourcePayload + 0xc);
+        *(uint *)child = R6GameServiceAddresses::clDataStrRefVTable;
+        *(uint *)(child + 0xc) = value;
+        cleanup.state = -1;
+        frame.child = child;
+        break;
+      }
+      case 6: {
+        child = (uint)AllocateGameServiceBytes(0x10);
+        if (child != 0) {
+          uint flags = frame.flags;
+          uint sourcePayload = *(uint *)(node + 8);
+          flags |= 0x10;
+          *(uint *)(child + 4) = 0x10076aec;
+          frame.flags = flags;
+          *(uint *)(child + 8) = 6;
+          *(uint *)child = R6GameServiceAddresses::clDataRefVTable;
+          uint value = *(uint *)(sourcePayload + 0xc);
+          *(uint *)(child + 0xc) = value;
+        }
+        frame.child = child;
+        break;
+      }
+      default: break;
+    }
+    if (child != 0) {
+      uint headSlot = frame.destination + 0x10;
+      uint position;
+      CopyListHeadSlot((void *)headSlot,&position);
+      InsertPayloadNodeBefore(&frame.insertionOutput,(uint *)position,&frame.child);
+    }
+    uint currentSource = (uint)source;
+    node = *(uint *)node;
+    head = *(uint *)(currentSource + 0x10);
+    frame.child = 0;
+    result = currentSource;
+  } while (node != head);
+  cleanup.state = -1;
+  return result;
 }
 
 // Appends indentation and bracketed child slot+8 output using one cached child depth, then frees the scratch buffer.
@@ -2577,99 +2560,80 @@ __declspec(naked) void __cdecl ClDataListIndentExceptionHandler(void)
   }
 }
 
+// Inferred string-append locals: context, destination/head, pending allocation and saved triplet remain distinct.
+struct ClDataListStringAppendLocals {
+  byte padding[3];
+  byte context;
+  uint destinationOrHead;
+  uint pendingAllocation;
+  uint savedTriplet;
+};
+
+// Inferred typed-append locals: context at native EBP-11, pending allocation/head at EBP-10.
+struct ClDataListTypedAppendLocals {
+  byte padding[3];
+  byte context;
+  uint allocationOrHead;
+};
+
 // Constructs a string child and appends a node even for a null child allocation, returning the new node address.
 // R6GameService.dll @ 10029980 : complete native frame/state/argument accesses and raw ABI retained.
-__declspec(naked) uint __thiscall AppendClDataListString(void *list,const char *text)
+uint __thiscall AppendClDataListString(void *list,const char *text)
 {
-  __asm {
-    push   0xffffffff
-    push   R6GameServiceAddresses::ClDataListStringAppendExceptionHandler
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x10
-    push   esi
-    push   edi
-    // Frame: context-0x19, destination/head-0x18, staged child-0x14, triplet-0x10, EH-0x0c/-8/-4.
-    xor    edi,edi
-    push   0x18
-    mov    DWORD PTR [esp+0x10],ecx
-    mov    DWORD PTR [esp+0x14],edi
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    esi,eax
-    mov    DWORD PTR [esp+0x10],esi
-    cmp    esi,edi
-    mov    DWORD PTR [esp+0x20],edi
-    je Branch69
-    // Inline kind1/clData setup; state2 covers zero begin/end and helper initialization of capacity.
-    push   ebx
-    push   ebp
-    mov    DWORD PTR [esi+0x4],R6GameServiceAddresses::ClDataStrBaseOffsets
-    mov    DWORD PTR [esi+0x8],0x1
-    mov    DWORD PTR [esi],R6GameServiceAddresses::PTR_LAB
-    lea    ebx,[esi+0xc]
-    lea    eax,[esp+0x13]
-    push   edi
-    push   eax
-    lea    ecx,[ebx+0x8]
-    mov    BYTE PTR [esp+0x30],0x2
-    mov    DWORD PTR [esp+0x24],ebx
-    mov    DWORD PTR [ebx],edi
-    mov    DWORD PTR [ebx+0x4],edi
-    call   R6GameServiceAddresses::StoreFirstWordIgnoringContext
-    // Load the source argument after helper initialization, scan to NUL, and retain its low-byte self-store.
-    mov    ebp,DWORD PTR [esp+0x30]
-    or     ecx,0xffffffff
-    mov    edi,ebp
-    xor    eax,eax
-    repnz scas al,BYTE PTR es:[edi]
-    mov    dl,BYTE PTR [esp+0x30]
-    lea    eax,[esp+0x30]
-    not    ecx
-    dec    ecx
-    push   eax
-    add    ecx,ebp
-    mov    BYTE PTR [esp+0x2c],0x3
-    push   ecx
-    push   ebp
-    mov    ecx,ebx
-    mov    BYTE PTR [esp+0x3c],dl
-    call   R6GameServiceAddresses::ConstructHeapByteStringRange
-    pop    ebp
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clDataStrPTR_FUN
-    pop    ebx
-    jmp Branch70
-  Branch69:
-    xor    esi,esi
-    // Replace the original source argument with child, lower state, and reuse saved destination as head-copy output.
-  Branch70:
-    mov    ecx,DWORD PTR [esp+0xc]
-    mov    DWORD PTR [esp+0x28],esi
-    lea    edx,[esp+0xc]
-    mov    DWORD PTR [esp+0x20],0xffffffff
-    lea    esi,[ecx+0x10]
-    push   edx
-    mov    ecx,esi
-    call   R6GameServiceAddresses::CopyListHeadSlot
-    lea    eax,[esp+0x28]
-    mov    ecx,esi
-    push   eax
-    call   R6GameServiceAddresses::AllocateListPayloadNode
-    // Reload the saved head after node allocation, then load previous and publish all four links.
-    mov    esi,DWORD PTR [esp+0xc]
-    pop    edi
-    mov    edx,DWORD PTR [esi+0x4]
-    lea    ecx,[esi+0x4]
-    mov    DWORD PTR [eax],esi
-    mov    DWORD PTR [eax+0x4],edx
-    mov    DWORD PTR [edx],eax
-    mov    DWORD PTR [ecx],eax
-    mov    ecx,DWORD PTR [esp+0x14]
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x1c
-    ret    0x4
+  ClDataListStringAppendLocals frame;
+  frame.destinationOrHead = (uint)list;
+  frame.pendingAllocation = 0;
+  uint child = (uint)AllocateGameServiceBytes(0x18);
+  frame.pendingAllocation = child;
+  byte state = 0;
+  try {
+    if (child != 0) {
+      *(uint *)(child + 4) = R6GameServiceAddresses::ClDataStrBaseOffsets;
+      *(uint *)(child + 8) = 1;
+      *(uint *)child = R6GameServiceAddresses::PTR_LAB;
+      uint triplet = child + 0xc;
+      state = 2;
+      frame.savedTriplet = triplet;
+      *(uint *)triplet = 0;
+      *(uint *)(triplet + 4) = 0;
+      StoreFirstWordIgnoringContext((void *)(triplet + 8),(uint)&frame.context,0);
+      const char *first = text;
+      uint remaining = 0xffffffff;
+      const char *scan = first;
+      while (remaining != 0) {
+        --remaining;
+        char character = *scan++;
+        if (character == 0) break;
+      }
+      byte sourceTag = (byte)(uint)text;
+      uint last = (uint)first + (~remaining - 1);
+      state = 3;
+      *(byte *)&text = sourceTag;
+      ConstructHeapByteStringRange((void *)triplet,(void *)first,(int)last,(void *)&text);
+      *(uint *)child = R6GameServiceAddresses::clDataStrPTR_FUN;
+    }
+  } catch (...) {
+    if (state == 3) ReleaseFirstWordBuffer((void *)frame.savedTriplet);
+    if (state >= 2) {
+      using ContextABI = void (__fastcall *)(void *);
+      ((ContextABI)R6GameServiceAddresses::list_node_support_NoOp)(&frame.context);
+      ResetClDataVtable((undefined4 *)frame.pendingAllocation);
+    }
+    ForwardToAllocatorTail((void *)frame.pendingAllocation);
+    throw;
   }
+  uint destination = frame.destinationOrHead;
+  text = (const char *)child;
+  uint headSlot = destination + 0x10;
+  CopyListHeadSlot((void *)headSlot,&frame.destinationOrHead);
+  uint node = (uint)AllocateListPayloadNode((uint *)&text);
+  uint head = frame.destinationOrHead;
+  uint previous = *(uint *)(head + 4);
+  *(uint *)node = head;
+  *(uint *)(node + 4) = previous;
+  *(uint *)previous = node;
+  *(uint *)(head + 4) = node;
+  return node;
 }
 
 // Releases the string-child allocation staged at parent EBP-0x14 during append unwind.
@@ -2726,236 +2690,147 @@ __declspec(naked) void __cdecl ClDataListStringAppendExceptionHandler(void)
 
 // Constructs a binary child, calls slot+0x1c with full pointer/count words, then appends and returns its node.
 // R6GameService.dll @ 10029a80 : complete native frame/state/argument accesses and raw ABI retained.
-__declspec(naked) uint __thiscall AppendClDataListBinary(void *list,const void *bytes,uint byteCount)
+uint __thiscall AppendClDataListBinary(void *list,const void *bytes,uint byteCount)
 {
-  __asm {
-    push   0xffffffff
-    push   R6GameServiceAddresses::ClDataListAppendExceptionHandler
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x8
-    push   ebx
-    push   esi
-    push   edi
-    xor    ebx,ebx
-    push   0x1c
-    mov    edi,ecx
-    mov    DWORD PTR [esp+0x14],ebx
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    esi,eax
-    mov    DWORD PTR [esp+0x10],esi
-    cmp    esi,ebx
-    mov    DWORD PTR [esp+0x1c],ebx
-    je Branch71
-    // Inline kind2/base tables and empty triplet under state2; context is at EntryESP-0x11.
-    mov    eax,0x2
-    mov    DWORD PTR [esi+0x4],R6GameServiceAddresses::ClDataBinOwnerBaseOffsets
-    mov    DWORD PTR [esi+0x18],R6GameServiceAddresses::ClDataBinBaseOffsets
-    mov    DWORD PTR [esi+0x8],eax
-    mov    DWORD PTR [esi],R6GameServiceAddresses::PTR_LAB
-    mov    BYTE PTR [esp+0x1c],al
-    lea    eax,[esp+0xf]
-    push   ebx
-    push   eax
-    lea    ecx,[esi+0x14]
-    mov    DWORD PTR [esi+0xc],ebx
-    mov    DWORD PTR [esi+0x10],ebx
-    call   R6GameServiceAddresses::StoreFirstWordIgnoringContext
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clDataBinPTR_FUN
-    jmp Branch72
-  Branch71:
-    xor    esi,esi
-    // Load count/source after construction; the vtable read precedes lowering state, so null child faults in state0.
-  Branch72:
-    mov    eax,DWORD PTR [esp+0x28]
-    mov    ecx,DWORD PTR [esp+0x24]
-    mov    edx,DWORD PTR [esi]
-    push   eax
-    push   ecx
-    mov    ecx,esi
-    mov    DWORD PTR [esp+0x24],0xffffffff
-    call   DWORD PTR [edx+0x1c]
-    // Overwrite original count with child and original source with the head-copy result.
-    mov    DWORD PTR [esp+0x28],esi
-    lea    esi,[edi+0x10]
-    lea    edx,[esp+0x24]
-    mov    ecx,esi
-    push   edx
-    call   R6GameServiceAddresses::CopyListHeadSlot
-    lea    eax,[esp+0x28]
-    mov    ecx,esi
-    push   eax
-    call   R6GameServiceAddresses::AllocateListPayloadNode
-    // Reload original source slot as saved head after node allocation, then publish links.
-    mov    esi,DWORD PTR [esp+0x24]
-    pop    edi
-    mov    edx,DWORD PTR [esi+0x4]
-    lea    ecx,[esi+0x4]
-    mov    DWORD PTR [eax],esi
-    mov    DWORD PTR [eax+0x4],edx
-    mov    DWORD PTR [edx],eax
-    mov    DWORD PTR [ecx],eax
-    mov    ecx,DWORD PTR [esp+0x10]
-    pop    esi
-    pop    ebx
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x14
-    ret    0x8
+  void *savedList = list;
+  ClDataListTypedAppendLocals frame;
+  frame.allocationOrHead = 0;
+  uint child = (uint)AllocateGameServiceBytes(0x1c);
+  frame.allocationOrHead = child;
+  byte state = 0;
+  uint count;
+  const void *source;
+  uint table;
+  try {
+    if (child != 0) {
+      *(uint *)(child + 4) = R6GameServiceAddresses::ClDataBinOwnerBaseOffsets;
+      *(uint *)(child + 0x18) = R6GameServiceAddresses::ClDataBinBaseOffsets;
+      *(uint *)(child + 8) = 2;
+      *(uint *)child = R6GameServiceAddresses::PTR_LAB;
+      state = 2;
+      *(uint *)(child + 0xc) = 0;
+      *(uint *)(child + 0x10) = 0;
+      StoreFirstWordIgnoringContext((void *)(child + 0x14),(uint)&frame.context,0);
+      *(uint *)child = R6GameServiceAddresses::clDataBinPTR_FUN;
+    }
+    count = byteCount;
+    source = bytes;
+    table = *(uint *)child;
+  } catch (...) {
+    if (state == 2) {
+      using ContextABI = void (__fastcall *)(void *);
+      ((ContextABI)R6GameServiceAddresses::list_node_support_NoOp)(&frame.context);
+      ResetClDataVtable((undefined4 *)frame.allocationOrHead);
+    }
+    ForwardToAllocatorTail((void *)frame.allocationOrHead);
+    throw;
   }
+  using AssignABI = uint (__thiscall *)(void *,const void *,uint);
+  (*(AssignABI *)(table + 0x1c))((void *)child,source,count);
+  byteCount = child;
+  uint headSlot = (uint)savedList + 0x10;
+  CopyListHeadSlot((void *)headSlot,(uint *)&bytes);
+  uint node = (uint)AllocateListPayloadNode(&byteCount);
+  uint head = (uint)bytes;
+  uint previous = *(uint *)(head + 4);
+  *(uint *)node = head;
+  *(uint *)(node + 4) = previous;
+  *(uint *)previous = node;
+  *(uint *)(head + 4) = node;
+  return node;
 }
 
 // Constructs a binary child, assigns source+c when source differs, then appends and returns the new node.
 // R6GameService.dll @ 10029b60 : complete native frame/state/argument accesses and raw ABI retained.
-__declspec(naked) uint __thiscall AppendClDataListBinaryCopy(void *list,const void *sourceValue)
+uint __thiscall AppendClDataListBinaryCopy(void *list,const void *sourceValue)
 {
-  __asm {
-    push   0xffffffff
-    push   R6GameServiceAddresses::ClDataListAppendExceptionHandler
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x8
-    push   esi
-    push   edi
-    push   0x1c
-    mov    edi,ecx
-    mov    DWORD PTR [esp+0x10],0x0
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    esi,eax
-    mov    DWORD PTR [esp+0xc],esi
-    test   esi,esi
-    mov    DWORD PTR [esp+0x18],0x0
-    je Branch73
-    mov    eax,0x2
-    mov    DWORD PTR [esi+0x4],R6GameServiceAddresses::ClDataBinOwnerBaseOffsets
-    mov    DWORD PTR [esi+0x18],R6GameServiceAddresses::ClDataBinBaseOffsets
-    mov    DWORD PTR [esi+0x8],eax
-    mov    DWORD PTR [esi],R6GameServiceAddresses::PTR_LAB
-    lea    ecx,[esi+0xc]
-    mov    BYTE PTR [esp+0x18],al
-    lea    eax,[esp+0xb]
-    push   eax
-    call   R6GameServiceAddresses::InitializeEmptyByteBufferTripletWithContext
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clDataBinPTR_FUN
-    jmp Branch74
-  Branch73:
-    xor    esi,esi
-    // Lower state before the identity test; null source/child equality skips assignment.
-  Branch74:
-    mov    eax,DWORD PTR [esp+0x20]
-    mov    DWORD PTR [esp+0x18],0xffffffff
-    cmp    eax,esi
-    je Branch77
-    test   eax,eax
-    je Branch75
-    add    eax,0xc
-    jmp Branch76
-  Branch75:
-    xor    eax,eax
-    // Pass the adjusted source triplet to assignment without adding a null-receiver/source guard.
-  Branch76:
-    push   eax
-    mov    ecx,esi
-    call   R6GameServiceAddresses::AssignClDataBinByteRange
-    // Overwrite original source with child; reuse staged allocation slot as saved head before linking.
-  Branch77:
-    mov    DWORD PTR [esp+0x20],esi
-    lea    ecx,[esp+0xc]
-    lea    esi,[edi+0x10]
-    push   ecx
-    mov    ecx,esi
-    call   R6GameServiceAddresses::CopyListHeadSlot
-    lea    edx,[esp+0x20]
-    mov    ecx,esi
-    push   edx
-    call   R6GameServiceAddresses::AllocateListPayloadNode
-    mov    esi,DWORD PTR [esp+0xc]
-    pop    edi
-    mov    edx,DWORD PTR [esi+0x4]
-    lea    ecx,[esi+0x4]
-    mov    DWORD PTR [eax],esi
-    mov    DWORD PTR [eax+0x4],edx
-    mov    DWORD PTR [edx],eax
-    mov    DWORD PTR [ecx],eax
-    mov    ecx,DWORD PTR [esp+0xc]
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x14
-    ret    0x4
+  void *savedList = list;
+  ClDataListTypedAppendLocals frame;
+  frame.allocationOrHead = 0;
+  uint child = (uint)AllocateGameServiceBytes(0x1c);
+  frame.allocationOrHead = child;
+  byte state = 0;
+  try {
+    if (child != 0) {
+      *(uint *)(child + 4) = R6GameServiceAddresses::ClDataBinOwnerBaseOffsets;
+      *(uint *)(child + 0x18) = R6GameServiceAddresses::ClDataBinBaseOffsets;
+      *(uint *)(child + 8) = 2;
+      *(uint *)child = R6GameServiceAddresses::PTR_LAB;
+      state = 2;
+      InitializeEmptyByteBufferTripletWithContext((void *)(child + 0xc),(uint)&frame.context);
+      *(uint *)child = R6GameServiceAddresses::clDataBinPTR_FUN;
+    }
+  } catch (...) {
+    if (state == 2) {
+      using ContextABI = void (__fastcall *)(void *);
+      ((ContextABI)R6GameServiceAddresses::list_node_support_NoOp)(&frame.context);
+      ResetClDataVtable((undefined4 *)frame.allocationOrHead);
+    }
+    ForwardToAllocatorTail((void *)frame.allocationOrHead);
+    throw;
   }
+  uint source = (uint)sourceValue;
+  if (source != child) {
+    uint *sourceTriplet = source != 0 ? (uint *)(source + 0xc) : nullptr;
+    AssignClDataBinByteRange((void *)child,sourceTriplet);
+  }
+  sourceValue = (void *)child;
+  uint headSlot = (uint)savedList + 0x10;
+  CopyListHeadSlot((void *)headSlot,&frame.allocationOrHead);
+  uint node = (uint)AllocateListPayloadNode((uint *)&sourceValue);
+  uint head = frame.allocationOrHead;
+  uint previous = *(uint *)(head + 4);
+  *(uint *)node = head;
+  *(uint *)(node + 4) = previous;
+  *(uint *)previous = node;
+  *(uint *)(head + 4) = node;
+  return node;
 }
 
 // Constructs an empty child list, assigns the source, then appends and returns the new owning-list node.
 // R6GameService.dll @ 10029c40 : complete native frame/argument accesses and raw register results retained.
-__declspec(naked) uint __thiscall AppendClDataListCopy(void *list,const void *sourceList)
+uint __thiscall AppendClDataListCopy(void *list,const void *sourceList)
 {
-  __asm {
-    push   0xffffffff
-    push   R6GameServiceAddresses::ClDataListAppendExceptionHandler
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x8
-    push   esi
-    push   edi
-    push   0x18
-    mov    edi,ecx
-    mov    DWORD PTR [esp+0x10],0x0
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    esi,eax
-    mov    DWORD PTR [esp+0xc],esi
-    test   esi,esi
-    mov    DWORD PTR [esp+0x18],0x0
-    je Branch78
-    // Inline kind3/clData initialization; shared state2 covers sentinel construction at child+0x10.
-    mov    DWORD PTR [esi+0x4],R6GameServiceAddresses::ClDataListBaseOffsets
-    mov    DWORD PTR [esi+0x14],R6GameServiceAddresses::ClDataListInnerBaseOffsets
-    mov    DWORD PTR [esi+0x8],0x3
-    mov    DWORD PTR [esi],R6GameServiceAddresses::PTR_LAB
-    lea    ecx,[esi+0x10]
-    lea    eax,[esp+0xb]
-    mov    BYTE PTR [esp+0x18],0x2
-    push   eax
-    call   R6GameServiceAddresses::InitializeCircularListSentinel
-    mov    DWORD PTR [esi+0xc],R6GameServiceAddresses::clDataListPTR_FUN2
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clDataListPTR_FUN
-    mov    DWORD PTR [esi+0xc],R6GameServiceAddresses::clDataListPTR_LAB
-    jmp Branch79
-  Branch78:
-    xor    esi,esi
-    // Call assignment even for null child; parent state is lowered before the call and never owns rollback here.
-  Branch79:
-    mov    ecx,DWORD PTR [esp+0x20]
-    mov    DWORD PTR [esp+0x18],0xffffffff
-    push   ecx
-    mov    ecx,esi
-    call   R6GameServiceAddresses::AssignClDataList
-    // Replace original source with child and staged child-0x10 with the copied owner head before node allocation.
-    mov    DWORD PTR [esp+0x20],esi
-    lea    esi,[edi+0x10]
-    lea    edx,[esp+0xc]
-    mov    ecx,esi
-    push   edx
-    call   R6GameServiceAddresses::CopyListHeadSlot
-    lea    eax,[esp+0x20]
-    mov    ecx,esi
-    push   eax
-    call   R6GameServiceAddresses::AllocateListPayloadNode
-    mov    esi,DWORD PTR [esp+0xc]
-    pop    edi
-    mov    edx,DWORD PTR [esi+0x4]
-    lea    ecx,[esi+0x4]
-    mov    DWORD PTR [eax],esi
-    mov    DWORD PTR [eax+0x4],edx
-    mov    DWORD PTR [edx],eax
-    mov    DWORD PTR [ecx],eax
-    mov    ecx,DWORD PTR [esp+0xc]
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x14
-    ret    0x4
+  void *savedList = list;
+  ClDataListTypedAppendLocals frame;
+  frame.allocationOrHead = 0;
+  uint child = (uint)AllocateGameServiceBytes(0x18);
+  frame.allocationOrHead = child;
+  byte state = 0;
+  try {
+    if (child != 0) {
+      *(uint *)(child + 4) = R6GameServiceAddresses::ClDataListBaseOffsets;
+      *(uint *)(child + 0x14) = R6GameServiceAddresses::ClDataListInnerBaseOffsets;
+      *(uint *)(child + 8) = 3;
+      *(uint *)child = R6GameServiceAddresses::PTR_LAB;
+      state = 2;
+      InitializeCircularListSentinel((void *)(child + 0x10),(uint)&frame.context);
+      *(uint *)(child + 0xc) = R6GameServiceAddresses::clDataListPTR_FUN2;
+      *(uint *)child = R6GameServiceAddresses::clDataListPTR_FUN;
+      *(uint *)(child + 0xc) = R6GameServiceAddresses::clDataListPTR_LAB;
+    }
+  } catch (...) {
+    if (state == 2) {
+      using ContextABI = void (__fastcall *)(void *);
+      ((ContextABI)R6GameServiceAddresses::list_node_support_NoOp)(&frame.context);
+      ResetClDataVtable((undefined4 *)frame.allocationOrHead);
+    }
+    ForwardToAllocatorTail((void *)frame.allocationOrHead);
+    throw;
   }
+  using AssignABI = uint (__thiscall *)(void *,const void *);
+  ((AssignABI)R6GameServiceAddresses::AssignClDataList)((void *)child,sourceList);
+  sourceList = (void *)child;
+  uint headSlot = (uint)savedList + 0x10;
+  CopyListHeadSlot((void *)headSlot,&frame.allocationOrHead);
+  uint node = (uint)AllocateListPayloadNode((uint *)&sourceList);
+  uint head = frame.allocationOrHead;
+  uint previous = *(uint *)(head + 4);
+  *(uint *)node = head;
+  *(uint *)(node + 4) = previous;
+  *(uint *)previous = node;
+  *(uint *)(head + 4) = node;
+  return node;
 }
 
 // Releases the staged allocation shared by binary and copied-list child append construction.
@@ -3002,61 +2877,35 @@ __declspec(naked) void __cdecl ClDataListAppendExceptionHandler(void)
 
 // Appends the full payload word through a late-loaded argument slot, returning node EAX and saved-head ECX.
 // R6GameService.dll @ 10029d20 : complete native frame/argument accesses and raw register results retained.
-__declspec(naked) uint __thiscall AppendClDataListPointer(void *list,uint payloadWord)
+uint __thiscall AppendClDataListPointer(void *list,uint payloadWord)
 {
-  __asm {
-    // Saved ECX at EntryESP-4 is overwritten by the sentinel output and later POPped back into ECX.
-    push   ecx
-    mov    eax,DWORD PTR [esp+0x8]
-    push   esi
-    lea    esi,[ecx+0x10]
-    lea    ecx,[esp+0x4]
-    push   ecx
-    mov    ecx,esi
-    mov    DWORD PTR [esp+0x10],eax
-    call   R6GameServiceAddresses::CopyListHeadSlot
-    lea    edx,[esp+0xc]
-    mov    ecx,esi
-    push   edx
-    call   R6GameServiceAddresses::AllocateListPayloadNode
-    mov    esi,DWORD PTR [esp+0x4]
-    mov    edx,DWORD PTR [esi+0x4]
-    lea    ecx,[esi+0x4]
-    mov    DWORD PTR [eax],esi
-    mov    DWORD PTR [eax+0x4],edx
-    mov    DWORD PTR [edx],eax
-    mov    DWORD PTR [ecx],eax
-    pop    esi
-    pop    ecx
-    ret    0x4
-  }
+  uint head = (uint)list;
+  uint capturedPayload = payloadWord;
+  uint headSlot = (uint)list + 0x10;
+  payloadWord = capturedPayload;
+  CopyListHeadSlot((void *)headSlot,&head);
+  uint node = (uint)AllocateListPayloadNode(&payloadWord);
+  uint currentHead = head;
+  uint previous = *(uint *)(currentHead + 4);
+  *(uint *)node = currentHead;
+  *(uint *)(node + 4) = previous;
+  *(uint *)previous = node;
+  *(uint *)(currentHead + 4) = node;
+  return node;
 }
 
 // Formats one pointed-to signed 32-bit value in a 32-byte local buffer and returns the string-append node.
 // R6GameService.dll @ 10029d60 : complete native frame/argument accesses and raw register results retained.
-__declspec(naked) uint __thiscall AppendClDataListSignedDecimal(void *list,const void *valueAddress)
+uint __thiscall AppendClDataListSignedDecimal(void *list,const void *valueAddress)
 {
-  __asm {
-    mov    eax,DWORD PTR [esp+0x4]
-    sub    esp,0x20
-    lea    edx,[esp+0x0]
-    push   esi
-    mov    esi,ecx
-    mov    ecx,DWORD PTR [eax]
-    push   ecx
-    push   R6GameServiceAddresses::TextSignedDecimalFormat
-    push   edx
-    call   R6GameServiceAddresses::sprintf
-    add    esp,0xc
-    // Append the formatted local string through actual29980 and propagate its raw node EAX.
-    lea    eax,[esp+0x4]
-    mov    ecx,esi
-    push   eax
-    call   R6GameServiceAddresses::AppendClDataListString
-    pop    esi
-    add    esp,0x20
-    ret    0x4
-  }
+  const int *source = (const int *)valueAddress;
+  char text[32];
+  void *savedList = list;
+  int value = *source;
+  using FormatABI = int (__cdecl *)(char *,const char *,...);
+  ((FormatABI)R6GameServiceAddresses::sprintf)(
+      text,(const char *)R6GameServiceAddresses::TextSignedDecimalFormat,value);
+  return AppendClDataListString(savedList,text);
 }
 
 // Subtract12 from adjusted clDataList receiver, then tail-transfer to canonical deleting destructor270a0.

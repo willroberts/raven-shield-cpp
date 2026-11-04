@@ -47,138 +47,106 @@ __declspec(naked) void * __thiscall ConstructCMsgQueue(void *owner,uint initiali
 
 // Destroys the queue, frees its storage for flags bit0, and returns the original owner.
 // R6GameService.dll @ 1004bca0 : native ECX/stack boundary and raw register effects retained.
-__declspec(naked) void * __thiscall DeleteCMsgQueue(void *owner,uint flags)
+void *__thiscall DeleteCMsgQueue(void *owner,uint flags)
 {
-  __asm {
-    push   esi
-    mov    esi,ecx
-    call   R6GameServiceAddresses::DestroyCMsgQueue
-    test   BYTE PTR [esp+0x8],0x1
-    je Branch2
-    push   esi
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch2:
-    mov    eax,esi
-    pop    esi
-    ret    0x4
+  void *savedOwner = owner;
+  using DestroyABI = uint (__thiscall *)(void *);
+  ((DestroyABI)R6GameServiceAddresses::DestroyCMsgQueue)(savedOwner);
+  if ((flags & 1) != 0) {
+    using FreeABI = uint (__stdcall *)(void *);
+    ((FreeABI)R6GameServiceAddresses::TailFreeThroughGlobalAllocator)(savedOwner);
   }
+  return savedOwner;
+}
+
+namespace {
+// Inferred saved receiver/state0 guard for releasing the queue's current node and sentinel storage.
+struct CMsgQueueStorageCleanup {
+  void *savedOwner;
+  bool armed;
+  // Release storage without retrying payload deletion or handle closure; keep the owner fields unchanged.
+  ~CMsgQueueStorageCleanup() noexcept(false) {
+    if (armed) {
+      using ReleaseABI = uint (__thiscall *)(void *);
+      ((ReleaseABI)R6GameServiceAddresses::ReleaseNodesAndSentinelThunk)((void *)((uint)savedOwner + 8));
+    }
+  }
+};
 }
 
 // Closes the mutex, releases payloads before nodes, resets/frees the sentinel and retains raw allocator EAX.
-// R6GameService.dll @ 1004bcc0 : native ECX/stack boundary and raw register effects retained.
-__declspec(naked) uint __fastcall DestroyCMsgQueue(void *owner)
+// R6GameService.dll @ 1004bcc0 : saved receiver/state0 correspond to native S-10/S-4; cleanup stays armed through free.
+uint __fastcall DestroyCMsgQueue(void *owner)
 {
-  __asm {
-    push   0xffffffff
-    push   R6GameServiceAddresses::CMsgQueueDestroyExceptionHandler
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    push   ecx
-    push   esi
-    mov    esi,ecx
-    push   edi
-    mov    DWORD PTR [esp+0x8],esi
-    mov    DWORD PTR [esi],R6GameServiceAddresses::CMsgQueueVTable
-    mov    eax,DWORD PTR [esi+0x10]
-    mov    DWORD PTR [esp+0x14],0x0
-    push   eax
-    call   DWORD PTR ds:R6GameServiceAddresses::KERNEL32_CloseHandleSlot
-    mov    eax,DWORD PTR [esi+0x8]
-    mov    edi,DWORD PTR [eax]
-    cmp    edi,eax
-    je Branch5
-    push   ebx
-  Branch3:
-    mov    ebx,DWORD PTR [edi+0x8]
-    test   ebx,ebx
-    je Branch4
-    mov    ecx,ebx
-    call   R6GameServiceAddresses::DeleteOwnedObjectAtOffset8
-    push   ebx
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch4:
-    mov    edi,DWORD PTR [edi]
-    mov    eax,DWORD PTR [esi+0x8]
-    cmp    edi,eax
-    jne Branch3
-    pop    ebx
-  Branch5:
-    mov    eax,DWORD PTR [esi+0x8]
-    mov    edi,DWORD PTR [eax]
-    cmp    edi,eax
-    je Branch7
-  Branch6:
-    mov    eax,edi
-    mov    edi,DWORD PTR [edi]
-    push   eax
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    cmp    edi,DWORD PTR [esi+0x8]
-    jne Branch6
-  Branch7:
-    mov    eax,DWORD PTR [esi+0x8]
-    mov    DWORD PTR [eax],eax
-    mov    eax,DWORD PTR [esi+0x8]
-    mov    DWORD PTR [eax+0x4],eax
-    mov    ecx,DWORD PTR [esi+0x8]
-    push   ecx
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    ecx,DWORD PTR [esp+0xc]
-    pop    edi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x10
-    ret
+  CMsgQueueStorageCleanup cleanup{owner, false};
+  uint base = (uint)owner;
+  *(uint *)base = R6GameServiceAddresses::CMsgQueueVTable;
+  void *handle = *(void **)(base + 0x10);
+  cleanup.armed = true;
+  using CloseABI = uint (__stdcall *)(void *);
+  (*(CloseABI *)R6GameServiceAddresses::KERNEL32_CloseHandleSlot)(handle);
+  uint head = *(uint *)(base + 8);
+  uint node = *(uint *)head;
+  using ChildABI = void (__thiscall *)(void *);
+  using FreeABI = uint (__stdcall *)(void *);
+  while (node != head) {
+    void *payload = *(void **)(node + 8);
+    if (payload != 0) {
+      ((ChildABI)R6GameServiceAddresses::DeleteOwnedObjectAtOffset8)(payload);
+      ((FreeABI)R6GameServiceAddresses::TailFreeThroughGlobalAllocator)(payload);
+    }
+    node = *(uint *)node;
+    head = *(uint *)(base + 8);
   }
+  head = *(uint *)(base + 8);
+  node = *(uint *)head;
+  while (node != head) {
+    uint released = node;
+    node = *(uint *)node;
+    ((FreeABI)R6GameServiceAddresses::TailFreeThroughGlobalAllocator)((void *)released);
+    head = *(uint *)(base + 8);
+  }
+  head = *(uint *)(base + 8);
+  *(uint *)head = head;
+  head = *(uint *)(base + 8);
+  *(uint *)(head + 4) = head;
+  void *sentinel = *(void **)(base + 8);
+  uint result = ((FreeABI)R6GameServiceAddresses::TailFreeThroughGlobalAllocator)(sentinel);
+  cleanup.armed = false;
+  return result;
 }
 
 // Drains linked payloads only for wait result0, then always returns the raw mutex-release result.
-// R6GameService.dll @ 1004bd60 : native ECX/stack boundary and raw register effects retained.
-__declspec(naked) uint __fastcall DrainCMsgQueue(void *owner)
+// R6GameService.dll @ 1004bd60 : current links/handle reload after callbacks; no release-on-exception guard.
+uint __fastcall DrainCMsgQueue(void *owner)
 {
-  __asm {
-    push   ebx
-    mov    ebx,ecx
-    push   esi
-    push   0xffffffff
-    mov    eax,DWORD PTR [ebx+0x10]
-    push   eax
-    call   DWORD PTR ds:R6GameServiceAddresses::KERNEL32_WaitForSingleObjectSlot
-    test   eax,eax
-    jne Branch10
-    mov    eax,DWORD PTR [ebx+0x8]
-    mov    esi,DWORD PTR [eax]
-    cmp    esi,eax
-    je Branch10
-    push   edi
-  Branch8:
-    mov    edi,DWORD PTR [esi+0x8]
-    test   edi,edi
-    je Branch9
-    mov    ecx,edi
-    call   R6GameServiceAddresses::DeleteOwnedObjectAtOffset8
-    push   edi
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch9:
-    mov    eax,DWORD PTR [esi+0x4]
-    mov    edi,DWORD PTR [esi]
-    push   esi
-    mov    DWORD PTR [eax],edi
-    mov    DWORD PTR [edi+0x4],eax
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    eax,DWORD PTR [ebx+0x8]
-    mov    esi,edi
-    cmp    edi,eax
-    jne Branch8
-    pop    edi
-  Branch10:
-    mov    ecx,DWORD PTR [ebx+0x10]
-    push   ecx
-    call   DWORD PTR ds:R6GameServiceAddresses::KERNEL32_ReleaseMutexSlot
-    pop    esi
-    pop    ebx
-    ret
+  uint base = (uint)owner;
+  void *handle = *(void **)(base + 0x10);
+  using WaitABI = uint (__stdcall *)(void *,uint);
+  uint waitResult = (*(WaitABI *)R6GameServiceAddresses::KERNEL32_WaitForSingleObjectSlot)(handle,0xffffffff);
+  if (waitResult == 0) {
+    uint head = *(uint *)(base + 8);
+    uint node = *(uint *)head;
+    using ChildABI = void (__thiscall *)(void *);
+    using FreeABI = uint (__stdcall *)(void *);
+    while (node != head) {
+      void *payload = *(void **)(node + 8);
+      if (payload != 0) {
+        ((ChildABI)R6GameServiceAddresses::DeleteOwnedObjectAtOffset8)(payload);
+        ((FreeABI)R6GameServiceAddresses::TailFreeThroughGlobalAllocator)(payload);
+      }
+      uint previous = *(uint *)(node + 4);
+      uint next = *(uint *)node;
+      *(uint *)previous = next;
+      *(uint *)(next + 4) = previous;
+      ((FreeABI)R6GameServiceAddresses::TailFreeThroughGlobalAllocator)((void *)node);
+      head = *(uint *)(base + 8);
+      node = next;
+    }
   }
+  handle = *(void **)(base + 0x10);
+  using ReleaseABI = uint (__stdcall *)(void *);
+  return (*(ReleaseABI *)R6GameServiceAddresses::KERNEL32_ReleaseMutexSlot)(handle);
 }
 
 // Unlinks the first matching record and returns its payload, retaining selector-word scratch and exact cleanup phases.

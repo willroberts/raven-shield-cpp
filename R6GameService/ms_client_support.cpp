@@ -257,20 +257,19 @@ __declspec(naked) uint __stdcall SetMSClientCallback10(uint callbackWord)
   }
 }
 
-// Invokes singleton slot+0x24 with1 if present, clears the current global after return, then sets only AL=1.
-// R6GameService.dll @ 10032300 : raw EAX/AL boundary; original free/member declaration and client class unassigned.
-uint __cdecl CloseMSClientSingleton(void)
+// Invoke slot+24 on the captured singleton if present, then clear the current global slot and report success.
+// Native AL1 is the consumed result: callers either discard EAX or zero-extend AL before returning.
+// R6GameService.dll @ 10032300 : inferred bool cdecl RET0; a throwing close prevents the global clear.
+bool __cdecl CloseMSClientSingleton(void)
 {
-  uint raw;
-  __asm { mov raw,eax } // Absent-client path preserves incoming EAX high bytes; original return type is unrecovered.
-  void* client = *reinterpret_cast<void**>(R6GameServiceAddresses::GMSClientSingleton);
-  if (client) {
-    byte* table = *reinterpret_cast<byte**>(client);
-    using CloseCall = uint (__thiscall *)(void*, uint);
-    raw = (*reinterpret_cast<CloseCall*>(table + 0x24))(client, 1);
+  void *client = *(void **)R6GameServiceAddresses::GMSClientSingleton;
+  if (client != nullptr) {
+    uint table = *(uint *)client;
+    using CloseABI = void (__thiscall *)(void *,uint);
+    (*(CloseABI *)(table + 0x24))(client,1);
   }
-  *reinterpret_cast<void**>(R6GameServiceAddresses::GMSClientSingleton) = nullptr;
-  return (raw & 0xffffff00U) | 1U;
+  *(void **)R6GameServiceAddresses::GMSClientSingleton = nullptr;
+  return true;
 }
 
 // Forwards two untouched words to the current client request matcher, or clears only AL when absent.
@@ -508,90 +507,63 @@ __declspec(naked) uint __thiscall CheckChainedProviderHelpers(void *client)
 // Every clear follows its successful free; reset may republish resources, so later stages observe fresh fields.
 // SET AL1 preserves upper provider EAX; no own EH, input ownership, rollback or retry.
 // R6GameService.dll @ 100328b0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall ReleaseServiceClientResources(void *client)
+uint __thiscall ReleaseServiceClientResources(void *client)
 {
-  __asm {
-    push   ebx
-    push   esi
-    mov    esi,ecx
-    xor    ebx,ebx
-    push   edi
-    mov    eax,DWORD PTR [esi+0x104]
-    cmp    eax,ebx
-    je     Branch31
-    push   eax
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    DWORD PTR [esi+0x104],ebx
-  Branch31:
-    mov    eax,DWORD PTR [esi+0x108]
-    cmp    eax,ebx
-    je     Branch32
-    push   eax
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    DWORD PTR [esi+0x108],ebx
-    mov    DWORD PTR [esi+0x10c],ebx
-  Branch32:
-    mov    edi,DWORD PTR [esi+0x110]
-    cmp    edi,ebx
-    je     Branch33
-    mov    ecx,edi
-    call   R6GameServiceAddresses::ReleaseNodesAndSentinel
-    push   edi
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    DWORD PTR [esi+0x110],ebx
-  Branch33:
-    mov    ecx,esi
-    call   R6GameServiceAddresses::ResetServiceClientState
-    mov    ecx,esi
-    call   R6GameServiceAddresses::DisconnectPrimaryConnectionViaOffset14
-    pop    edi
-    pop    esi
-    mov    al,0x1
-    pop    ebx
-    ret
+  uint base = (uint)client;
+  using FreeABI = uint (__stdcall *)(void *);
+  void *record = *(void **)(base + 0x104);
+  if (record != 0) {
+    ((FreeABI)R6GameServiceAddresses::TailFreeThroughGlobalAllocator)(record);
+    *(uint *)(base + 0x104) = 0;
   }
+  void *payload = *(void **)(base + 0x108);
+  if (payload != 0) {
+    ((FreeABI)R6GameServiceAddresses::TailFreeThroughGlobalAllocator)(payload);
+    *(uint *)(base + 0x108) = 0;
+    *(uint *)(base + 0x10c) = 0;
+  }
+  void *list = *(void **)(base + 0x110);
+  if (list != 0) {
+    using ReleaseABI = uint (__thiscall *)(void *);
+    ((ReleaseABI)R6GameServiceAddresses::ReleaseNodesAndSentinel)(list);
+    ((FreeABI)R6GameServiceAddresses::TailFreeThroughGlobalAllocator)(list);
+    *(uint *)(base + 0x110) = 0;
+  }
+  using MethodABI = uint (__thiscall *)(void *);
+  uint resetResult = ((MethodABI)R6GameServiceAddresses::ResetServiceClientState)(client);
+  uint result = DisconnectPrimaryConnectionViaOffset14(client,resetResult);
+  return (result & 0xffffff00) | 1;
 }
 
 // Process current provider records, capture110, clear flags117/115/116/114 and deadline100, then free110/104.
 // Captured list storage survives callbacks;104 reloads afterward.108/10c are untouched by this helper.
 // Absent104 returns1; otherwise AL1 keeps the final free result upper bits. No own guard or rollback.
-// R6GameService.dll @ 10033420 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall ResetServiceClientState(void *client)
+// R6GameService.dll @ 10033420 : inferred raw field/ABI views; callback-time accesses and partial effects retained.
+uint __thiscall ResetServiceClientState(void *client)
 {
-  __asm {
-    push   ebx
-    push   esi
-    push   edi
-    mov    esi,ecx
-    call   R6GameServiceAddresses::ProcessTransportRecordsViaNestedOffsets
-    mov    edi,DWORD PTR [esi+0x110]
-    xor    ebx,ebx
-    cmp    edi,ebx
-    mov    BYTE PTR [esi+0x117],bl
-    mov    BYTE PTR [esi+0x115],bl
-    mov    BYTE PTR [esi+0x116],bl
-    mov    BYTE PTR [esi+0x114],bl
-    mov    DWORD PTR [esi+0x100],ebx
-    je     Branch34
-    mov    ecx,edi
-    call   R6GameServiceAddresses::ReleaseNodesAndSentinel
-    push   edi
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    DWORD PTR [esi+0x110],ebx
-  Branch34:
-    mov    eax,DWORD PTR [esi+0x104]
-    cmp    eax,ebx
-    je     Branch35
-    push   eax
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    DWORD PTR [esi+0x104],ebx
-  Branch35:
-    pop    edi
-    pop    esi
-    mov    al,0x1
-    pop    ebx
-    ret
+  uint base = (uint)client;
+  using ProcessABI = uint (__thiscall *)(void *);
+  ((ProcessABI)R6GameServiceAddresses::ProcessTransportRecordsViaNestedOffsets)(client);
+  void *list = *(void **)(base + 0x110);
+  *(byte *)(base + 0x117) = 0;
+  *(byte *)(base + 0x115) = 0;
+  *(byte *)(base + 0x116) = 0;
+  *(byte *)(base + 0x114) = 0;
+  *(uint *)(base + 0x100) = 0;
+  using FreeABI = uint (__stdcall *)(void *);
+  if (list != 0) {
+    using ReleaseABI = uint (__thiscall *)(void *);
+    ((ReleaseABI)R6GameServiceAddresses::ReleaseNodesAndSentinel)(list);
+    ((FreeABI)R6GameServiceAddresses::TailFreeThroughGlobalAllocator)(list);
+    *(uint *)(base + 0x110) = 0;
   }
+  void *record = *(void **)(base + 0x104);
+  uint result = 0;
+  if (record != 0) {
+    result = ((FreeABI)R6GameServiceAddresses::TailFreeThroughGlobalAllocator)(record);
+    *(uint *)(base + 0x104) = 0;
+  }
+  return (result & 0xffffff00) | 1;
 }
 
 // Tail-forward two untouched words through current MS singleton, or clear only AL when absent; RET8.
@@ -777,72 +749,53 @@ __declspec(naked) uint __thiscall CopyCallbackRecord(void *receiver,uint word1)
 }
 
 // MS nonvirtual state/request entries: declaring classes and original prototypes remain unresolved.
-// Descriptive raw-entry views retain explicit complete receiver, physical stack words and EAX/AL effects.
+// Return views distinguish consumed AL from full raw words; native receivers/stack words remain explicit.
 
-// Read current MS singleton93d18; nonnull tail100334c0 with same stack/full raw EAX.
-// NULL clears only AL, retains incoming upper EAX, reads no arguments; RET4, no own guard.
-// R6GameService.dll @ 10032340 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __stdcall ForwardMSClientOperation1(const char *identity)
+// Forward identity replay through the captured MS singleton; absent singleton reads no identity argument.
+// The ordinary caller discards EAX. This byte view preserves AL without assigning meaning to native upper residue.
+// R6GameService.dll @ 10032340 : inferred AL stdcall RET4 view; no local ownership or guard.
+byte __stdcall ForwardMSClientOperation1(const char *identity)
 {
-  __asm {
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GMSClientSingleton
-    test   ecx,ecx
-    je     Branch43
-    jmp    R6GameServiceAddresses::UpdateServiceIdentityAndReplayRecords
-  Branch43:
-    xor    al,al
-    ret    0x4
-  }
+  void *client = *(void **)R6GameServiceAddresses::GMSClientSingleton;
+  if (client == nullptr) return 0;
+  using ReplayABI = byte (__thiscall *)(void *,const char *);
+  return (byte)((ReplayABI)R6GameServiceAddresses::UpdateServiceIdentityAndReplayRecords)(client,identity);
 }
 
-// Read current MS singleton93d18; nonnull tail10033590 with same stack/full raw EAX.
-// NULL clears only AL, retains incoming upper EAX, reads no arguments; RET8, no own guard.
-// R6GameService.dll @ 10032360 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __stdcall ForwardMSClientOperation2(uint word1,uint word2)
+// Forward the two words through the captured MS singleton, or return AL0 before reading either word.
+// Native tail transfer shares the argument words; the inner active gate precedes both reads. Caller discards EAX.
+// R6GameService.dll @ 10032360 : inferred AL stdcall RET8 view, no local guard.
+byte __stdcall ForwardMSClientOperation2(uint word1,uint word2)
 {
-  __asm {
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GMSClientSingleton
-    test   ecx,ecx
-    je     Branch44
-    jmp    R6GameServiceAddresses::DispatchKind64RecordWhenEnabled
-  Branch44:
-    xor    al,al
-    ret    0x8
-  }
+  void *client = *(void **)R6GameServiceAddresses::GMSClientSingleton;
+  if (client == nullptr) return 0;
+  using DispatchABI = byte (__thiscall *)(void *,uint,uint);
+  return ((DispatchABI)R6GameServiceAddresses::DispatchKind64RecordWhenEnabled)(client,word1,word2);
 }
 
-// Read current MS singleton93d18; nonnull tail100335c0 with same stack/full raw EAX.
-// NULL clears only AL, retains incoming upper EAX, reads no arguments; RET8, no own guard.
-// R6GameService.dll @ 10032380 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __stdcall ForwardMSClientOperation3(uint word1,uint word2)
+// Forward alternate-info words through the captured singleton, or return AL0 before reading them when absent.
+// Native tail transfer shares both words and the inner gate precedes reads; the script-facing void caller discards EAX.
+// R6GameService.dll @ 10032380 : inferred AL stdcall RET8 view, no local guard.
+byte __stdcall ForwardMSClientOperation3(uint word1,uint word2)
 {
-  __asm {
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GMSClientSingleton
-    test   ecx,ecx
-    je     Branch45
-    jmp    R6GameServiceAddresses::DispatchRecordWhenEnabled
-  Branch45:
-    xor    al,al
-    ret    0x8
-  }
+  void *client = *(void **)R6GameServiceAddresses::GMSClientSingleton;
+  if (client == nullptr) return 0;
+  using DispatchABI = byte (__thiscall *)(void *,uint,uint);
+  return ((DispatchABI)R6GameServiceAddresses::DispatchRecordWhenEnabled)(client,word1,word2);
 }
 
-// Read current MS singleton93d18; nonnull tail100335f0 with same stack/full raw EAX.
-// NULL clears only AL, retains incoming upper EAX, reads no arguments; RET28, no own guard.
-// R6GameService.dll @ 100323a0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __stdcall SetSingletonServiceRequest(
+// Forward request setup through the captured singleton, or return AL0 without reading the seven arguments.
+// Native tail transfer reuses the caller's seven words; request callbacks still observe the target's late formal reads.
+// R6GameService.dll @ 100323a0 : inferred AL stdcall RET28 view; caller zero-extends AL and discards upper EAX.
+byte __stdcall SetSingletonServiceRequest(
     uint word1,uint word2,const char *text17,const char *text33,const char *identity,
     const byte *payload,uint payloadSize)
 {
-  __asm {
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GMSClientSingleton
-    test   ecx,ecx
-    je     Branch46
-    jmp    R6GameServiceAddresses::SetServiceClientRequest
-  Branch46:
-    xor    al,al
-    ret    0x1c
-  }
+  void *client = *(void **)R6GameServiceAddresses::GMSClientSingleton;
+  if (client == nullptr) return 0;
+  using RequestABI = byte (__thiscall *)(void *,uint,uint,const char *,const char *,const char *,const byte *,uint);
+  return (byte)((RequestABI)R6GameServiceAddresses::SetServiceClientRequest)(
+      client,word1,word2,text17,text33,identity,payload,payloadSize);
 }
 
 // Read current MS singleton93d18; nonnull tail100337a0 with same stack/full raw EAX.
@@ -893,304 +846,189 @@ __declspec(naked) uint __stdcall DispatchSingletonSubobject3f1b0(uint word1,uint
   }
 }
 
-// If117 is zero, send current stored identity via3f120(identity,1,1); zero AL returns raw backend EAX.
-// Otherwise normalize117 and AL to1, keeping upper EAX residue; no own guard, receiver/type names inferred.
-// R6GameService.dll @ 10033490 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall TryEnableServiceClient(void *client)
+// Send stored identity only while117 is zero; a zero sender byte leaves the callback's flag changes untouched.
+// Accepted or previously enabled state normalizes117 and AL to1. The two caller routes consume only AL.
+// R6GameService.dll @ 10033490 : inferred AL thiscall RET0 view; no local ownership or rollback.
+byte __thiscall TryEnableServiceClient(void *client)
 {
-  __asm {
-    push   esi
-    mov    esi,ecx
-    mov    al,BYTE PTR [esi+0x117]
-    test   al,al
-    jne    Branch50
-    push   0x1
-    lea    eax,[esi+0xde]
-    push   0x1
-    push   eax
-    call   R6GameServiceAddresses::PrepareAndSendTransportRequestThroughSubobject
-    test   al,al
-    jne    Branch50
-    pop    esi
-    ret
-  Branch50:
-    mov    BYTE PTR [esi+0x117],0x1
-    mov    al,0x1
-    pop    esi
-    ret
+  uint base = (uint)client;
+  byte enabled = *(byte *)(base + 0x117);
+  if (enabled == 0) {
+    char *identity = (char *)(base + 0xde);
+    using PrepareABI = byte (__thiscall *)(void *,char *,uint,uint);
+    byte sent = ((PrepareABI)R6GameServiceAddresses::PrepareAndSendTransportRequestThroughSubobject)(
+        client,identity,1,1);
+    if (sent == 0) return 0;
   }
+  *(byte *)(base + 0x117) = 1;
+  return 1;
 }
 
 // Compare33 identity bytes; on change copy/clamp then actual reset. Capture117 BEFORE setting114=1.
 // Inactive: time(NULL)+3 ->100 then enable using fresh117/provider; active/no list returns EAX0 without clock.
 // Active/list: replay(node10,nodec,100hex), ignoring result; load current list BEFORE current node successor.
 // Compare successor to current head, retain nodes; then time+3 ->100 and force AL1. RET4/no own guard.
-// R6GameService.dll @ 100334c0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall UpdateServiceIdentityAndReplayRecords(void *client,const char *identity)
+// R6GameService.dll @ 100334c0 : inferred AL view; only the singleton wrapper consumes the result byte.
+byte __thiscall UpdateServiceIdentityAndReplayRecords(void *client,const char *identity)
 {
-  __asm {
-    push   ebx
-    mov    ebx,DWORD PTR [esp+0x8]
-    push   esi
-    push   edi
-    mov    edi,ecx
-    push   0x21
-    push   ebx
-    lea    esi,[edi+0xde]
-    push   esi
-    call   R6GameServiceAddresses::strncmp
-    add    esp,0xc
-    test   eax,eax
-    je     Branch52
-    push   0x21
-    push   ebx
-    push   esi
-    call   R6GameServiceAddresses::strncpy
-    mov    al,BYTE PTR [esi+0x20]
-    add    esp,0xc
-    test   al,al
-    je     Branch51
-    mov    BYTE PTR [esi+0x20],0x0
-  Branch51:
-    mov    ecx,edi
-    call   R6GameServiceAddresses::ResetServiceClientState
-  Branch52:
-    mov    al,BYTE PTR [edi+0x117]
-    mov    BYTE PTR [edi+0x114],0x1
-    test   al,al
-    je     Branch56
-    mov    eax,DWORD PTR [edi+0x110]
-    test   eax,eax
-    je     Branch55
-    mov    eax,DWORD PTR [eax]
-    mov    esi,DWORD PTR [eax]
-    cmp    esi,eax
-    je     Branch54
-  Branch53:
-    mov    eax,DWORD PTR [esi+0xc]
-    mov    ecx,DWORD PTR [esi+0x10]
-    push   0x100
-    push   eax
-    push   ecx
-    mov    ecx,edi
-    call   R6GameServiceAddresses::ForwardSelector9ThroughOptionalChannel
-    mov    edx,DWORD PTR [edi+0x110]
-    mov    esi,DWORD PTR [esi]
-    cmp    esi,DWORD PTR [edx]
-    jne    Branch53
-  Branch54:
-    push   0x0
-    call   R6GameServiceAddresses::time
-    add    esp,0x4
-    add    eax,0x3
-    mov    DWORD PTR [edi+0x100],eax
-    mov    al,0x1
-    pop    edi
-    pop    esi
-    pop    ebx
-    ret    0x4
-  Branch55:
-    pop    edi
-    pop    esi
-    xor    al,al
-    pop    ebx
-    ret    0x4
-  Branch56:
-    push   0x0
-    call   R6GameServiceAddresses::time
-    add    eax,0x3
-    add    esp,0x4
-    mov    ecx,edi
-    mov    DWORD PTR [edi+0x100],eax
-    call   R6GameServiceAddresses::TryEnableServiceClient
-    pop    edi
-    pop    esi
-    pop    ebx
-    ret    0x4
+  const char *incomingIdentity = identity;
+  uint base = (uint)client;
+  char *storedIdentity = (char *)(base + 0xde);
+  using CompareABI = int (__cdecl *)(const char *,const char *,uint);
+  using CopyABI = char * (__cdecl *)(char *,const char *,uint);
+  using MethodABI = uint (__thiscall *)(void *);
+  int different = ((CompareABI)R6GameServiceAddresses::strncmp)(storedIdentity,incomingIdentity,33);
+  if (different != 0) {
+    ((CopyABI)R6GameServiceAddresses::strncpy)(storedIdentity,incomingIdentity,33);
+    if (storedIdentity[32] != 0) storedIdentity[32] = 0;
+    ((MethodABI)R6GameServiceAddresses::ResetServiceClientState)(client);
   }
+  byte active = *(byte *)(base + 0x117);
+  *(byte *)(base + 0x114) = 1;
+  using TimeABI = uint (__cdecl *)(void *);
+  if (active == 0) {
+    uint now = ((TimeABI)R6GameServiceAddresses::time)(nullptr);
+    uint deadline = now + 3;
+    *(uint *)(base + 0x100) = deadline;
+    using EnableABI = byte (__thiscall *)(void *);
+    return ((EnableABI)R6GameServiceAddresses::TryEnableServiceClient)(client);
+  }
+  uint list = *(uint *)(base + 0x110);
+  if (list == 0) return 0;
+  uint head = *(uint *)list;
+  uint node = *(uint *)head;
+  using ReplayABI = uint (__thiscall *)(void *,uint,uint,uint);
+  while (node != head) {
+    uint second = *(uint *)(node + 0xc);
+    uint first = *(uint *)(node + 0x10);
+    ((ReplayABI)R6GameServiceAddresses::ForwardSelector9ThroughOptionalChannel)(client,first,second,0x100);
+    list = *(uint *)(base + 0x110);
+    node = *(uint *)node;
+    head = *(uint *)list;
+  }
+  uint now = ((TimeABI)R6GameServiceAddresses::time)(nullptr);
+  uint deadline = now + 3;
+  *(uint *)(base + 0x100) = deadline;
+  return 1;
 }
 
-//117 zero clears only AL without reading args; otherwise send(word2,word1,40hex) via current provider3f170.
-// Any normal backend result becomes upper EAX|AL1; RET8, no flag store or local cleanup.
-// R6GameService.dll @ 10033590 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall DispatchKind64RecordWhenEnabled(
-    void *client,uint word1,uint word2)
+// When117 is nonzero send reversed whole words with selector40, then report AL1 regardless of backend status.
+// Disabled117 returns AL0 without reading either argument; backend exceptions skip the success return.
+// R6GameService.dll @ 10033590 : inferred AL thiscall RET8 view; upper EAX is unconsumed by the ordinary route.
+byte __thiscall DispatchKind64RecordWhenEnabled(void *client,uint word1,uint word2)
 {
-  __asm {
-    mov    al,BYTE PTR [ecx+0x117]
-    test   al,al
-    jne    Branch57
-    xor    al,al
-    ret    0x8
-  Branch57:
-    mov    eax,DWORD PTR [esp+0x4]
-    mov    edx,DWORD PTR [esp+0x8]
-    push   0x40
-    push   eax
-    push   edx
-    call   R6GameServiceAddresses::ForwardSelector9ThroughOptionalChannel
-    mov    al,0x1
-    ret    0x8
-  }
+  byte enabled = *(byte *)((uint)client + 0x117);
+  if (enabled == 0) return 0;
+  uint first = word1;
+  uint second = word2;
+  using SendABI = uint (__thiscall *)(void *,uint,uint,uint);
+  ((SendABI)R6GameServiceAddresses::ForwardSelector9ThroughOptionalChannel)(client,second,first,0x40);
+  return 1;
 }
 
-//117 zero clears only AL without reading args; otherwise send(word2,word1) via current provider3f180.
-// Any normal backend result becomes upper EAX|AL1; RET8, no flag store or local cleanup.
-// R6GameService.dll @ 100335c0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall DispatchRecordWhenEnabled(void *client,uint word1,uint word2)
+// When117 is nonzero send reversed whole words, then report AL1 regardless of backend status; disabled reads no args.
+// The singleton route discards upper EAX; partial backend effects survive a throw, with no local cleanup.
+// R6GameService.dll @ 100335c0 : inferred AL thiscall RET8 view, no flag publication or local ownership.
+byte __thiscall DispatchRecordWhenEnabled(void *client,uint word1,uint word2)
 {
-  __asm {
-    mov    al,BYTE PTR [ecx+0x117]
-    test   al,al
-    jne    Branch58
-    xor    al,al
-    ret    0x8
-  Branch58:
-    mov    eax,DWORD PTR [esp+0x4]
-    mov    edx,DWORD PTR [esp+0x8]
-    push   eax
-    push   edx
-    call   R6GameServiceAddresses::ForwardSelector2eThroughOptionalChannel
-    mov    al,0x1
-    ret    0x8
-  }
+  byte enabled = *(byte *)((uint)client + 0x117);
+  if (enabled == 0) return 0;
+  uint first = word1;
+  uint second = word2;
+  using SendABI = uint (__thiscall *)(void *,uint,uint);
+  ((SendABI)R6GameServiceAddresses::ForwardSelector2eThroughOptionalChannel)(client,second,first);
+  return 1;
 }
 
-// Compare/copy/clamp identity word5; ALWAYS reset before enable. Failed enable returns raw EAX/AL0.
+namespace {
+// Inferred forward DWORD/tail view of the native request-payload copy; count and source are cached before publication.
+inline void CopyServiceRequestPayloadForward(uint destination,uint source,uint count) {
+  uint words = count >> 2;
+  while (words != 0) {
+    uint value = *(const uint *)source;
+    *(uint *)destination = value;
+    source += 4;
+    destination += 4;
+    --words;
+  }
+  uint tail = count & 3;
+  while (tail != 0) {
+    byte value = *(const byte *)source;
+    *(byte *)destination = value;
+    ++source;
+    ++destination;
+    --tail;
+  }
+}
+}
+
+// Compare/copy/clamp identity word5; ALWAYS reset before enable. Failed enable returns AL0.
 // After enable, free current104, allocate44hex descriptor with late words1/2, text33 word4 and text17 word3.
 // Publish104 after copies even if allocation0; free current108, clear108/10c only when108 was nonzero.
 // Any nonzero word7 allocates payload; reload10c and late source word6 AFTER allocator, publish108 before REP.
 // Zero size may retain stale10c if108 absent. Set116 BEFORE provider3f100(7,0); then force AL1/RET28.
 // No own EH/rollback/failed-copy free; final ECX reloads zero-initialized scratch, not incoming receiver.
-// R6GameService.dll @ 100335f0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall SetServiceClientRequest(
+// R6GameService.dll @ 100335f0 : inferred AL view; native upper residue is discarded by the outer caller.
+byte __thiscall SetServiceClientRequest(
     void *client,uint word1,uint word2,const char *text17,const char *text33,const char *identity,
     const byte *payload,uint payloadSize)
 {
-  __asm {
-    push   ecx
-    push   ebx
-    push   ebp
-    push   esi
-    mov    ebp,ecx
-    push   edi
-    mov    edi,DWORD PTR [esp+0x28]
-    lea    esi,[ebp+0xde]
-    push   0x21
-    xor    ebx,ebx
-    push   edi
-    push   esi
-    mov    DWORD PTR [esp+0x1c],ebx
-    call   R6GameServiceAddresses::strncmp
-    add    esp,0xc
-    test   eax,eax
-    je     Branch59
-    push   0x21
-    push   edi
-    push   esi
-    call   R6GameServiceAddresses::strncpy
-    mov    al,BYTE PTR [esi+0x20]
-    add    esp,0xc
-    cmp    al,bl
-    je     Branch59
-    mov    BYTE PTR [esi+0x20],bl
-  Branch59:
-    mov    ecx,ebp
-    call   R6GameServiceAddresses::ResetServiceClientState
-    mov    ecx,ebp
-    call   R6GameServiceAddresses::TryEnableServiceClient
-    test   al,al
-    jne    Branch60
-    pop    edi
-    pop    esi
-    pop    ebp
-    pop    ebx
-    pop    ecx
-    ret    0x1c
-  Branch60:
-    mov    eax,DWORD PTR [ebp+0x104]
-    cmp    eax,ebx
-    je     Branch61
-    push   eax
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch61:
-    push   0x44
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    esi,eax
-    cmp    esi,ebx
-    je     Branch63
-    mov    edx,DWORD PTR [esp+0x24]
-    mov    eax,DWORD PTR [esp+0x18]
-    mov    ecx,DWORD PTR [esp+0x1c]
-    lea    edi,[esi+0x10]
-    push   0x21
-    push   edx
-    push   edi
-    mov    DWORD PTR [esi],0x10077080
-    mov    DWORD PTR [esi+0x4],eax
-    mov    DWORD PTR [esi+0x8],ecx
-    mov    DWORD PTR [esi+0xc],ebx
-    call   R6GameServiceAddresses::strncpy
-    mov    al,BYTE PTR [edi+0x20]
-    add    esp,0xc
-    cmp    al,bl
-    je     Branch62
-    mov    BYTE PTR [edi+0x20],bl
-  Branch62:
-    mov    eax,DWORD PTR [esp+0x20]
-    lea    edi,[esi+0x31]
-    push   0x11
-    push   eax
-    push   edi
-    call   R6GameServiceAddresses::strncpy
-    mov    al,BYTE PTR [edi+0x10]
-    add    esp,0xc
-    cmp    al,bl
-    je     Branch64
-    mov    BYTE PTR [edi+0x10],bl
-    jmp    Branch64
-  Branch63:
-    xor    esi,esi
-  Branch64:
-    mov    eax,DWORD PTR [ebp+0x108]
-    mov    DWORD PTR [ebp+0x104],esi
-    cmp    eax,ebx
-    je     Branch65
-    push   eax
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    DWORD PTR [ebp+0x108],ebx
-    mov    DWORD PTR [ebp+0x10c],ebx
-  Branch65:
-    mov    eax,DWORD PTR [esp+0x30]
-    cmp    eax,ebx
-    je     Branch66
-    push   eax
-    mov    DWORD PTR [ebp+0x10c],eax
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    ecx,DWORD PTR [ebp+0x10c]
-    mov    esi,DWORD PTR [esp+0x2c]
-    mov    edx,ecx
-    mov    edi,eax
-    shr    ecx,0x2
-    mov    DWORD PTR [ebp+0x108],eax
-    rep    movs DWORD PTR es:[edi],DWORD PTR ds:[esi]
-    mov    ecx,edx
-    and    ecx,0x3
-    rep    movs BYTE PTR es:[edi],BYTE PTR ds:[esi]
-  Branch66:
-    push   ebx
-    push   0x7
-    mov    ecx,ebp
-    mov    BYTE PTR [ebp+0x116],0x1
-    call   R6GameServiceAddresses::SendBytePairSelector4eViaOffset14
-    pop    edi
-    pop    esi
-    pop    ebp
-    mov    al,0x1
-    pop    ebx
-    pop    ecx
-    ret    0x1c
+  uint base = (uint)client;
+  const char *incomingIdentity = identity;
+  char *storedIdentity = (char *)(base + 0xde);
+  using CompareABI = int (__cdecl *)(const char *,const char *,uint);
+  using CopyABI = char * (__cdecl *)(char *,const char *,uint);
+  using MethodABI = uint (__thiscall *)(void *);
+  int different = ((CompareABI)R6GameServiceAddresses::strncmp)(storedIdentity,incomingIdentity,33);
+  if (different != 0) {
+    ((CopyABI)R6GameServiceAddresses::strncpy)(storedIdentity,incomingIdentity,33);
+    if (storedIdentity[32] != 0) storedIdentity[32] = 0;
   }
+  ((MethodABI)R6GameServiceAddresses::ResetServiceClientState)(client);
+  using EnableABI = byte (__thiscall *)(void *);
+  byte enabled = ((EnableABI)R6GameServiceAddresses::TryEnableServiceClient)(client);
+  if (enabled == 0) return 0;
+  using FreeABI = uint (__stdcall *)(void *);
+  void *oldRecord = *(void **)(base + 0x104);
+  if (oldRecord != 0) ((FreeABI)R6GameServiceAddresses::TailFreeThroughGlobalAllocator)(oldRecord);
+  using AllocateABI = uint (__stdcall *)(uint);
+  uint record = ((AllocateABI)R6GameServiceAddresses::AllocateGameServiceBytes)(0x44);
+  if (record != 0) {
+    const char *source33 = text33;
+    uint first = word1;
+    uint second = word2;
+    char *destination33 = (char *)(record + 0x10);
+    *(uint *)record = 0x10077080;
+    *(uint *)(record + 4) = first;
+    *(uint *)(record + 8) = second;
+    *(uint *)(record + 0xc) = 0;
+    ((CopyABI)R6GameServiceAddresses::strncpy)(destination33,source33,33);
+    if (destination33[32] != 0) destination33[32] = 0;
+    const char *source17 = text17;
+    char *destination17 = (char *)(record + 0x31);
+    ((CopyABI)R6GameServiceAddresses::strncpy)(destination17,source17,17);
+    if (destination17[16] != 0) destination17[16] = 0;
+  }
+  void *oldPayload = *(void **)(base + 0x108);
+  *(uint *)(base + 0x104) = record;
+  if (oldPayload != 0) {
+    ((FreeABI)R6GameServiceAddresses::TailFreeThroughGlobalAllocator)(oldPayload);
+    *(uint *)(base + 0x108) = 0;
+    *(uint *)(base + 0x10c) = 0;
+  }
+  uint requested = payloadSize;
+  if (requested != 0) {
+    *(uint *)(base + 0x10c) = requested;
+    uint allocation = ((AllocateABI)R6GameServiceAddresses::AllocateGameServiceBytes)(requested);
+    uint count = *(uint *)(base + 0x10c);
+    uint first = (uint)payload;
+    *(uint *)(base + 0x108) = allocation;
+    CopyServiceRequestPayloadForward(allocation,first,count);
+  }
+  *(byte *)(base + 0x116) = 1;
+  using SendABI = byte (__thiscall *)(void *,uint,uint);
+  ((SendABI)R6GameServiceAddresses::SendBytePairSelector4eViaOffset14)(client,7,0);
+  return 1;
 }
 
 // Forward(word2,word1) through actual GL3f1f0/current provider41370; RET8/raw full target EAX.

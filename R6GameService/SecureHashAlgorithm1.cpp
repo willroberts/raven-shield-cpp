@@ -49,19 +49,17 @@ void * __thiscall DeleteSha1Context(void *owner,byte flags)
 
 // Clears the23 context words at+8..+63 and restores the allocation-base table, retaining+4.
 // R6GameService.dll @ 1003a050 : ECX owner, plain RET; EAX0/ECX0/EDX owner, EDI preserved.
-__declspec(naked) uint __fastcall DestroySha1ContextBase(uint *owner)
+uint __fastcall DestroySha1ContextBase(uint *owner)
 {
-  __asm {
-    mov    edx,ecx
-    push   edi
-    mov    ecx,0x17
-    xor    eax,eax
-    lea    edi,[edx+0x8]
-    rep stos DWORD PTR es:[edi],eax
-    mov    DWORD PTR [edx],R6GameServiceAddresses::clExtalloc_Override_BaseclassVTable
-    pop    edi
-    ret
-  }
+  uint destination = (uint)owner + 8;
+  uint remaining = 0x17;
+  do {
+    *(uint *)destination = 0;
+    destination += 4;
+    --remaining;
+  } while (remaining != 0);
+  *(uint *)owner = R6GameServiceAddresses::clExtalloc_Override_BaseclassVTable;
+  return 0;
 }
 
 // Clears context words then installs five SHA1 initial words and both zero bit counters.

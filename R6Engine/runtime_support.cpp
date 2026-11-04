@@ -1,6 +1,7 @@
 #include "native_exception_records.hpp"
 
 #include "native_import_slots.hpp"
+#include "native_x87_view.hpp"
 
 // Native helper declarations match their canonical definitions.
 __declspec(naked) void __cdecl __RTC_Initialize(void);
@@ -164,53 +165,53 @@ __declspec(naked) void FindSlopeRotationImportThunk(void)
     __asm { jmp dword ptr [APawnFindSlopeRotationImport] }
 }
 
-// R6Engine.dll @ 10042934 : TruncateX87ToSigned64
-// Converts ST0 to EDX:EAX with the native integer rounding correction.
-__declspec(naked) long long TruncateX87ToSigned64()
+// Convert live ST0 to EDX:EAX using ambient rounding, then correct a rounded integer toward zero.
+// Explicit x87 intrinsics preserve precision/status/faults and the zero/integer-indefinite double-pop path.
+// R6Engine.dll @ 10042934 : x87-state/ECX reference view; no native stack arguments, RET0, EDX:EAX result.
+unsigned long long TruncateX87ToSigned64([[r6abi::register_input("x87-state")]] R6EngineNative::X87Machine &fpu,
+    [[r6abi::register_input("ecx")]] uint ecxAtEntry)
 {
-    __asm {
-        push ebp
-        mov ebp,esp
-        sub esp,0x20
-        and esp,0xfffffff0
-        fld st(0)
-        fst DWORD PTR [esp+0x18]
-        fistp QWORD PTR [esp+0x10]
-        fild QWORD PTR [esp+0x10]
-        mov edx,DWORD PTR [esp+0x18]
-        mov eax,DWORD PTR [esp+0x10]
-        test eax,eax
-        je TruncateX87ToSigned64Branch2
-    TruncateX87ToSigned64Branch0:
-        fsubp st(1),st
-        test edx,edx
-        jns TruncateX87ToSigned64Branch1
-        fstp DWORD PTR [esp]
-        mov ecx,DWORD PTR [esp]
-        xor ecx,0x80000000
-        add ecx,0x7fffffff
-        adc eax,0x0
-        mov edx,DWORD PTR [esp+0x14]
-        adc edx,0x0
-        jmp TruncateX87ToSigned64Branch3
-    TruncateX87ToSigned64Branch1:
-        fstp DWORD PTR [esp]
-        mov ecx,DWORD PTR [esp]
-        add ecx,0x7fffffff
-        sbb eax,0x0
-        mov edx,DWORD PTR [esp+0x14]
-        sbb edx,0x0
-        jmp TruncateX87ToSigned64Branch3
-    TruncateX87ToSigned64Branch2:
-        mov edx,DWORD PTR [esp+0x14]
-        test edx,0x7fffffff
-        jne TruncateX87ToSigned64Branch0
-        fstp DWORD PTR [esp+0x18]
-        fstp DWORD PTR [esp+0x18]
-    TruncateX87ToSigned64Branch3:
-        leave
-        ret
+    // Native 32-byte temporary area is aligned down to16; these members retain its significant offsets.
+    struct alignas(16) Locals {
+        uint residualBits;
+        uint padding[3];
+        unsigned long long rounded;
+        uint originalBits;
+        uint unused;
+    } frame;
+    [[r6abi::register_output("ecx")]] uint scratch = ecxAtEntry;
+    fpu.DuplicateTop();
+    fpu.StoreFloat32(&frame.originalBits);
+    fpu.StoreInteger64AndPop(&frame.rounded);
+    fpu.PushInteger64(&frame.rounded);
+    uint original = frame.originalBits;
+    uint low = (uint)frame.rounded;
+    uint high;
+    if (low == 0) {
+        high = (uint)(frame.rounded >> 32);
+        if ((high & 0x7fffffff) == 0) {
+            fpu.StoreFloat32AndPop(&frame.originalBits);
+            fpu.StoreFloat32AndPop(&frame.originalBits);
+            return ((unsigned long long)high << 32) | low;
+        }
     }
+    fpu.SubtractAndPop();
+    fpu.StoreFloat32AndPop(&frame.residualBits);
+    uint residual = frame.residualBits;
+    if ((int)original < 0) {
+        unsigned long long sum = (unsigned long long)(residual ^ 0x80000000) + 0x7fffffff;
+        scratch = (uint)sum;
+        uint carry = (uint)(sum >> 32);
+        uint correctedLow = low + carry;
+        high = (uint)(frame.rounded >> 32) + (correctedLow < low);
+        return ((unsigned long long)high << 32) | correctedLow;
+    }
+    unsigned long long sum = (unsigned long long)residual + 0x7fffffff;
+    scratch = (uint)sum;
+    uint borrow = (uint)(sum >> 32);
+    uint correctedLow = low - borrow;
+    high = (uint)(frame.rounded >> 32) - (low < borrow);
+    return ((unsigned long long)high << 32) | correctedLow;
 }
 
 // R6Engine.dll @ 100423ea : forward setPhysics while preserving its byte, actor and by-value vector arguments

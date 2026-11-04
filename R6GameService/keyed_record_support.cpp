@@ -1,6 +1,54 @@
 #include "native_addresses.h"
 #include "native_records.h"
 
+// Inferred seven-state guard retains distinct word, pointer-container and table cleanup paths.
+struct KeyedRecordDestructionCleanup {
+  void *savedOwner;
+  void *savedWordDescriptor;
+  void *savedSubobject;
+  int state;
+  // Follow the native predecessor states, reloading the current saved context before each remaining cleanup.
+  ~KeyedRecordDestructionCleanup() noexcept(false)
+  {
+    using MethodABI = uint (__fastcall *)(void *);
+    using EmptyABI = void (__fastcall *)(void *);
+    while (state >= 0) {
+      switch (state) {
+      case 0:
+        state = -1;
+        ((EmptyABI)R6GameServiceAddresses::ForwardToNoOp)((void *)((uint)savedOwner + 8));
+        break;
+      case 1:
+        state = 0;
+        ((MethodABI)R6GameServiceAddresses::ForwardBucketCleanup)((void *)((uint)savedOwner + 0x20));
+        break;
+      case 2:
+        state = 1;
+        ((MethodABI)R6GameServiceAddresses::ForwardClSegmentPointerDequeDestroy)((void *)((uint)savedOwner + 0x38));
+        break;
+      case 3:
+        state = 2;
+        ((MethodABI)R6GameServiceAddresses::ReleaseSegmentedWordBlocks)(savedWordDescriptor);
+        break;
+      case 4: {
+        state = 1;
+        void *adjusted = savedSubobject == 0 ? 0 : (void *)((uint)savedSubobject + 4);
+        ((MethodABI)R6GameServiceAddresses::ReleaseSegmentedDwordBufferBlocks)(adjusted);
+        break;
+      }
+      case 5:
+        state = 0;
+        ((MethodABI)R6GameServiceAddresses::ReleaseNonNullFirstWordBuffer)((void *)((uint)savedSubobject + 4));
+        break;
+      case 6:
+        state = 5;
+        ((EmptyABI)R6GameServiceAddresses::list_node_support_NoOp)((void *)((uint)savedSubobject + 0x10));
+        break;
+      }
+    }
+  }
+};
+
 // Keyed association lifetime, socket/record delivery and shared WORD-key tables; original class identities unresolved.
 
 // Remove all current WORD-key nodes from table+20; cache pre-count30 and recycle current nonzero key if pre-count != removed.
@@ -8,391 +56,254 @@
 // If CURRENT30 is0, remove owner WORD4 from current global945b0, close socket+8, optionally destroy/free current empty global.
 // Finally destroy/free cached owner; preserve global reload/late NULL test, ignored statuses, no local EH and raw EAX/RET4.
 // R6GameService.dll @ 100600f0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall RemoveKeyAndRecycleOrDestroy(void *owner,uint keyWord)
+uint __thiscall RemoveKeyAndRecycleOrDestroy(void *owner,uint keyWord)
 {
-  __asm {
-    push    esi
-    mov    esi,ecx
-    lea    eax,[esp+0x8]
-    push    edi
-    mov    edi,DWORD PTR [esi+0x30]
-    push    eax
-    lea    ecx,[esi+0x20]
-    call    R6GameServiceAddresses::RemoveAllNodesForKey
-    cmp    edi,eax
-    je    Branch3
-    mov    dx,WORD PTR [esp+0xc]
-    test    dx,dx
-    je    Branch3
-    mov    edi,DWORD PTR [esi+0x80]
-    mov    eax,DWORD PTR [esi+0x78]
-    lea    ecx,[esi+0x68]
-    sub    edi,0x2
-    cmp    eax,edi
-    je    Branch2
-    test    eax,eax
-    je    Branch1
-    mov    WORD PTR [eax],dx
-  Branch1:
-    add    DWORD PTR [ecx+0x10],0x2
-    jmp    Branch3
-  Branch2:
-    lea    edx,[esp+0xc]
-    push    edx
-    call    R6GameServiceAddresses::AppendWordAndAllocateNextBlock
-  Branch3:
-    mov    eax,DWORD PTR [esi+0x30]
-    test    eax,eax
-    jne    Branch6
-    mov    ecx,DWORD PTR ds:0x100945b0
-    lea    eax,[esi+0x4]
-    push    eax
-    call    R6GameServiceAddresses::RemoveAllNodesForKey
-    lea    ecx,[esi+0x8]
-    call    R6GameServiceAddresses::CloseSocketAndReset
-    mov    edi,DWORD PTR ds:0x100945b0
-    mov    eax,DWORD PTR [edi+0x10]
-    test    eax,eax
-    jne    Branch5
-    test    edi,edi
-    je    Branch4
-    mov    ecx,edi
-    call    R6GameServiceAddresses::DestroyBucketChains
-    push    edi
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch4:
-    mov    DWORD PTR ds:0x100945b0,0x0
-  Branch5:
-    mov    ecx,esi
-    call    R6GameServiceAddresses::DestroyKeyedRecordStorage
-    push    esi
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch6:
-    pop    edi
-    pop    esi
-    ret    0x4
+  uint base = (uint)owner;
+  uint before = *(uint *)(base + 0x30);
+  using RemoveABI = uint (__thiscall *)(void *,const ushort *);
+  uint removed = ((RemoveABI)R6GameServiceAddresses::RemoveAllNodesForKey)(
+      (void *)(base + 0x20),(const ushort *)&keyWord);
+  if (before != removed) {
+    ushort key = *(ushort *)&keyWord;
+    if (key != 0) {
+      uint end = *(uint *)(base + 0x80);
+      uint cursor = *(uint *)(base + 0x78);
+      if (cursor != end - 2) {
+        if (cursor != 0) *(ushort *)cursor = key;
+        *(uint *)(base + 0x78) += 2;
+      } else {
+        using AppendABI = uint (__thiscall *)(void *,const ushort *);
+        ((AppendABI)R6GameServiceAddresses::AppendWordAndAllocateNextBlock)(
+            (void *)(base + 0x68),(const ushort *)&keyWord);
+      }
+    }
   }
+  uint remaining = *(uint *)(base + 0x30);
+  if (remaining != 0) return remaining;
+  void *global = *(void **)0x100945b0;
+  ((RemoveABI)R6GameServiceAddresses::RemoveAllNodesForKey)(global,(const ushort *)(base + 4));
+  using MethodABI = uint (__fastcall *)(void *);
+  ((MethodABI)R6GameServiceAddresses::CloseSocketAndReset)((void *)(base + 8));
+  global = *(void **)0x100945b0;
+  uint globalCount = *(uint *)((uint)global + 0x10);
+  if (globalCount == 0) {
+    if (global != 0) {
+      ((MethodABI)R6GameServiceAddresses::DestroyBucketChains)(global);
+      TailFreeThroughGlobalAllocator(global);
+    }
+    *(uint *)0x100945b0 = 0;
+  }
+  ((MethodABI)R6GameServiceAddresses::DestroyKeyedRecordStorage)(owner);
+  return TailFreeThroughGlobalAllocator(owner);
 }
 
 // Send current record+10 bytes/count14 to address8/WORDc through socket owner+8; WORD load retains incoming EAX upper16.
 // Compare returned byte count with CURRENT record14. Mismatch stores current socket error at owner18 and clears only AL.
 // Equal count sets only AL1 of returned count; no local EH, status normalization or fixed pre-send length comparison. RET4.
-// R6GameService.dll @ 10060610 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall SendKeyedRecordPayload(void *owner,void *record)
+// R6GameService.dll @ 10060610 : ECX/EAX view; one native stack word, RET4.
+uint SendKeyedRecordPayload([[r6abi::register_input("ecx")]] void *owner,void *record,
+    [[r6abi::register_input("eax")]] uint eaxAtEntry)
 {
-  __asm {
-    push    ebx
-    push    esi
-    mov    esi,DWORD PTR [esp+0xc]
-    push    edi
-    mov    edi,ecx
-    mov    ax,WORD PTR [esi+0xc]
-    mov    ecx,DWORD PTR [esi+0x8]
-    mov    edx,DWORD PTR [esi+0x14]
-    push    eax
-    mov    eax,DWORD PTR [esi+0x10]
-    lea    ebx,[edi+0x8]
-    push    ecx
-    push    edx
-    push    eax
-    mov    ecx,ebx
-    call    R6GameServiceAddresses::SendSocketBytesToIPv4
-    cmp    eax,DWORD PTR [esi+0x14]
-    je    Branch7
-    mov    ecx,ebx
-    call    R6GameServiceAddresses::GetSocketLastError
-    mov    DWORD PTR [edi+0x18],eax
-    pop    edi
-    pop    esi
-    xor    al,al
-    pop    ebx
-    ret    0x4
-  Branch7:
-    pop    edi
-    pop    esi
-    mov    al,0x1
-    pop    ebx
-    ret    0x4
-  }
+  uint base = (uint)owner;
+  uint item = (uint)record;
+  uint portWord = (eaxAtEntry & 0xffff0000) | *(ushort *)(item + 0xc);
+  uint address = *(uint *)(item + 8);
+  uint count = *(uint *)(item + 0x14);
+  uint bytes = *(uint *)(item + 0x10);
+  void *socket = (void *)(base + 8);
+  uint result = (uint)SendSocketBytesToIPv4(socket,bytes,count,address,portWord);
+  if (result == *(uint *)(item + 0x14)) return (result & 0xffffff00) | 1;
+  uint error = GetSocketLastError((int)socket);
+  *(uint *)(base + 0x18) = error;
+  return error & 0xffffff00;
 }
 
 // Hash INITIAL key WORD by signed bucket-distance/4 then unsigned DIV; zero bucket count reaches native DIV0.
 // Delete matching interior nodes before cached original head, unlink BEFORE free, then decrement CURRENT count10.
 // Reload original key pointer after interior frees; key WORD and current chain/bucket base remain live. No payload deletion/EH. RET4/count.
 // R6GameService.dll @ 100618e0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall RemoveAllNodesForKey(void *table,const ushort *key)
+uint __thiscall RemoveAllNodesForKey(void *table,const ushort *key)
 {
-  __asm {
-    push    ecx
-    push    ebx
-    push    ebp
-    push    esi
-    mov    esi,ecx
-    mov    ecx,DWORD PTR [esp+0x14]
-    push    edi
-    mov    edi,DWORD PTR [esi+0x8]
-    mov    edx,DWORD PTR [esi+0x4]
-    sub    edi,edx
-    xor    eax,eax
-    mov    ax,WORD PTR [ecx]
-    xor    edx,edx
-    sar    edi,0x2
-    div    edi
-    mov    eax,DWORD PTR [esi+0x4]
-    xor    ebp,ebp
-    mov    DWORD PTR [esp+0x10],edx
-    mov    ebx,DWORD PTR [eax+edx*4]
-    test    ebx,ebx
-    je    Branch12
-    mov    eax,DWORD PTR [ebx]
-    mov    edi,ebx
-    test    eax,eax
-    je    Branch11
-  Branch8:
-    mov    dx,WORD PTR [eax+0x4]
-    cmp    dx,WORD PTR [ecx]
-    jne    Branch9
-    mov    ecx,DWORD PTR [eax]
-    push    eax
-    mov    DWORD PTR [edi],ecx
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    ecx,DWORD PTR [esi+0x10]
-    mov    eax,DWORD PTR [edi]
-    inc    ebp
-    dec    ecx
-    mov    DWORD PTR [esi+0x10],ecx
-    mov    ecx,DWORD PTR [esp+0x18]
-    jmp    Branch10
-  Branch9:
-    mov    edi,eax
-    mov    eax,DWORD PTR [eax]
-  Branch10:
-    test    eax,eax
-    jne    Branch8
-    mov    edx,DWORD PTR [esp+0x10]
-  Branch11:
-    mov    ax,WORD PTR [ebx+0x4]
-    cmp    ax,WORD PTR [ecx]
-    jne    Branch12
-    mov    ecx,DWORD PTR [esi+0x4]
-    mov    eax,DWORD PTR [ebx]
-    push    ebx
-    mov    DWORD PTR [ecx+edx*4],eax
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    eax,DWORD PTR [esi+0x10]
-    inc    ebp
-    dec    eax
-    mov    DWORD PTR [esi+0x10],eax
-  Branch12:
-    pop    edi
-    mov    eax,ebp
-    pop    esi
-    pop    ebp
-    pop    ebx
-    pop    ecx
-    ret    0x4
+  uint base = (uint)table;
+  const ushort *currentKey = key;
+  uint end = *(uint *)(base + 8);
+  uint begin = *(uint *)(base + 4);
+  uint distance = end - begin;
+  ushort initial = *currentKey;
+  uint bucketCount = (uint)((int)distance >> 2);
+  uint bucketIndex = initial % bucketCount;
+  uint buckets = *(uint *)(base + 4);
+  uint removed = 0;
+  uint head = *(uint *)(buckets + bucketIndex * 4);
+  if (head == 0) return removed;
+  uint node = *(uint *)head;
+  uint previous = head;
+  while (node != 0) {
+    ushort candidate = *(ushort *)(node + 4);
+    if (candidate == *currentKey) {
+      uint next = *(uint *)node;
+      *(uint *)previous = next;
+      TailFreeThroughGlobalAllocator((void *)node);
+      uint count = *(uint *)(base + 0x10);
+      node = *(uint *)previous;
+      ++removed;
+      *(uint *)(base + 0x10) = count - 1;
+      currentKey = key;
+    } else {
+      previous = node;
+      node = *(uint *)node;
+    }
   }
+  ushort headKey = *(ushort *)(head + 4);
+  if (headKey == *currentKey) {
+    uint currentBuckets = *(uint *)(base + 4);
+    uint next = *(uint *)head;
+    *(uint *)(currentBuckets + bucketIndex * 4) = next;
+    TailFreeThroughGlobalAllocator((void *)head);
+    uint count = *(uint *)(base + 0x10);
+    ++removed;
+    *(uint *)(base + 0x10) = count - 1;
+  }
+  return removed;
 }
 
 // Free auxiliary94, release WORD storage68, erase pointer range38/release its storage3c, clear key table20/free24.
 // Parent entry S: ownerS-28, word descriptorS-24, current subobjectS-20, stateS-4; each cleanup stage has its own map.
 // Preserve cursor copies/by-value calls, staged disarm, genuine socket no-op, unchanged fields and raw final EAX.
 // R6GameService.dll @ 100602f0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall DestroyKeyedRecordStorage(void *owner)
+uint __fastcall DestroyKeyedRecordStorage(void *owner)
 {
-  __asm {
-    push    0xffffffff
-    push    R6GameServiceAddresses::SelectKeyedRecordDestructionEH
-    mov    eax,fs:0x0
-    push    eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x1c
-    push    ebp
-    push    esi
-    mov    esi,ecx
-    push    edi
-    mov    DWORD PTR [esp+0xc],esi
-    mov    DWORD PTR [esp+0x30],0x0
-    mov    eax,DWORD PTR [esi+0x94]
-    push    eax
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    lea    edi,[esi+0x68]
-    mov    DWORD PTR [esp+0x10],edi
-    sub    esp,0x10
-    lea    ecx,[edi+0x10]
-    mov    eax,esp
-    mov    DWORD PTR [esp+0x24],esp
-    mov    edx,DWORD PTR [ecx]
-    sub    esp,0x10
-    mov    DWORD PTR [eax],edx
-    mov    DWORD PTR [esp+0x34],esp
-    mov    edx,DWORD PTR [ecx+0x4]
-    mov    BYTE PTR [esp+0x50],0x3
-    mov    DWORD PTR [eax+0x4],edx
-    mov    edx,DWORD PTR [ecx+0x8]
-    mov    DWORD PTR [eax+0x8],edx
-    mov    ecx,DWORD PTR [ecx+0xc]
-    mov    DWORD PTR [eax+0xc],ecx
-    mov    ecx,esp
-    push    edi
-    call    R6GameServiceAddresses::CopySegmentedCursor
-    call    R6GameServiceAddresses::CopyByValueCursorArgumentsToScratch
-    mov    ecx,edi
-    mov    BYTE PTR [esp+0x30],0x2
-    call    R6GameServiceAddresses::ReleaseSegmentedWordBlocks
-    lea    edi,[esi+0x38]
-    mov    DWORD PTR [esp+0x14],edi
-    mov    DWORD PTR [edi],R6GameServiceAddresses::clPointerDeque_PAVclSegmentVTable
-    sub    esp,0x10
-    lea    edx,[edi+0x14]
-    mov    eax,esp
-    sub    esp,0x10
-    mov    ecx,DWORD PTR [edx]
-    lea    ebp,[edi+0x4]
-    mov    DWORD PTR [eax],ecx
-    push    esp
-    mov    ecx,DWORD PTR [edx+0x4]
-    mov    BYTE PTR [esp+0x54],0x4
-    mov    DWORD PTR [eax+0x4],ecx
-    mov    ecx,DWORD PTR [edx+0x8]
-    mov    DWORD PTR [eax+0x8],ecx
-    mov    ecx,ebp
-    mov    edx,DWORD PTR [edx+0xc]
-    mov    DWORD PTR [eax+0xc],edx
-    call    R6GameServiceAddresses::CopyWordsToOutput
-    lea    eax,[esp+0x38]
-    mov    ecx,edi
-    push    eax
-    call    R6GameServiceAddresses::EraseSegmentedObjectRange
-    mov    ecx,ebp
-    mov    BYTE PTR [esp+0x30],0x1
-    call    R6GameServiceAddresses::ReleaseSegmentedDwordBufferBlocks
-    lea    edi,[esi+0x20]
-    mov    DWORD PTR [esp+0x14],edi
-    mov    ecx,edi
-    mov    BYTE PTR [esp+0x30],0x6
-    call    R6GameServiceAddresses::Clear16BitKeyBuckets
-    lea    ecx,[edi+0x4]
-    mov    BYTE PTR [esp+0x30],0x0
-    call    R6GameServiceAddresses::ReleaseNonNullFirstWordBuffer
-    lea    ecx,[esi+0x8]
-    mov    DWORD PTR [esp+0x30],0xffffffff
-    call    R6GameServiceAddresses::list_node_support_NoOp
-    mov    ecx,DWORD PTR [esp+0x28]
-    pop    edi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    esi
-    pop    ebp
-    add    esp,0x28
-    ret
-  }
+  uint base = (uint)owner;
+  KeyedRecordDestructionCleanup cleanup = {owner,0,0,0};
+  void *auxiliary = *(void **)(base + 0x94);
+  TailFreeThroughGlobalAllocator(auxiliary);
+  void *wordDescriptor = (void *)(base + 0x68);
+  cleanup.savedWordDescriptor = wordDescriptor;
+  SegmentedWordCursor wordFinish,wordStart;
+  uint *wordFinishWords = (uint *)&wordFinish;
+  cleanup.savedSubobject = &wordFinish;
+  uint value = *(uint *)(base + 0x78);
+  wordFinishWords[0] = value;
+  cleanup.savedSubobject = &wordStart;
+  value = *(uint *)(base + 0x7c);
+  cleanup.state = 3;
+  wordFinishWords[1] = value;
+  value = *(uint *)(base + 0x80);
+  wordFinishWords[2] = value;
+  value = *(uint *)(base + 0x84);
+  wordFinishWords[3] = value;
+  using CopyABI = void *(__thiscall *)(void *,const uint *);
+  ((CopyABI)R6GameServiceAddresses::CopySegmentedCursor)(&wordStart,(const uint *)wordDescriptor);
+  using ScratchABI = uint (__stdcall *)(SegmentedWordCursor,SegmentedWordCursor);
+  ((ScratchABI)R6GameServiceAddresses::CopyByValueCursorArgumentsToScratch)(wordStart,wordFinish);
+  using MethodABI = uint (__fastcall *)(void *);
+  cleanup.state = 2;
+  ((MethodABI)R6GameServiceAddresses::ReleaseSegmentedWordBlocks)(wordDescriptor);
+  uint container = base + 0x38;
+  cleanup.savedSubobject = (void *)container;
+  *(uint *)container = R6GameServiceAddresses::clPointerDeque_PAVclSegmentVTable;
+  SegmentedWordCursor pointerFinish,pointerStart,erased;
+  uint *pointerFinishWords = (uint *)&pointerFinish;
+  value = *(uint *)(container + 0x14);
+  void *pointerDescriptor = (void *)(container + 4);
+  pointerFinishWords[0] = value;
+  value = *(uint *)(container + 0x18);
+  cleanup.state = 4;
+  pointerFinishWords[1] = value;
+  value = *(uint *)(container + 0x1c);
+  pointerFinishWords[2] = value;
+  value = *(uint *)(container + 0x20);
+  pointerFinishWords[3] = value;
+  using OutputABI = void *(__thiscall *)(void *,void *);
+  ((OutputABI)R6GameServiceAddresses::CopyWordsToOutput)(pointerDescriptor,&pointerStart);
+  using EraseABI = SegmentedWordCursor *(__thiscall *)(
+      void *,SegmentedWordCursor *,SegmentedWordCursor,SegmentedWordCursor);
+  ((EraseABI)R6GameServiceAddresses::EraseSegmentedObjectRange)(
+      (void *)container,&erased,pointerStart,pointerFinish);
+  cleanup.state = 1;
+  ((MethodABI)R6GameServiceAddresses::ReleaseSegmentedDwordBufferBlocks)(pointerDescriptor);
+  uint table = base + 0x20;
+  cleanup.savedSubobject = (void *)table;
+  cleanup.state = 6;
+  ((MethodABI)R6GameServiceAddresses::Clear16BitKeyBuckets)((void *)table);
+  cleanup.state = 0;
+  uint result = ((MethodABI)R6GameServiceAddresses::ReleaseNonNullFirstWordBuffer)((void *)(table + 4));
+  cleanup.state = -1;
+  using EmptyABI = void (__fastcall *)(void *);
+  ((EmptyABI)R6GameServiceAddresses::list_node_support_NoOp)((void *)(base + 8));
+  return result;
 }
 
 // Free cached-next nodes, zero each CURRENT bucket head and finally count10; reload unsigned bucket bound each round.
 // Free CURRENT nonnull bucket array4 last, retaining base/end/capacity fields and raw final allocator EAX; no local EH.
 // R6GameService.dll @ 10060900 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall DestroyBucketChains(void *table)
+uint __fastcall DestroyBucketChains(void *table)
 {
-  __asm {
-    push    ebx
-    push    edi
-    mov    edi,ecx
-    xor    ebx,ebx
-    mov    eax,DWORD PTR [edi+0x8]
-    mov    edx,DWORD PTR [edi+0x4]
-    sub    eax,edx
-    sar    eax,0x2
-    je    Branch16
-    push    esi
-  Branch13:
-    mov    ecx,DWORD PTR [edi+0x4]
-    mov    eax,DWORD PTR [ecx+ebx*4]
-    test    eax,eax
-    je    Branch15
-  Branch14:
-    mov    esi,DWORD PTR [eax]
-    push    eax
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    test    esi,esi
-    mov    eax,esi
-    jne    Branch14
-  Branch15:
-    mov    edx,DWORD PTR [edi+0x4]
-    inc    ebx
-    mov    DWORD PTR [edx+ebx*4-0x4],0x0
-    mov    eax,DWORD PTR [edi+0x8]
-    sub    eax,DWORD PTR [edi+0x4]
-    sar    eax,0x2
-    cmp    ebx,eax
-    jb    Branch13
-    pop    esi
-  Branch16:
-    mov    DWORD PTR [edi+0x10],0x0
-    mov    edi,DWORD PTR [edi+0x4]
-    test    edi,edi
-    je    Branch17
-    push    edi
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch17:
-    pop    edi
-    pop    ebx
-    ret
+  uint base = (uint)table;
+  uint index = 0;
+  uint end = *(uint *)(base + 8);
+  uint begin = *(uint *)(base + 4);
+  uint bound = (uint)((int)(end - begin) >> 2);
+  if (bound != 0) {
+    do {
+      uint buckets = *(uint *)(base + 4);
+      uint node = *(uint *)(buckets + index * 4);
+      while (node != 0) {
+        uint next = *(uint *)node;
+        TailFreeThroughGlobalAllocator((void *)node);
+        node = next;
+      }
+      uint currentBuckets = *(uint *)(base + 4);
+      ++index;
+      *(uint *)(currentBuckets + index * 4 - 4) = 0;
+      end = *(uint *)(base + 8);
+      begin = *(uint *)(base + 4);
+      bound = (uint)((int)(end - begin) >> 2);
+    } while (index < bound);
   }
+  *(uint *)(base + 0x10) = 0;
+  void *buckets = *(void **)(base + 4);
+  if (buckets != 0) return TailFreeThroughGlobalAllocator(buckets);
+  return bound;
 }
 
 // Tail-forward unchanged receiver/registers/stack and raw return to complete bucket destruction60900.
 // R6GameService.dll @ 100602b0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall ForwardBucketCleanup(void *table)
+uint __fastcall ForwardBucketCleanup(void *table)
 {
-  __asm {
-    jmp    R6GameServiceAddresses::DestroyBucketChains
-  }
+  using DestroyABI = uint (__fastcall *)(void *);
+  return ((DestroyABI)R6GameServiceAddresses::DestroyBucketChains)(table);
 }
 
 // Free nodes only, retaining payloads/array; cache each next pointer before free, reload current base/end afterward.
 // Zero CURRENT bucket slots and count10, leave other fields, return final signed bucket-distance/4 in EAX. No local EH.
 // R6GameService.dll @ 10061190 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall Clear16BitKeyBuckets(void *table)
+uint __fastcall Clear16BitKeyBuckets(void *table)
 {
-  __asm {
-    push    ebx
-    push    edi
-    mov    edi,ecx
-    xor    ebx,ebx
-    mov    eax,DWORD PTR [edi+0x8]
-    mov    edx,DWORD PTR [edi+0x4]
-    sub    eax,edx
-    sar    eax,0x2
-    je    Branch21
-    push    esi
-  Branch18:
-    mov    ecx,DWORD PTR [edi+0x4]
-    mov    eax,DWORD PTR [ecx+ebx*4]
-    test    eax,eax
-    je    Branch20
-  Branch19:
-    mov    esi,DWORD PTR [eax]
-    push    eax
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    test    esi,esi
-    mov    eax,esi
-    jne    Branch19
-  Branch20:
-    mov    edx,DWORD PTR [edi+0x4]
-    inc    ebx
-    mov    DWORD PTR [edx+ebx*4-0x4],0x0
-    mov    eax,DWORD PTR [edi+0x8]
-    sub    eax,DWORD PTR [edi+0x4]
-    sar    eax,0x2
-    cmp    ebx,eax
-    jb    Branch18
-    pop    esi
-  Branch21:
-    mov    DWORD PTR [edi+0x10],0x0
-    pop    edi
-    pop    ebx
-    ret
+  uint base = (uint)table;
+  uint index = 0;
+  uint end = *(uint *)(base + 8);
+  uint begin = *(uint *)(base + 4);
+  uint bound = (uint)((int)(end - begin) >> 2);
+  if (bound != 0) {
+    do {
+      uint buckets = *(uint *)(base + 4);
+      uint node = *(uint *)(buckets + index * 4);
+      while (node != 0) {
+        uint next = *(uint *)node;
+        TailFreeThroughGlobalAllocator((void *)node);
+        node = next;
+      }
+      uint currentBuckets = *(uint *)(base + 4);
+      ++index;
+      *(uint *)(currentBuckets + index * 4 - 4) = 0;
+      end = *(uint *)(base + 8);
+      begin = *(uint *)(base + 4);
+      bound = (uint)((int)(end - begin) >> 2);
+    } while (index < bound);
   }
+  *(uint *)(base + 0x10) = 0;
+  return bound;
 }
 
 // State0: reload CURRENT saved ownerS-28, add8 and tail-forward to genuine socket no-op.
@@ -502,7 +413,7 @@ const R6GameServiceNative::UnwindEntry DestroyKeyedRecordStorageUnwindMap[7] = {
 };
 
 // Literal native cleanup map or FuncInfo; preserve staged cleanup transitions.
-// R6GameService.dll data @ 10084888 : native storage identity retained.
+// R6GameService.dll data @ 100848c0 : native storage identity retained.
 const R6GameServiceNative::FuncInfo DestroyKeyedRecordStorageExceptionInfo = {
   0x19930520,
   0x7,

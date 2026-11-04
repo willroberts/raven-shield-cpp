@@ -25,7 +25,7 @@ int * __stdcall DecodeTransportRecordByHeaderClass(
   ExceptionList = &frame.previousExceptionList;
   byte *inputBytes = inputOrPendingAllocation;
   uint byteCount = sizeOrPendingAllocation;
-  uint valid = IsEncodedHeaderSizeValid(inputBytes,byteCount);
+  uint valid = IsEncodedHeaderSizeValid(inputBytes,byteCount,(uint)frame.previousExceptionList);
   if ((byte)valid == 0) {
     TailFreeThroughGlobalAllocator(inputBytes);
     ExceptionList = frame.previousExceptionList;
@@ -160,7 +160,7 @@ uint __fastcall DecodeQueuedTransportRecords(int providerAddress)
       }
     }
     uint packetByteCount = ReadHeaderSize24(frame.headerPrefix);
-    uint valid = IsEncodedHeaderSizeValid(frame.headerPrefix,availableOrPrefixBytes);
+    uint valid = IsEncodedHeaderSizeValid(frame.headerPrefix,availableOrPrefixBytes,(uint)frame.headerPrefix);
     if ((byte)valid == 0) {
       diagnostic((char *)R6GameServiceAddresses::TextTheMessageFormatIsNotCorrect);
       ExceptionList = frame.previousExceptionList;

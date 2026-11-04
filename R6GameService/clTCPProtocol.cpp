@@ -115,71 +115,72 @@ __declspec(naked) void * __thiscall DeleteQueuedConnection(void *owner,uint flag
   }
 }
 
+namespace {
+// Inferred saved receiver/state for the native reverse socket/send-list/receive-list destruction map.
+struct QueuedConnectionDestructionCleanup {
+  void *savedOwner;
+  int state;
+  // Resume only pending member cleanup, reloading the saved receiver before each action.
+  ~QueuedConnectionDestructionCleanup() noexcept(false) {
+    if (state >= 2) {
+      using EmptyABI = void (__thiscall *)(void *);
+      ((EmptyABI)R6GameServiceAddresses::ForwardToNoOp)((void *)((uint)savedOwner + 0x30));
+    }
+    using DestroyABI = uint (__thiscall *)(void *);
+    if (state >= 1) {
+      ((DestroyABI)R6GameServiceAddresses::ForwardToCircularListDestructor)((void *)((uint)savedOwner + 0x1c));
+    }
+    if (state >= 0) {
+      ((DestroyABI)R6GameServiceAddresses::ForwardToCircularListDestructor)((void *)((uint)savedOwner + 8));
+    }
+  }
+};
+}
+
 // Reinstalls protocol table, closes the connection and destroys socket context and two lists in reverse order.
 // State lowers before each destructor; final list return survives and interrupted current cleanup is not retried.
-// R6GameService.dll @ 1002e620 : native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall DestroyQueuedConnectionMembers(void *owner)
+// R6GameService.dll @ 1002e620 : inferred saved receiver/state correspond to native S-10/S-4.
+uint __fastcall DestroyQueuedConnectionMembers(void *owner)
 {
-  __asm {
-    push   0xffffffff
-    push   R6GameServiceAddresses::DestroyQueuedConnectionMembersSelectExceptionInfo
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    push   ecx
-    push   esi
-    mov    esi,ecx
-    mov    DWORD PTR [esp+0x4],esi
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clTCPProtocolVTable
-    mov    DWORD PTR [esp+0x10],0x2
-    call   R6GameServiceAddresses::CloseConnectionAndClearSendQueue
-    lea    ecx,[esi+0x30]
-    mov    BYTE PTR [esp+0x10],0x1
-    call   R6GameServiceAddresses::list_node_support_NoOp
-    lea    ecx,[esi+0x1c]
-    mov    BYTE PTR [esp+0x10],0x0
-    call   R6GameServiceAddresses::DestroyCircularList
-    lea    ecx,[esi+0x8]
-    mov    DWORD PTR [esp+0x10],0xffffffff
-    call   R6GameServiceAddresses::DestroyCircularList
-    mov    ecx,DWORD PTR [esp+0x8]
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x10
-    ret
-  }
+  QueuedConnectionDestructionCleanup cleanup{owner, -1};
+  uint base = (uint)owner;
+  *(uint *)base = R6GameServiceAddresses::clTCPProtocolVTable;
+  cleanup.state = 2;
+  using CloseABI = uint (__thiscall *)(void *);
+  ((CloseABI)R6GameServiceAddresses::CloseConnectionAndClearSendQueue)(owner);
+  void *socket = (void *)(base + 0x30);
+  cleanup.state = 1;
+  using EmptyABI = void (__thiscall *)(void *);
+  ((EmptyABI)R6GameServiceAddresses::list_node_support_NoOp)(socket);
+  void *sendQueue = (void *)(base + 0x1c);
+  cleanup.state = 0;
+  using DestroyABI = uint (__thiscall *)(void *);
+  ((DestroyABI)R6GameServiceAddresses::DestroyCircularList)(sendQueue);
+  void *receiveQueue = (void *)(base + 8);
+  cleanup.state = -1;
+  return ((DestroyABI)R6GameServiceAddresses::DestroyCircularList)(receiveQueue);
 }
 
 // Clears ready/send queue, closes embedded socket and publishes socket error only when close returns AL0.
 // Returns semantic AL1/0 with raw upper EAX from close/error helper; queue result is ignored.
-// R6GameService.dll @ 1002e910 : native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall CloseConnectionAndClearSendQueue(int owner)
+// R6GameService.dll @ 1002e910 : inferred status/socket fields; close and error helper upper EAX bits are retained.
+uint __fastcall CloseConnectionAndClearSendQueue(int owner)
 {
-  __asm {
-    push   esi
-    mov    esi,ecx
-    push   edi
-    lea    ecx,[esi+0x1c]
-    mov    BYTE PTR [esi+0x44],0x0
-    call   R6GameServiceAddresses::ClearBlockQueue
-    lea    edi,[esi+0x30]
-    mov    ecx,edi
-    call   R6GameServiceAddresses::CloseSocketAndReset
-    test   al,al
-    jne    Branch3
-    mov    ecx,edi
-    call   R6GameServiceAddresses::GetSocketLastError
-    mov    DWORD PTR [esi+0x40],eax
-    pop    edi
-    xor    al,al
-    pop    esi
-    ret
-  Branch3:
-    pop    edi
-    mov    al,0x1
-    pop    esi
-    ret
+  uint base = (uint)owner;
+  void *sendQueue = (void *)(base + 0x1c);
+  *(byte *)(base + 0x44) = 0;
+  using ClearABI = uint (__thiscall *)(void *);
+  ((ClearABI)R6GameServiceAddresses::ClearBlockQueue)(sendQueue);
+  void *socket = (void *)(base + 0x30);
+  using CloseABI = uint (__thiscall *)(void *);
+  uint result = ((CloseABI)R6GameServiceAddresses::CloseSocketAndReset)(socket);
+  if ((byte)result == 0) {
+    using ErrorABI = uint (__thiscall *)(void *);
+    result = ((ErrorABI)R6GameServiceAddresses::GetSocketLastError)(socket);
+    *(uint *)(base + 0x40) = result;
+    return result & 0xffffff00;
   }
+  return (result & 0xffffff00) | 1;
 }
 
 // If saved flag bit0 is set, forwards current saved owner+54 to empty cleanup.
@@ -284,215 +285,123 @@ uint __thiscall SetReceiveIdleLimit(void *connection,uint idleSeconds)
 
 // Receives1000-byte chunks into the FIFO and timestamps positive counts even when append rejects them.
 // Unsigned idle timeout sets97; current socket error can override it. Sticky owner error determines final AL.
-// R6GameService.dll @ 1002e6b0 : native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall PumpConnectionReceiveQueue(int connection)
+// R6GameService.dll @ 1002e6b0 : inferred connection fields; unsigned elapsed time and sticky-error AL result.
+uint __fastcall PumpConnectionReceiveQueue(int connection)
 {
-  __asm {
-    sub    esp,0x3e8
-    push   ebx
-    push   edi
-    mov    edi,ecx
-    push   esi
-    lea    ebx,[edi+0x30]
-  Branch5:
-    lea    eax,[esp+0xc]
-    push   0x3e8
-    push   eax
-    mov    ecx,ebx
-    call   R6GameServiceAddresses::ReceiveSocketBytes
-    mov    esi,eax
-    test   esi,esi
-    jle    Branch6
-    lea    ecx,[esp+0xc]
-    push   esi
-    push   ecx
-    lea    ecx,[edi+0x8]
-    call   R6GameServiceAddresses::AppendBytesToBlockQueue
-    push   0x0
-    call   R6GameServiceAddresses::time
-    add    esp,0x4
-    mov    DWORD PTR [edi+0x4c],eax
-  Branch6:
-    cmp    esi,0x3e8
-    je     Branch5
-    push   0x0
-    call   R6GameServiceAddresses::time
-    mov    ecx,DWORD PTR [edi+0x50]
-    add    esp,0x4
-    test   ecx,ecx
-    jbe    Branch7
-    mov    edx,DWORD PTR [edi+0x4c]
-    mov    esi,eax
-    sub    esi,edx
-    cmp    esi,ecx
-    jbe    Branch7
-    push   edx
-    push   eax
-    push   R6GameServiceAddresses::TextTimeoutDD
-    mov    DWORD PTR [edi+0x40],0x97
-    call   R6GameServiceAddresses::list_node_support_NoOp
-    add    esp,0xc
-  Branch7:
-    mov    ecx,ebx
-    call   R6GameServiceAddresses::GetSocketLastError
-    test   eax,eax
-    pop    esi
-    je     Branch8
-    mov    ecx,ebx
-    call   R6GameServiceAddresses::GetSocketLastError
-    mov    DWORD PTR [edi+0x40],eax
-  Branch8:
-    mov    eax,DWORD PTR [edi+0x40]
-    pop    edi
-    test   eax,eax
-    sete   al
-    pop    ebx
-    add    esp,0x3e8
-    ret
+  uint base = (uint)connection;
+  void *socket = (void *)(base + 0x30);
+  byte buffer[1000];
+  using ReceiveABI = int (__thiscall *)(void *,byte *,uint);
+  using AppendABI = uint (__thiscall *)(void *,const byte *,uint);
+  using TimeABI = uint (__cdecl *)(void *);
+  using ErrorABI = uint (__thiscall *)(void *);
+  int received;
+  do {
+    received = ((ReceiveABI)R6GameServiceAddresses::ReceiveSocketBytes)(socket,buffer,1000);
+    if (received > 0) {
+      ((AppendABI)R6GameServiceAddresses::AppendBytesToBlockQueue)((void *)(base + 8),buffer,(uint)received);
+      uint now = ((TimeABI)R6GameServiceAddresses::time)(nullptr);
+      *(uint *)(base + 0x4c) = now;
+    }
+  } while (received == 1000);
+  uint now = ((TimeABI)R6GameServiceAddresses::time)(nullptr);
+  uint limit = *(uint *)(base + 0x50);
+  if (limit != 0) {
+    uint lastReceive = *(uint *)(base + 0x4c);
+    uint elapsed = now - lastReceive;
+    if (elapsed > limit) {
+      *(uint *)(base + 0x40) = 0x97;
+      using TraceABI = void (__cdecl *)(const void *,uint,uint);
+      ((TraceABI)R6GameServiceAddresses::list_node_support_NoOp)(
+          (const void *)R6GameServiceAddresses::TextTimeoutDD,now,lastReceive);
+    }
   }
+  uint socketError = ((ErrorABI)R6GameServiceAddresses::GetSocketLastError)(socket);
+  if (socketError != 0) {
+    socketError = ((ErrorABI)R6GameServiceAddresses::GetSocketLastError)(socket);
+    *(uint *)(base + 0x40) = socketError;
+  }
+  uint error = *(uint *)(base + 0x40);
+  return (error & 0xffffff00) | (error == 0);
 }
 
 // Peeks/sends with signed1000-byte cap, consumes positive provider counts and timestamps even rejected consumption.
 // Prefix/consume results are ignored; a stopped send leaves socket error separate from sticky owner error.
-// R6GameService.dll @ 1002e760 : native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall FlushConnectionSendQueue(int connection)
+// R6GameService.dll @ 1002e760 : inferred queue fields; the uninitialized buffer retains partial-prefix effects.
+uint __fastcall FlushConnectionSendQueue(int connection)
 {
-  __asm {
-    sub    esp,0x3e8
-    push   ebx
-    push   esi
-    push   edi
-    mov    esi,ecx
-  Branch9:
-    mov    ebx,DWORD PTR [esi+0x28]
-    test   ebx,ebx
-    je     Branch11
-    cmp    ebx,0x3e8
-    jle    Branch10
-    mov    ebx,0x3e8
-  Branch10:
-    lea    eax,[esp+0xc]
-    lea    edi,[esi+0x1c]
-    push   eax
-    push   ebx
-    mov    ecx,edi
-    call   R6GameServiceAddresses::CopyBlockQueuePrefix
-    lea    ecx,[esp+0xc]
-    push   ebx
-    push   ecx
-    lea    ecx,[esi+0x30]
-    call   R6GameServiceAddresses::SendSocketBytes
-    test   eax,eax
-    jle    Branch11
-    lea    edx,[esp+0xc]
-    mov    ecx,edi
-    push   edx
-    push   eax
-    call   R6GameServiceAddresses::ConsumeBlockQueueBytes
-    push   0x0
-    call   R6GameServiceAddresses::time
-    add    esp,0x4
-    mov    DWORD PTR [esi+0x48],eax
-    jmp    Branch9
-  Branch11:
-    mov    eax,DWORD PTR [esi+0x40]
-    pop    edi
-    test   eax,eax
-    pop    esi
-    pop    ebx
-    sete   al
-    add    esp,0x3e8
-    ret
+  uint base = (uint)connection;
+  byte buffer[1000];
+  using PrefixABI = uint (__thiscall *)(void *,uint,byte *);
+  using SendABI = int (__thiscall *)(void *,const byte *,uint);
+  using ConsumeABI = uint (__thiscall *)(void *,uint,byte *);
+  using TimeABI = uint (__cdecl *)(void *);
+  for (;;) {
+    uint queued = *(uint *)(base + 0x28);
+    if (queued == 0) break;
+    uint requested = (int)queued > 1000 ? 1000 : queued;
+    void *queue = (void *)(base + 0x1c);
+    ((PrefixABI)R6GameServiceAddresses::CopyBlockQueuePrefix)(queue,requested,buffer);
+    int sent = ((SendABI)R6GameServiceAddresses::SendSocketBytes)((void *)(base + 0x30),buffer,requested);
+    if (sent <= 0) break;
+    ((ConsumeABI)R6GameServiceAddresses::ConsumeBlockQueueBytes)(queue,(uint)sent,buffer);
+    uint now = ((TimeABI)R6GameServiceAddresses::time)(nullptr);
+    *(uint *)(base + 0x48) = now;
   }
+  uint error = *(uint *)(base + 0x40);
+  return (error & 0xffffff00) | (error == 0);
 }
 
 // Sends directly only with empty queue; queues a suffix after prior progress, or appends immediately to an existing queue.
 // Append status is ignored; late original source/length and mutable progress byte retain native alias/raw EAX effects.
-// R6GameService.dll @ 1002e7d0 : native control/access order and raw ABI retained.
-__declspec(naked) char __thiscall SendOrQueueConnectionBytes(void *connection,int source,uint byteCount)
+// Only AL is the declared result; the native saved ECX high byte also holds progress.
+// R6GameService.dll @ 1002e7d0 : inferred progress byte maps to native S-1; original arguments remain live.
+char __thiscall SendOrQueueConnectionBytes(void *connection,int source,uint byteCount)
 {
-  __asm {
-    push   ecx
-    push   ebx
-    push   ebp
-    mov    ebp,ecx
-    xor    al,al
-    push   esi
-    push   edi
-    mov    ecx,DWORD PTR [ebp+0x28]
-    mov    BYTE PTR [esp+0x13],al
-    test   ecx,ecx
-    jne    Branch16
-    mov    ecx,DWORD PTR [esp+0x1c]
-    xor    edi,edi
-    test   ecx,ecx
-    mov    ebx,ecx
-    mov    esi,0x1
-    jle    Branch17
-  Branch12:
-    test   esi,esi
-    jle    Branch15
-    cmp    ebx,0x3e8
-    mov    eax,0x3e8
-    jg     Branch13
-    mov    eax,ebx
-  Branch13:
-    push   eax
-    mov    eax,DWORD PTR [esp+0x1c]
-    lea    ecx,[edi+eax*1]
-    push   ecx
-    lea    ecx,[ebp+0x30]
-    call   R6GameServiceAddresses::SendSocketBytes
-    mov    esi,eax
-    test   esi,esi
-    jle    Branch14
-    push   0x0
-    sub    ebx,esi
-    add    edi,esi
-    mov    BYTE PTR [esp+0x17],0x1
-    call   R6GameServiceAddresses::time
-    add    esp,0x4
-    mov    DWORD PTR [ebp+0x48],eax
-  Branch14:
-    mov    al,BYTE PTR [esp+0x13]
-    mov    ecx,DWORD PTR [esp+0x1c]
-    test   ebx,ebx
-    jg     Branch12
-  Branch15:
-    test   al,al
-    je     Branch17
-    test   ebx,ebx
-    je     Branch17
-    mov    edx,DWORD PTR [esp+0x18]
-    sub    ecx,edi
-    add    edi,edx
-    push   ecx
-    push   edi
-    lea    ecx,[ebp+0x1c]
-    call   R6GameServiceAddresses::AppendBytesToBlockQueue
-    mov    al,BYTE PTR [esp+0x13]
-    pop    edi
-    pop    esi
-    pop    ebp
-    pop    ebx
-    pop    ecx
-    ret    0x8
-  Branch16:
-    mov    eax,DWORD PTR [esp+0x1c]
-    mov    ecx,DWORD PTR [esp+0x18]
-    push   eax
-    push   ecx
-    lea    ecx,[ebp+0x1c]
-    call   R6GameServiceAddresses::AppendBytesToBlockQueue
-    mov    al,0x1
-  Branch17:
-    pop    edi
-    pop    esi
-    pop    ebp
-    pop    ebx
-    pop    ecx
-    ret    0x8
+  uint base = (uint)connection;
+  byte progress = 0;
+  uint queued = *(uint *)(base + 0x28);
+  using AppendABI = uint (__thiscall *)(void *,const byte *,uint);
+  if (queued != 0) {
+    uint queuedCount = byteCount;
+    uint queuedSource = (uint)source;
+    ((AppendABI)R6GameServiceAddresses::AppendBytesToBlockQueue)(
+        (void *)(base + 0x1c),(const byte *)queuedSource,queuedCount);
+    return 1;
   }
+  uint initialCount = byteCount;
+  uint transferred = 0;
+  uint remaining = initialCount;
+  int lastSend = 1;
+  if ((int)initialCount <= 0) return 0;
+  byte testedProgress = 0;
+  uint currentCount = initialCount;
+  using SendABI = int (__thiscall *)(void *,const byte *,uint);
+  using TimeABI = uint (__cdecl *)(void *);
+  while ((int)remaining > 0 && lastSend > 0) {
+    uint requested = (int)remaining > 1000 ? 1000 : remaining;
+    uint currentSource = (uint)source;
+    lastSend = ((SendABI)R6GameServiceAddresses::SendSocketBytes)(
+        (void *)(base + 0x30),(const byte *)(currentSource + transferred),requested);
+    if (lastSend > 0) {
+      remaining -= (uint)lastSend;
+      transferred += (uint)lastSend;
+      progress = 1;
+      uint now = ((TimeABI)R6GameServiceAddresses::time)(nullptr);
+      *(uint *)(base + 0x48) = now;
+    }
+    testedProgress = progress;
+    currentCount = byteCount;
+  }
+  if (testedProgress != 0 && remaining != 0) {
+    uint currentSource = (uint)source;
+    uint suffixCount = currentCount - transferred;
+    uint suffixSource = transferred + currentSource;
+    ((AppendABI)R6GameServiceAddresses::AppendBytesToBlockQueue)(
+        (void *)(base + 0x1c),(const byte *)suffixSource,suffixCount);
+    return (char)progress;
+  }
+  return (char)testedProgress;
 }
 
 // Sends through socket+30, copying a nonzero current socket error through a second load and preserving full send result.

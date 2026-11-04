@@ -1,6 +1,18 @@
 #include "native_addresses.h"
 #include "native_records.h"
 
+// Inferred guard: an interrupted destruction retries release using the current saved owner and storage fields.
+struct SegmentedWordStorageCleanup {
+  void *savedOwner;
+  bool armed;
+  // Keep the retry active through all normal block/map frees, including a failing final map free.
+  ~SegmentedWordStorageCleanup() noexcept(false)
+  {
+    using ReleaseABI = uint (__fastcall *)(void *);
+    if (armed) ((ReleaseABI)R6GameServiceAddresses::ReleaseSegmentedWordBlocks)(savedOwner);
+  }
+};
+
 // Segmented word storage: two16-byte cursors plus map/capacity; whole class identity remains unresolved.
 
 // Clear ten DWORDs, arm two empty-base cleanup states and initialize storage with CURRENT second full argument.
@@ -45,147 +57,82 @@ __declspec(naked) void *__thiscall InitializeSegmentedWords(void *owner,uint unu
 
 // Tail-forward original receiver/registers/stack and raw return to segmented-word destruction.
 // R6GameService.dll @ 1005d120 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall ForwardSegmentedWordDestroy(void *owner)
+uint __fastcall ForwardSegmentedWordDestroy(void *owner)
 {
-  __asm {
-    jmp    R6GameServiceAddresses::ReleaseSegmentedWordStorage
-  }
+  using DestroyABI = uint (__fastcall *)(void *);
+  return ((DestroyABI)R6GameServiceAddresses::ReleaseSegmentedWordStorage)(owner);
 }
 
 // Snapshot finish and perform five literal cursor copies, then gate on current map20 and release active block slots inclusively.
 // Cache slot range c..1c+4 before frees; reload each slot payload and CURRENT map20 for final free. Leave all owner fields stale.
 // EntryS: saved ownerS-70/stateS-4. State0 stays armed through normal cleanup; unwind repeats current release viaf480.
 // R6GameService.dll @ 1005d130 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall ReleaseSegmentedWordStorage(void *owner)
+uint __fastcall ReleaseSegmentedWordStorage(void *owner)
 {
-  __asm {
-    push    0xffffffff
-    push    R6GameServiceAddresses::SelectSegmentedWordDestroyEH
-    mov    eax,fs:0x0
-    push    eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x64
-    push    ebx
-    mov    ebx,ecx
-    mov    DWORD PTR [esp+0x4],ebx
-    lea    eax,[ebx+0x10]
-    push    ebx
-    mov    DWORD PTR [esp+0x74],0x0
-    mov    ecx,DWORD PTR [eax]
-    mov    DWORD PTR [esp+0xc],ecx
-    mov    edx,DWORD PTR [eax+0x4]
-    mov    DWORD PTR [esp+0x10],edx
-    mov    ecx,DWORD PTR [eax+0x8]
-    mov    DWORD PTR [esp+0x14],ecx
-    lea    ecx,[esp+0x1c]
-    mov    edx,DWORD PTR [eax+0xc]
-    mov    DWORD PTR [esp+0x18],edx
-    call    R6GameServiceAddresses::CopySegmentedCursor
-    lea    eax,[esp+0x8]
-    lea    ecx,[esp+0x28]
-    push    eax
-    call    R6GameServiceAddresses::CopySegmentedCursor
-    lea    ecx,[esp+0x18]
-    push    ecx
-    lea    ecx,[esp+0x3c]
-    call    R6GameServiceAddresses::CopySegmentedCursor
-    lea    edx,[esp+0x28]
-    lea    ecx,[esp+0x48]
-    push    edx
-    call    R6GameServiceAddresses::CopySegmentedCursor
-    lea    eax,[esp+0x38]
-    lea    ecx,[esp+0x58]
-    push    eax
-    call    R6GameServiceAddresses::CopySegmentedCursor
-    mov    eax,DWORD PTR [ebx+0x20]
-    test    eax,eax
-    je    Branch3
-    push    esi
-    mov    esi,DWORD PTR [ebx+0xc]
-    push    edi
-    mov    edi,DWORD PTR [ebx+0x1c]
-    add    edi,0x4
-    cmp    esi,edi
-    jae    Branch2
-  Branch1:
-    mov    ecx,DWORD PTR [esi]
-    push    ecx
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    add    esi,0x4
-    cmp    esi,edi
-    jb    Branch1
-  Branch2:
-    mov    edx,DWORD PTR [ebx+0x20]
-    push    edx
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    pop    edi
-    pop    esi
-  Branch3:
-    mov    ecx,DWORD PTR [esp+0x68]
-    pop    ebx
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x70
-    ret
+  SegmentedWordStorageCleanup cleanup = {owner,true};
+  uint finish[4];
+  finish[0] = *(uint *)((uint)owner + 0x10);
+  finish[1] = *(uint *)((uint)owner + 0x14);
+  finish[2] = *(uint *)((uint)owner + 0x18);
+  finish[3] = *(uint *)((uint)owner + 0x1c);
+  uint startCopy[4],finishCopy[4],startAgain[4],finishAgain[4],startLast[4];
+  using CopyABI = void *(__thiscall *)(void *,const uint *);
+  ((CopyABI)R6GameServiceAddresses::CopySegmentedCursor)(startCopy,(const uint *)owner);
+  ((CopyABI)R6GameServiceAddresses::CopySegmentedCursor)(finishCopy,finish);
+  ((CopyABI)R6GameServiceAddresses::CopySegmentedCursor)(startAgain,startCopy);
+  ((CopyABI)R6GameServiceAddresses::CopySegmentedCursor)(finishAgain,finishCopy);
+  ((CopyABI)R6GameServiceAddresses::CopySegmentedCursor)(startLast,startAgain);
+  uint base = (uint)owner;
+  uint result = *(uint *)(base + 0x20);
+  if (result != 0) {
+    uint slot = *(uint *)(base + 0xc);
+    uint end = *(uint *)(base + 0x1c) + 4;
+    while (slot < end) {
+      TailFreeThroughGlobalAllocator(*(void **)slot);
+      slot += 4;
+    }
+    void *map = *(void **)(base + 0x20);
+    result = TailFreeThroughGlobalAllocator(map);
   }
+  cleanup.armed = false;
+  return result;
 }
 
 // Copy four DWORDs forward in native read/store order, preserving partial overlap; return original destination/RET4.
 // R6GameService.dll @ 1005ed50 : complete native control/access order and raw ABI retained.
-__declspec(naked) void *__thiscall CopySegmentedCursor(void *destination,const uint *source)
+void *__thiscall CopySegmentedCursor(void *destination,const uint *source)
 {
-  __asm {
-    mov    eax,ecx
-    mov    ecx,DWORD PTR [esp+0x4]
-    push    esi
-    mov    edx,eax
-    mov    esi,DWORD PTR [ecx]
-    mov    DWORD PTR [edx],esi
-    mov    esi,DWORD PTR [ecx+0x4]
-    mov    DWORD PTR [edx+0x4],esi
-    mov    esi,DWORD PTR [ecx+0x8]
-    mov    DWORD PTR [edx+0x8],esi
-    pop    esi
-    mov    ecx,DWORD PTR [ecx+0xc]
-    mov    DWORD PTR [edx+0xc],ecx
-    ret    0x4
-  }
+  uint *words = (uint *)destination;
+  const uint *savedSource = source;
+  uint value = savedSource[0];
+  words[0] = value;
+  value = savedSource[1];
+  words[1] = value;
+  value = savedSource[2];
+  words[2] = value;
+  value = savedSource[3];
+  words[3] = value;
+  return destination;
 }
 
 // If current map20 exists, cache unsigned slot range c..1c+4, free each CURRENT slot payload, then CURRENT map20.
 // No field clearing or local EH. Empty map returns0; otherwise retain last free EAX.
 // R6GameService.dll @ 1005f480 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall ReleaseSegmentedWordBlocks(void *owner)
+uint __fastcall ReleaseSegmentedWordBlocks(void *owner)
 {
-  __asm {
-    push    ebx
-    mov    ebx,ecx
-    mov    eax,DWORD PTR [ebx+0x20]
-    test    eax,eax
-    je    Branch6
-    push    esi
-    mov    esi,DWORD PTR [ebx+0xc]
-    push    edi
-    mov    edi,DWORD PTR [ebx+0x1c]
-    add    edi,0x4
-    cmp    esi,edi
-    jae    Branch5
-  Branch4:
-    mov    eax,DWORD PTR [esi]
-    push    eax
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    add    esi,0x4
-    cmp    esi,edi
-    jb    Branch4
-  Branch5:
-    mov    ecx,DWORD PTR [ebx+0x20]
-    push    ecx
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    pop    edi
-    pop    esi
-  Branch6:
-    pop    ebx
-    ret
+  uint base = (uint)owner;
+  uint result = *(uint *)(base + 0x20);
+  if (result != 0) {
+    uint slot = *(uint *)(base + 0xc);
+    uint end = *(uint *)(base + 0x1c) + 4;
+    while (slot < end) {
+      TailFreeThroughGlobalAllocator(*(void **)slot);
+      slot += 4;
+    }
+    void *map = *(void **)(base + 0x20);
+    result = TailFreeThroughGlobalAllocator(map);
   }
+  return result;
 }
 
 // Allocate max(8,(initialCount>>6)+3) map slots, center count/64+1 blocks, then publish start/finish cursor fields.
@@ -379,7 +326,7 @@ const R6GameServiceNative::UnwindEntry ReleaseSegmentedWordStorageUnwindMap[1] =
 };
 
 // Literal segmented-word lifetime map/handler/try/FuncInfo.
-// R6GameService.dll data @ 10084584 : native storage identity retained.
+// R6GameService.dll data @ 1008458c : native storage identity retained.
 const R6GameServiceNative::FuncInfo ReleaseSegmentedWordStorageExceptionInfo = {
   0x19930520,
   0x1,
@@ -398,7 +345,7 @@ const R6GameServiceNative::UnwindEntry InitializeSegmentedWordsUnwindMap[2] = {
 };
 
 // Literal segmented-word lifetime map/handler/try/FuncInfo.
-// R6GameService.dll data @ 10084660 : native storage identity retained.
+// R6GameService.dll data @ 10084670 : native storage identity retained.
 const R6GameServiceNative::FuncInfo InitializeSegmentedWordsExceptionInfo = {
   0x19930520,
   0x2,
@@ -420,13 +367,13 @@ const R6GameServiceNative::CatchHandler segmented_word_supportGSegmentedWordEH5[
 };
 
 // Literal segmented-word lifetime map/handler/try/FuncInfo.
-// R6GameService.dll data @ 10084734 : native storage identity retained.
+// R6GameService.dll data @ 10084744 : native storage identity retained.
 const R6GameServiceNative::TryBlock InitializeSegmentedWordBufferTryMap[1] = {
   {0x0, 0x0, 0x1, 0x1, R6GameServiceAddresses::segmented_word_supportGSegmentedWordEH5},
 };
 
 // Literal segmented-word lifetime map/handler/try/FuncInfo.
-// R6GameService.dll data @ 10084724 : native storage identity retained.
+// R6GameService.dll data @ 10084758 : native storage identity retained.
 const R6GameServiceNative::FuncInfo InitializeSegmentedWordBufferExceptionInfo = {
   0x19930520,
   0x2,
@@ -441,73 +388,52 @@ const R6GameServiceNative::FuncInfo InitializeSegmentedWordBufferExceptionInfo =
 // Write captured word through CURRENT last cursor if nonnull, then advance node/reset finish cursor to new block start.
 // No local EH or NULL-block guard; return raw new-block-end EAX/RET4, preserving current fields across both callbacks.
 // R6GameService.dll @ 1005f5a0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall AppendWordAndAllocateNextBlock(void *owner,const ushort *word)
+uint __thiscall AppendWordAndAllocateNextBlock(void *owner,const ushort *word)
 {
-  __asm {
-    mov    eax,DWORD PTR [esp+0x4]
-    push    esi
-    mov    esi,ecx
-    push    edi
-    mov    di,WORD PTR [eax]
-    mov    ecx,DWORD PTR [esi+0x1c]
-    mov    eax,DWORD PTR [esi+0x20]
-    mov    edx,DWORD PTR [esi+0x24]
-    sub    ecx,eax
-    sar    ecx,0x2
-    sub    edx,ecx
-    cmp    edx,0x2
-    jae    Branch10
-    push    0x0
-    push    0x1
-    mov    ecx,esi
-    call    R6GameServiceAddresses::RecenterSegmentedWordBlockMap
-  Branch10:
-    push    0x80
-    call    R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    ecx,DWORD PTR [esi+0x1c]
-    mov    DWORD PTR [ecx+0x4],eax
-    mov    eax,DWORD PTR [esi+0x10]
-    test    eax,eax
-    je    Branch11
-    mov    WORD PTR [eax],di
-  Branch11:
-    mov    eax,DWORD PTR [esi+0x1c]
-    pop    edi
-    add    eax,0x4
-    mov    DWORD PTR [esi+0x1c],eax
-    mov    eax,DWORD PTR [eax]
-    mov    DWORD PTR [esi+0x14],eax
-    add    eax,0x80
-    mov    DWORD PTR [esi+0x18],eax
-    mov    edx,DWORD PTR [esi+0x14]
-    mov    DWORD PTR [esi+0x10],edx
-    pop    esi
-    ret    0x4
+  uint base = (uint)owner;
+  ushort value = *word;
+  uint finishNode = *(uint *)(base + 0x1c);
+  uint map = *(uint *)(base + 0x20);
+  uint capacity = *(uint *)(base + 0x24);
+  uint used = (uint)((int)(finishNode - map) >> 2);
+  if (capacity - used < 2) {
+    using RecenterABI = uint (__thiscall *)(void *,uint,uint);
+    ((RecenterABI)R6GameServiceAddresses::RecenterSegmentedWordBlockMap)(owner,1,0);
   }
+  uint block = (uint)AllocateGameServiceBytes(0x80);
+  uint node = *(uint *)(base + 0x1c);
+  *(uint *)(node + 4) = block;
+  uint cursor = *(uint *)(base + 0x10);
+  if (cursor != 0) *(ushort *)cursor = value;
+  node = *(uint *)(base + 0x1c) + 4;
+  *(uint *)(base + 0x1c) = node;
+  uint first = *(uint *)node;
+  *(uint *)(base + 0x14) = first;
+  uint end = first + 0x80;
+  *(uint *)(base + 0x18) = end;
+  uint current = *(uint *)(base + 0x14);
+  *(uint *)(base + 0x10) = current;
+  return end;
 }
 
 // Append inline when cursor10!=end18-2, returning original cursor; NULL cursor skips input WORD read but still advances.
 // At block boundary tail-forward original receiver/key pointer/stack to5f5a0, retaining its raw return. RET4.
 // R6GameService.dll @ 1005ed20 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall AppendSegmentedWord(void *owner,const ushort *word)
+uint __thiscall AppendSegmentedWord(void *owner,const ushort *word)
 {
-  __asm {
-    mov    edx,DWORD PTR [ecx+0x18]
-    mov    eax,DWORD PTR [ecx+0x10]
-    sub    edx,0x2
-    cmp    eax,edx
-    je    Branch13
-    test    eax,eax
-    je    Branch12
-    mov    edx,DWORD PTR [esp+0x4]
-    mov    dx,WORD PTR [edx]
-    mov    WORD PTR [eax],dx
-  Branch12:
-    add    DWORD PTR [ecx+0x10],0x2
-    ret    0x4
-  Branch13:
-    jmp    R6GameServiceAddresses::AppendWordAndAllocateNextBlock
+  uint base = (uint)owner;
+  uint end = *(uint *)(base + 0x18);
+  uint cursor = *(uint *)(base + 0x10);
+  if (cursor == end - 2) {
+    using AppendABI = uint (__thiscall *)(void *,const ushort *);
+    return ((AppendABI)R6GameServiceAddresses::AppendWordAndAllocateNextBlock)(owner,word);
   }
+  if (cursor != 0) {
+    ushort value = *word;
+    *(ushort *)cursor = value;
+  }
+  *(uint *)(base + 0x10) += 2;
+  return cursor;
 }
 
 // Recenter active slot pointers in the current map when capacity>2*(active+additional); otherwise allocate a larger map.
@@ -515,171 +441,102 @@ __declspec(naked) uint __thiscall AppendSegmentedWord(void *owner,const ushort *
 // Memmove retains overlap, free CURRENT old map before publishing new map/capacity; keep logical cursor0/10 unchanged.
 // Update node/block bounds and return finish block+128. No local EH, spare-slot clearing or block allocation. RET8.
 // R6GameService.dll @ 1005f850 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall RecenterSegmentedWordBlockMap(void *owner,uint additionalSlots,uint reserveBeforeWord)
+uint __thiscall RecenterSegmentedWordBlockMap(void *owner,uint additionalSlots,uint reserveBeforeWord)
 {
-  __asm {
-    push    ecx
-    push    ebx
-    push    ebp
-    push    esi
-    mov    esi,ecx
-    mov    eax,DWORD PTR [esp+0x14]
-    push    edi
-    mov    ecx,DWORD PTR [esi+0x1c]
-    mov    ebp,DWORD PTR [esi+0xc]
-    mov    ebx,ecx
-    sub    ebx,ebp
-    sar    ebx,0x2
-    inc    ebx
-    lea    edi,[ebx+eax*1]
-    mov    eax,DWORD PTR [esi+0x24]
-    lea    edx,[edi+edi*1]
-    cmp    eax,edx
-    jbe    Branch15
-    mov    dl,BYTE PTR [esp+0x1c]
-    sub    eax,edi
-    mov    edi,DWORD PTR [esp+0x18]
-    shr    eax,1
-    neg    dl
-    sbb    edx,edx
-    and    edx,edi
-    add    eax,edx
-    mov    edx,DWORD PTR [esi+0x20]
-    lea    edi,[edx+eax*4]
-    cmp    edi,ebp
-    jae    Branch14
-    lea    eax,[ecx+0x4]
-    cmp    eax,ebp
-    je    Branch18
-    sub    eax,ebp
-    push    eax
-    push    ebp
-    push    edi
-    call    R6GameServiceAddresses::memmove
-    add    esp,0xc
-    jmp    Branch18
-  Branch14:
-    sub    ecx,ebp
-    add    ecx,0x4
-    test    ecx,ecx
-    jle    Branch18
-    lea    eax,[ebx*4+0x0]
-    push    ecx
-    sub    eax,ecx
-    push    ebp
-    add    eax,edi
-    push    eax
-    call    R6GameServiceAddresses::memmove
-    add    esp,0xc
-    jmp    Branch18
-  Branch15:
-    mov    edx,DWORD PTR [esp+0x18]
-    mov    ebp,DWORD PTR [esi+0x24]
-    lea    ecx,[esi+0x24]
-    cmp    ebp,edx
-    jae    Branch16
-    lea    ecx,[esp+0x18]
-  Branch16:
-    mov    ecx,DWORD PTR [ecx]
-    lea    ebp,[eax+ecx*1+0x2]
-    lea    edx,[ebp*4+0x0]
-    push    edx
-    call    R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    dl,BYTE PTR [esp+0x1c]
-    mov    ecx,ebp
-    sub    ecx,edi
-    mov    edi,DWORD PTR [esp+0x18]
-    shr    ecx,1
-    neg    dl
-    sbb    edx,edx
-    mov    DWORD PTR [esp+0x10],eax
-    and    edx,edi
-    add    ecx,edx
-    lea    edi,[eax+ecx*4]
-    mov    eax,DWORD PTR [esi+0x1c]
-    mov    ecx,DWORD PTR [esi+0xc]
-    add    eax,0x4
-    cmp    eax,ecx
-    je    Branch17
-    sub    eax,ecx
-    push    eax
-    push    ecx
-    push    edi
-    call    R6GameServiceAddresses::memmove
-    add    esp,0xc
-  Branch17:
-    mov    eax,DWORD PTR [esi+0x20]
-    push    eax
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    ecx,DWORD PTR [esp+0x10]
-    mov    DWORD PTR [esi+0x24],ebp
-    mov    DWORD PTR [esi+0x20],ecx
-  Branch18:
-    mov    DWORD PTR [esi+0xc],edi
-    mov    eax,DWORD PTR [edi]
-    mov    DWORD PTR [esi+0x4],eax
-    add    eax,0x80
-    mov    DWORD PTR [esi+0x8],eax
-    lea    eax,[edi+ebx*4-0x4]
-    mov    DWORD PTR [esi+0x1c],eax
-    pop    edi
-    mov    eax,DWORD PTR [eax]
-    mov    DWORD PTR [esi+0x14],eax
-    add    eax,0x80
-    mov    DWORD PTR [esi+0x18],eax
-    pop    esi
-    pop    ebp
-    pop    ebx
-    pop    ecx
-    ret    0x8
+  uint base = (uint)owner;
+  uint additional = additionalSlots;
+  uint finish = *(uint *)(base + 0x1c);
+  uint start = *(uint *)(base + 0xc);
+  uint active = (uint)((int)(finish - start) >> 2) + 1;
+  uint required = active + additional;
+  uint capacity = *(uint *)(base + 0x24);
+  uint destination;
+  using MoveABI = void *(__cdecl *)(void *,const void *,uint);
+  if (capacity > required * 2) {
+    byte before = *(byte *)&reserveBeforeWord;
+    uint centered = (capacity - required) >> 1;
+    uint currentAdditional = additionalSlots;
+    if (before != 0) centered += currentAdditional;
+    uint map = *(uint *)(base + 0x20);
+    destination = map + centered * 4;
+    if (destination < start) {
+      uint end = finish + 4;
+      if (end != start) {
+        uint bytes = end - start;
+        ((MoveABI)R6GameServiceAddresses::memmove)((void *)destination,(const void *)start,bytes);
+      }
+    } else {
+      uint bytes = finish - start + 4;
+      if ((int)bytes > 0) {
+        uint output = destination + active * 4 - bytes;
+        ((MoveABI)R6GameServiceAddresses::memmove)((void *)output,(const void *)start,bytes);
+      }
+    }
+  } else {
+    uint requested = additionalSlots;
+    uint liveCapacity = *(uint *)(base + 0x24);
+    const uint *maximum = liveCapacity >= requested ? (const uint *)(base + 0x24) : &additionalSlots;
+    uint increment = *maximum;
+    uint newCapacity = capacity + increment + 2;
+    uint newMap = (uint)AllocateGameServiceBytes(newCapacity * 4);
+    byte before = *(byte *)&reserveBeforeWord;
+    uint centered = (newCapacity - required) >> 1;
+    uint currentAdditional = additionalSlots;
+    if (before != 0) centered += currentAdditional;
+    destination = newMap + centered * 4;
+    uint currentFinish = *(uint *)(base + 0x1c);
+    uint currentStart = *(uint *)(base + 0xc);
+    uint end = currentFinish + 4;
+    if (end != currentStart) {
+      uint bytes = end - currentStart;
+      ((MoveABI)R6GameServiceAddresses::memmove)((void *)destination,(const void *)currentStart,bytes);
+    }
+    void *oldMap = *(void **)(base + 0x20);
+    TailFreeThroughGlobalAllocator(oldMap);
+    *(uint *)(base + 0x24) = newCapacity;
+    *(uint *)(base + 0x20) = newMap;
   }
+  *(uint *)(base + 0xc) = destination;
+  uint first = *(uint *)destination;
+  *(uint *)(base + 4) = first;
+  *(uint *)(base + 8) = first + 0x80;
+  uint lastNode = destination + active * 4 - 4;
+  *(uint *)(base + 0x1c) = lastNode;
+  uint last = *(uint *)lastNode;
+  *(uint *)(base + 0x14) = last;
+  uint end = last + 0x80;
+  *(uint *)(base + 0x18) = end;
+  return end;
 }
 
 // Copy four DWORDs in literal load/store order, including overlaps; return supplied output pointer, RET4.
 // R6GameService.dll @ 10060960 : complete native control/access order and raw ABI retained.
-__declspec(naked) void * __thiscall CopyWordsToOutput(void *cursor,void *result)
+void *__thiscall CopyWordsToOutput(void *cursor,void *result)
 {
-  __asm {
-    mov    eax,DWORD PTR [esp+0x4]
-    push    esi
-    mov    esi,DWORD PTR [ecx]
-    mov    edx,eax
-    mov    DWORD PTR [edx],esi
-    mov    esi,DWORD PTR [ecx+0x4]
-    mov    DWORD PTR [edx+0x4],esi
-    mov    esi,DWORD PTR [ecx+0x8]
-    mov    DWORD PTR [edx+0x8],esi
-    mov    ecx,DWORD PTR [ecx+0xc]
-    pop    esi
-    mov    DWORD PTR [edx+0xc],ecx
-    ret    0x4
-  }
+  const uint *source = (const uint *)cursor;
+  void *savedResult = result;
+  uint *destination = (uint *)savedResult;
+  uint value = source[0];
+  destination[0] = value;
+  value = source[1];
+  destination[1] = value;
+  value = source[2];
+  destination[2] = value;
+  value = source[3];
+  destination[3] = value;
+  return savedResult;
 }
 
 // Copy second by-value cursor to local scratch, first into second, then local/current second back into first argument.
 // Caller storage remains unchanged; retain four actual copy calls, stack argument writes, raw EAX=entry ESP+4, RET32.
 // R6GameService.dll @ 10061ab0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __stdcall CopyByValueCursorArgumentsToScratch(SegmentedWordCursor first,SegmentedWordCursor second)
+uint __stdcall CopyByValueCursorArgumentsToScratch(SegmentedWordCursor first,SegmentedWordCursor second)
 {
-  __asm {
-    sub    esp,0x10
-    lea    eax,[esp+0x24]
-    lea    ecx,[esp+0x0]
-    push    eax
-    call    R6GameServiceAddresses::CopySegmentedCursor
-    lea    ecx,[esp+0x14]
-    push    ecx
-    lea    ecx,[esp+0x28]
-    call    R6GameServiceAddresses::CopySegmentedCursor
-    lea    edx,[esp+0x0]
-    lea    ecx,[esp+0x14]
-    push    edx
-    call    R6GameServiceAddresses::CopySegmentedCursor
-    lea    eax,[esp+0x24]
-    lea    ecx,[esp+0x14]
-    push    eax
-    call    R6GameServiceAddresses::CopySegmentedCursor
-    add    esp,0x10
-    ret    0x20
-  }
+  SegmentedWordCursor scratch;
+  using CopyABI = void *(__thiscall *)(void *,const uint *);
+  ((CopyABI)R6GameServiceAddresses::CopySegmentedCursor)(&scratch,(const uint *)&second);
+  ((CopyABI)R6GameServiceAddresses::CopySegmentedCursor)(&second,(const uint *)&first);
+  ((CopyABI)R6GameServiceAddresses::CopySegmentedCursor)(&first,(const uint *)&scratch);
+  ((CopyABI)R6GameServiceAddresses::CopySegmentedCursor)(&first,(const uint *)&second);
+  return (uint)&first;
 }

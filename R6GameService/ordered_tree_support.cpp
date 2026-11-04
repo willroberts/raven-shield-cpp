@@ -1,6 +1,20 @@
 #include "native_addresses.h"
 #include "native_records.h"
 
+// Inferred active-string guard; buffer cleanup is independent of raw-node ownership and tree publication.
+struct ServiceStringBufferCleanup {
+  void *savedString;
+  bool armed;
+  // Release the current descriptor's first word without repairing any partially initialized fields.
+  ~ServiceStringBufferCleanup() noexcept(false)
+  {
+    if (armed) {
+      using ReleaseABI = uint (__fastcall *)(void *);
+      ((ReleaseABI)R6GameServiceAddresses::ReleaseFirstWordBuffer)(savedString);
+    }
+  }
+};
+
 // R6GameService.dll data @ 1007ef80 : function metadata supplied by the exception selector.
 extern const R6GameServiceNative::FuncInfo OwnedMapTreeDestroyExceptionHandlerFunctionInfo;
 // R6GameService.dll data @ 10080f9c : function metadata supplied by the exception selector.
@@ -86,708 +100,382 @@ __declspec(naked) uint __cdecl RotateOrderedTreeRight(int node,int *root)
   }
 }
 
+namespace {
+// Inferred physical PE32 link prefix: only color byte +0 and links +4/+8/+c are accessed; payload is unspecified.
+struct OrderedTreeLinkView {
+  byte color;
+  byte unknown01[3];
+  OrderedTreeLinkView *parent;
+  OrderedTreeLinkView *left;
+  OrderedTreeLinkView *right;
+};
+using TreeNode = OrderedTreeLinkView;
+
+// Common C++ view of the native inline left rotations; root is sampled after the initial child publications.
+inline void RotateTreeLinksLeft(TreeNode *node,TreeNode *pivot,int *&root) {
+  TreeNode *moved = pivot->left;
+  node->right = moved;
+  moved = pivot->left;
+  if (moved != nullptr) moved->parent = node;
+  TreeNode *parent = node->parent;
+  pivot->parent = parent;
+  TreeNode **rootSlot = (TreeNode **)root;
+  if (node == *rootSlot) {
+    *rootSlot = pivot;
+  } else {
+    parent = node->parent;
+    if (node == parent->left) parent->left = pivot;
+    else parent->right = pivot;
+  }
+  pivot->left = node;
+  node->parent = pivot;
+}
+
+// Common C++ view of the native inline right rotations; moved-child and parent links are deliberately reloaded.
+inline void RotateTreeLinksRight(TreeNode *node,TreeNode *pivot,int *&root) {
+  TreeNode *moved = pivot->right;
+  node->left = moved;
+  moved = pivot->right;
+  if (moved != nullptr) moved->parent = node;
+  TreeNode *parent = node->parent;
+  pivot->parent = parent;
+  TreeNode **rootSlot = (TreeNode **)root;
+  if (node == *rootSlot) {
+    *rootSlot = pivot;
+  } else {
+    parent = node->parent;
+    if (node == parent->right) parent->right = pivot;
+    else parent->left = pivot;
+  }
+  pivot->right = node;
+  node->parent = pivot;
+}
+}
+
 // Marks inserted cursor red, repairs red-parent cases with native recolors/inline rotations and blackens current root.
 // Cached root-slot address, live node/root reloads and raw repair-cursor EAX remain explicit.
-// R6GameService.dll @ 10018160 : native control/access order and raw ABI retained.
-__declspec(naked) uint __cdecl RebalanceOrderedTreeAfterInsertion(char *node,int *root)
+// R6GameService.dll @ 10018160 : red=0/black=1; returns the native repair cursor, not necessarily the root.
+uint __cdecl RebalanceOrderedTreeAfterInsertion(char *node,int *root)
 {
-  __asm {
-    mov    eax,DWORD PTR [esp+0x4]
-    push   esi
-    push   edi
-    mov    edi,DWORD PTR [esp+0x10]
-    mov    BYTE PTR [eax],0x0
-    cmp    eax,DWORD PTR [edi]
-    je     Branch31
-  Branch7:
-    mov    ecx,DWORD PTR [eax+0x4]
-    cmp    BYTE PTR [ecx],0x0
-    jne    Branch32
-    mov    esi,DWORD PTR [ecx+0x4]
-    mov    edx,DWORD PTR [esi+0x8]
-    cmp    ecx,edx
-    jne    Branch18
-    mov    edx,DWORD PTR [esi+0xc]
-    test   edx,edx
-    je     Branch9
-    cmp    BYTE PTR [edx],0x0
-    jne    Branch9
-  Branch8:
-    mov    BYTE PTR [ecx],0x1
-    mov    BYTE PTR [edx],0x1
-    mov    ecx,DWORD PTR [eax+0x4]
-    mov    edx,DWORD PTR [ecx+0x4]
-    mov    BYTE PTR [edx],0x0
-    mov    eax,DWORD PTR [eax+0x4]
-    mov    eax,DWORD PTR [eax+0x4]
-    jmp    Branch30
-  Branch9:
-    cmp    eax,DWORD PTR [ecx+0xc]
-    jne    Branch14
-    mov    eax,ecx
-    mov    ecx,DWORD PTR [eax+0xc]
-    mov    edx,DWORD PTR [ecx+0x8]
-    mov    DWORD PTR [eax+0xc],edx
-    mov    edx,DWORD PTR [ecx+0x8]
-    test   edx,edx
-    je     Branch10
-    mov    DWORD PTR [edx+0x4],eax
-  Branch10:
-    mov    edx,DWORD PTR [eax+0x4]
-    mov    DWORD PTR [ecx+0x4],edx
-    mov    edx,DWORD PTR [edi]
-    cmp    eax,edx
-    jne    Branch11
-    mov    DWORD PTR [edi],ecx
-    jmp    Branch13
-  Branch11:
-    mov    edx,DWORD PTR [eax+0x4]
-    cmp    eax,DWORD PTR [edx+0x8]
-    jne    Branch12
-    mov    DWORD PTR [edx+0x8],ecx
-    jmp    Branch13
-  Branch12:
-    mov    DWORD PTR [edx+0xc],ecx
-  Branch13:
-    mov    DWORD PTR [ecx+0x8],eax
-    mov    DWORD PTR [eax+0x4],ecx
-  Branch14:
-    mov    ecx,DWORD PTR [eax+0x4]
-    mov    BYTE PTR [ecx],0x1
-    mov    edx,DWORD PTR [eax+0x4]
-    mov    ecx,DWORD PTR [edx+0x4]
-    mov    BYTE PTR [ecx],0x0
-    mov    edx,DWORD PTR [eax+0x4]
-    mov    ecx,DWORD PTR [edx+0x4]
-    mov    edx,DWORD PTR [ecx+0x8]
-    mov    esi,DWORD PTR [edx+0xc]
-    mov    DWORD PTR [ecx+0x8],esi
-    mov    esi,DWORD PTR [edx+0xc]
-    test   esi,esi
-    je     Branch15
-    mov    DWORD PTR [esi+0x4],ecx
-  Branch15:
-    mov    esi,DWORD PTR [ecx+0x4]
-    mov    DWORD PTR [edx+0x4],esi
-    mov    esi,DWORD PTR [edi]
-    cmp    ecx,esi
-    jne    Branch16
-    mov    DWORD PTR [edi],edx
-    mov    DWORD PTR [edx+0xc],ecx
-    jmp    Branch29
-  Branch16:
-    mov    esi,DWORD PTR [ecx+0x4]
-    cmp    ecx,DWORD PTR [esi+0xc]
-    jne    Branch17
-    mov    DWORD PTR [esi+0xc],edx
-    mov    DWORD PTR [edx+0xc],ecx
-    jmp    Branch29
-  Branch17:
-    mov    DWORD PTR [esi+0x8],edx
-    mov    DWORD PTR [edx+0xc],ecx
-    jmp    Branch29
-  Branch18:
-    test   edx,edx
-    je     Branch19
-    cmp    BYTE PTR [edx],0x0
-    je     Branch8
-  Branch19:
-    cmp    eax,DWORD PTR [ecx+0x8]
-    jne    Branch24
-    mov    eax,ecx
-    mov    ecx,DWORD PTR [eax+0x8]
-    mov    edx,DWORD PTR [ecx+0xc]
-    mov    DWORD PTR [eax+0x8],edx
-    mov    edx,DWORD PTR [ecx+0xc]
-    test   edx,edx
-    je     Branch20
-    mov    DWORD PTR [edx+0x4],eax
-  Branch20:
-    mov    edx,DWORD PTR [eax+0x4]
-    mov    DWORD PTR [ecx+0x4],edx
-    mov    edx,DWORD PTR [edi]
-    cmp    eax,edx
-    jne    Branch21
-    mov    DWORD PTR [edi],ecx
-    jmp    Branch23
-  Branch21:
-    mov    edx,DWORD PTR [eax+0x4]
-    cmp    eax,DWORD PTR [edx+0xc]
-    jne    Branch22
-    mov    DWORD PTR [edx+0xc],ecx
-    jmp    Branch23
-  Branch22:
-    mov    DWORD PTR [edx+0x8],ecx
-  Branch23:
-    mov    DWORD PTR [ecx+0xc],eax
-    mov    DWORD PTR [eax+0x4],ecx
-  Branch24:
-    mov    ecx,DWORD PTR [eax+0x4]
-    mov    BYTE PTR [ecx],0x1
-    mov    edx,DWORD PTR [eax+0x4]
-    mov    ecx,DWORD PTR [edx+0x4]
-    mov    BYTE PTR [ecx],0x0
-    mov    edx,DWORD PTR [eax+0x4]
-    mov    ecx,DWORD PTR [edx+0x4]
-    mov    edx,DWORD PTR [ecx+0xc]
-    mov    esi,DWORD PTR [edx+0x8]
-    mov    DWORD PTR [ecx+0xc],esi
-    mov    esi,DWORD PTR [edx+0x8]
-    test   esi,esi
-    je     Branch25
-    mov    DWORD PTR [esi+0x4],ecx
-  Branch25:
-    mov    esi,DWORD PTR [ecx+0x4]
-    mov    DWORD PTR [edx+0x4],esi
-    mov    esi,DWORD PTR [edi]
-    cmp    ecx,esi
-    jne    Branch26
-    mov    DWORD PTR [edi],edx
-    jmp    Branch28
-  Branch26:
-    mov    esi,DWORD PTR [ecx+0x4]
-    cmp    ecx,DWORD PTR [esi+0x8]
-    jne    Branch27
-    mov    DWORD PTR [esi+0x8],edx
-    jmp    Branch28
-  Branch27:
-    mov    DWORD PTR [esi+0xc],edx
-  Branch28:
-    mov    DWORD PTR [edx+0x8],ecx
-  Branch29:
-    mov    DWORD PTR [ecx+0x4],edx
-  Branch30:
-    mov    ecx,DWORD PTR [edi]
-    cmp    eax,ecx
-    jne    Branch7
-    mov    eax,ecx
-    pop    edi
-    pop    esi
-    mov    BYTE PTR [eax],0x1
-    ret
-  Branch31:
-    mov    ecx,DWORD PTR [edi]
-    pop    edi
-    pop    esi
-    mov    BYTE PTR [ecx],0x1
-    ret
-  Branch32:
-    mov    edx,DWORD PTR [edi]
-    pop    edi
-    pop    esi
-    mov    BYTE PTR [edx],0x1
-    ret
+  TreeNode *cursor = (TreeNode *)node;
+  int *rootSlot = root;
+  TreeNode *rootToBlacken;
+  cursor->color = 0;
+  if (cursor != *(TreeNode **)rootSlot) {
+    for (;;) {
+      TreeNode *parent = cursor->parent;
+      if (parent->color != 0) {
+        rootToBlacken = *(TreeNode **)rootSlot;
+        break;
+      }
+      TreeNode *grandparent = parent->parent;
+      TreeNode *uncle = grandparent->left;
+      if (parent == uncle) {
+        uncle = grandparent->right;
+        if (uncle != nullptr && uncle->color == 0) {
+          parent->color = 1;
+          uncle->color = 1;
+          parent = cursor->parent;
+          grandparent = parent->parent;
+          grandparent->color = 0;
+          cursor = cursor->parent;
+          cursor = cursor->parent;
+        } else {
+          if (cursor == parent->right) {
+            cursor = parent;
+            TreeNode *pivot = cursor->right;
+            RotateTreeLinksLeft(cursor,pivot,rootSlot);
+          }
+          parent = cursor->parent;
+          parent->color = 1;
+          parent = cursor->parent;
+          grandparent = parent->parent;
+          grandparent->color = 0;
+          parent = cursor->parent;
+          grandparent = parent->parent;
+          TreeNode *pivot = grandparent->left;
+          RotateTreeLinksRight(grandparent,pivot,rootSlot);
+        }
+      } else {
+        if (uncle != nullptr && uncle->color == 0) {
+          parent->color = 1;
+          uncle->color = 1;
+          parent = cursor->parent;
+          grandparent = parent->parent;
+          grandparent->color = 0;
+          cursor = cursor->parent;
+          cursor = cursor->parent;
+        } else {
+          if (cursor == parent->left) {
+            cursor = parent;
+            TreeNode *pivot = cursor->left;
+            RotateTreeLinksRight(cursor,pivot,rootSlot);
+          }
+          parent = cursor->parent;
+          parent->color = 1;
+          parent = cursor->parent;
+          grandparent = parent->parent;
+          grandparent->color = 0;
+          parent = cursor->parent;
+          grandparent = parent->parent;
+          TreeNode *pivot = grandparent->right;
+          RotateTreeLinksLeft(grandparent,pivot,rootSlot);
+        }
+      }
+      TreeNode *currentRoot = *(TreeNode **)rootSlot;
+      if (cursor == currentRoot) {
+        cursor = currentRoot;
+        rootToBlacken = cursor;
+        break;
+      }
+    }
+  } else {
+    rootToBlacken = *(TreeNode **)rootSlot;
   }
+  rootToBlacken->color = 1;
+  return (uint)cursor;
 }
 
 // Finds right-subtree minimum or climbs parent/right links using native header edge test; no NULL/cycle validation.
-// R6GameService.dll @ 100153b0 : native control/access order and raw ABI retained.
-__declspec(naked) int __cdecl OrderedTreeSuccessor(char *node)
+// R6GameService.dll @ 100153b0 : returns a native PE32 node-address word; original pointer declaration unresolved.
+int __cdecl OrderedTreeSuccessor(char *node)
 {
-  __asm {
-    mov    ecx,DWORD PTR [esp+0x4]
-    mov    eax,DWORD PTR [ecx+0xc]
-    test   eax,eax
-    je     Branch34
-    mov    ecx,DWORD PTR [eax+0x8]
-    test   ecx,ecx
-    je     Branch37
-  Branch33:
-    mov    eax,ecx
-    mov    ecx,DWORD PTR [eax+0x8]
-    test   ecx,ecx
-    jne    Branch33
-    ret
-  Branch34:
-    mov    eax,DWORD PTR [ecx+0x4]
-    cmp    ecx,DWORD PTR [eax+0xc]
-    jne    Branch36
-  Branch35:
-    mov    ecx,eax
-    mov    eax,DWORD PTR [eax+0x4]
-    cmp    ecx,DWORD PTR [eax+0xc]
-    je     Branch35
-  Branch36:
-    cmp    DWORD PTR [ecx+0xc],eax
-    jne    Branch37
-    mov    eax,ecx
-  Branch37:
-    ret
+  byte *cursor = (byte *)node;
+  byte *candidate = *(byte **)(cursor + 0xc);
+  if (candidate != nullptr) {
+    byte *child = *(byte **)(candidate + 8);
+    while (child != nullptr) {
+      candidate = child;
+      child = *(byte **)(candidate + 8);
+    }
+    return (int)candidate;
   }
+  candidate = *(byte **)(cursor + 4);
+  while (cursor == *(byte **)(candidate + 0xc)) {
+    cursor = candidate;
+    candidate = *(byte **)(candidate + 4);
+  }
+  if (*(byte **)(cursor + 0xc) == candidate) candidate = cursor;
+  return (int)candidate;
 }
 
 // Uses native red-header test, else finds left-subtree maximum or climbs parent/left links; no NULL/cycle validation.
-// R6GameService.dll @ 100153f0 : native control/access order and raw ABI retained.
-__declspec(naked) int __cdecl OrderedTreePredecessor(char *node)
+// R6GameService.dll @ 100153f0 : returns a native PE32 node-address word; original pointer declaration unresolved.
+int __cdecl OrderedTreePredecessor(char *node)
 {
-  __asm {
-    mov    ecx,DWORD PTR [esp+0x4]
-    cmp    BYTE PTR [ecx],0x0
-    jne    Branch38
-    mov    eax,DWORD PTR [ecx+0x4]
-    cmp    DWORD PTR [eax+0x4],ecx
-    jne    Branch38
-    mov    eax,DWORD PTR [ecx+0xc]
-    ret
-  Branch38:
-    mov    eax,DWORD PTR [ecx+0x8]
-    test   eax,eax
-    je     Branch40
-    mov    ecx,DWORD PTR [eax+0xc]
-    test   ecx,ecx
-    je     Branch42
-  Branch39:
-    mov    eax,ecx
-    mov    ecx,DWORD PTR [eax+0xc]
-    test   ecx,ecx
-    jne    Branch39
-    ret
-  Branch40:
-    mov    eax,DWORD PTR [ecx+0x4]
-    cmp    ecx,DWORD PTR [eax+0x8]
-    jne    Branch42
-  Branch41:
-    mov    ecx,eax
-    mov    eax,DWORD PTR [eax+0x4]
-    cmp    ecx,DWORD PTR [eax+0x8]
-    je     Branch41
-  Branch42:
-    ret
+  byte *cursor = (byte *)node;
+  if (*cursor == 0) {
+    byte *parent = *(byte **)(cursor + 4);
+    if (*(byte **)(parent + 4) == cursor) return (int)*(byte **)(cursor + 0xc);
   }
+  byte *candidate = *(byte **)(cursor + 8);
+  if (candidate != nullptr) {
+    byte *child = *(byte **)(candidate + 0xc);
+    while (child != nullptr) {
+      candidate = child;
+      child = *(byte **)(candidate + 0xc);
+    }
+    return (int)candidate;
+  }
+  candidate = *(byte **)(cursor + 4);
+  while (cursor == *(byte **)(candidate + 8)) {
+    cursor = candidate;
+    candidate = *(byte **)(candidate + 4);
+  }
+  return (int)candidate;
 }
 
 // Unlinks requested node, transplants successor when needed, repairs black height and updates live root/extrema.
-// Does not free storage; original node argument becomes search scratch then restores, with exact alias/publication order.
-// R6GameService.dll @ 10014ff0 : native control/access order and raw ABI retained.
-__declspec(naked) char * __cdecl RemoveOrderedTreeNode(
-    char *node,int *root,undefined4 *leftmost,undefined4 *rightmost)
+// No storage is freed; payload and unused prefix bytes remain untouched.
+// R6GameService.dll @ 10014ff0 : current root/extrema slots and successor-transplant order remain explicit.
+char * __cdecl RemoveOrderedTreeNode(char *node,int *root,undefined4 *leftmost,undefined4 *rightmost)
 {
-  __asm {
-    mov    edx,DWORD PTR [esp+0x4]
-    push   ebx
-    push   ebp
-    push   esi
-    mov    eax,DWORD PTR [edx+0x8]
-    push   edi
-    test   eax,eax
-    mov    ebx,edx
-    jne    Branch43
-    mov    ebp,DWORD PTR [edx+0xc]
-    jmp    Branch54
-  Branch43:
-    mov    ecx,DWORD PTR [edx+0xc]
-    test   ecx,ecx
-    jne    Branch44
-    mov    ebp,eax
-    jmp    Branch54
-  Branch44:
-    mov    esi,ecx
-    mov    DWORD PTR [esp+0x14],esi
-    mov    ecx,DWORD PTR [esi+0x8]
-    test   ecx,ecx
-    je     Branch46
-  Branch45:
-    mov    DWORD PTR [esp+0x14],ecx
-    mov    ecx,DWORD PTR [ecx+0x8]
-    test   ecx,ecx
-    jne    Branch45
-    mov    esi,DWORD PTR [esp+0x14]
-  Branch46:
-    mov    ebp,DWORD PTR [esi+0xc]
-    cmp    esi,edx
-    je     Branch53
-    mov    edi,DWORD PTR [esp+0x14]
-    mov    DWORD PTR [eax+0x4],edi
-    mov    eax,DWORD PTR [edx+0x8]
-    mov    DWORD PTR [edi+0x8],eax
-    mov    eax,DWORD PTR [edx+0xc]
-    cmp    edi,eax
-    je     Branch48
-    mov    ecx,DWORD PTR [edi+0x4]
-    test   ebp,ebp
-    je     Branch47
-    mov    DWORD PTR [ebp+0x4],ecx
-  Branch47:
-    mov    eax,DWORD PTR [edi+0x4]
-    mov    DWORD PTR [eax+0x8],ebp
-    mov    eax,DWORD PTR [edx+0xc]
-    mov    DWORD PTR [edi+0xc],eax
-    mov    eax,DWORD PTR [edx+0xc]
-    mov    DWORD PTR [eax+0x4],edi
-    jmp    Branch49
-  Branch48:
-    mov    ecx,edi
-  Branch49:
-    mov    eax,DWORD PTR [esp+0x18]
-    cmp    DWORD PTR [eax],edx
-    jne    Branch50
-    mov    DWORD PTR [eax],edi
-    jmp    Branch52
-  Branch50:
-    mov    esi,DWORD PTR [edx+0x4]
-    cmp    DWORD PTR [esi+0x8],edx
-    jne    Branch51
-    mov    DWORD PTR [esi+0x8],edi
-    jmp    Branch52
-  Branch51:
-    mov    DWORD PTR [esi+0xc],edi
-  Branch52:
-    mov    eax,DWORD PTR [edx+0x4]
-    mov    DWORD PTR [esp+0x14],edx
-    mov    DWORD PTR [edi+0x4],eax
-    mov    bl,BYTE PTR [edx]
-    mov    al,BYTE PTR [edi]
-    mov    BYTE PTR [edi],bl
-    mov    BYTE PTR [edx],al
-    mov    ebx,edx
-    jmp    Branch66
-  Branch53:
-    mov    ebx,DWORD PTR [esp+0x14]
-  Branch54:
-    mov    ecx,DWORD PTR [ebx+0x4]
-    test   ebp,ebp
-    je     Branch55
-    mov    DWORD PTR [ebp+0x4],ecx
-  Branch55:
-    mov    eax,DWORD PTR [esp+0x18]
-    cmp    DWORD PTR [eax],edx
-    jne    Branch56
-    mov    DWORD PTR [eax],ebp
-    jmp    Branch58
-  Branch56:
-    mov    esi,DWORD PTR [edx+0x4]
-    cmp    DWORD PTR [esi+0x8],edx
-    jne    Branch57
-    mov    DWORD PTR [esi+0x8],ebp
-    jmp    Branch58
-  Branch57:
-    mov    DWORD PTR [esi+0xc],ebp
-  Branch58:
-    mov    eax,DWORD PTR [esp+0x1c]
-    cmp    DWORD PTR [eax],edx
-    jne    Branch62
-    mov    esi,DWORD PTR [edx+0xc]
-    test   esi,esi
-    jne    Branch59
-    mov    esi,DWORD PTR [edx+0x4]
-    mov    DWORD PTR [eax],esi
-    jmp    Branch62
-  Branch59:
-    mov    esi,DWORD PTR [ebp+0x8]
-    mov    edi,ebp
-    test   esi,esi
-    je     Branch61
-  Branch60:
-    mov    edi,esi
-    mov    esi,DWORD PTR [edi+0x8]
-    test   esi,esi
-    jne    Branch60
-  Branch61:
-    mov    DWORD PTR [eax],edi
-  Branch62:
-    mov    eax,DWORD PTR [esp+0x20]
-    cmp    DWORD PTR [eax],edx
-    jne    Branch66
-    mov    esi,DWORD PTR [edx+0x8]
-    test   esi,esi
-    jne    Branch63
-    mov    edx,DWORD PTR [edx+0x4]
-    mov    DWORD PTR [eax],edx
-    jmp    Branch66
-  Branch63:
-    mov    edx,DWORD PTR [ebp+0xc]
-    mov    esi,ebp
-    test   edx,edx
-    je     Branch65
-  Branch64:
-    mov    esi,edx
-    mov    edx,DWORD PTR [esi+0xc]
-    test   edx,edx
-    jne    Branch64
-  Branch65:
-    mov    DWORD PTR [eax],esi
-  Branch66:
-    cmp    BYTE PTR [ebx],0x0
-    je     Branch110
-    mov    eax,DWORD PTR [esp+0x18]
-    cmp    ebp,DWORD PTR [eax]
-    je     Branch109
-  Branch67:
-    test   ebp,ebp
-    je     Branch68
-    cmp    BYTE PTR [ebp+0x0],0x1
-    jne    Branch109
-  Branch68:
-    mov    edx,DWORD PTR [ecx+0x8]
-    cmp    ebp,edx
-    jne    Branch79
-    mov    edx,DWORD PTR [ecx+0xc]
-    cmp    BYTE PTR [edx],0x0
-    jne    Branch73
-    mov    BYTE PTR [edx],0x1
-    mov    edx,DWORD PTR [ecx+0xc]
-    mov    BYTE PTR [ecx],0x0
-    mov    eax,DWORD PTR [edx+0x8]
-    mov    DWORD PTR [ecx+0xc],eax
-    mov    esi,DWORD PTR [edx+0x8]
-    test   esi,esi
-    je     Branch69
-    mov    DWORD PTR [esi+0x4],ecx
-  Branch69:
-    mov    eax,DWORD PTR [ecx+0x4]
-    mov    DWORD PTR [edx+0x4],eax
-    mov    eax,DWORD PTR [esp+0x18]
-    cmp    ecx,DWORD PTR [eax]
-    jne    Branch70
-    mov    DWORD PTR [eax],edx
-    jmp    Branch72
-  Branch70:
-    mov    esi,DWORD PTR [ecx+0x4]
-    cmp    ecx,DWORD PTR [esi+0x8]
-    jne    Branch71
-    mov    DWORD PTR [esi+0x8],edx
-    jmp    Branch72
-  Branch71:
-    mov    DWORD PTR [esi+0xc],edx
-  Branch72:
-    mov    DWORD PTR [edx+0x8],ecx
-    mov    DWORD PTR [ecx+0x4],edx
-    mov    edx,DWORD PTR [ecx+0xc]
-  Branch73:
-    mov    esi,DWORD PTR [edx+0x8]
-    test   esi,esi
-    je     Branch74
-    cmp    BYTE PTR [esi],0x1
-    jne    Branch75
-  Branch74:
-    mov    esi,DWORD PTR [edx+0xc]
-    test   esi,esi
-    je     Branch86
-    cmp    BYTE PTR [esi],0x1
-    je     Branch86
-  Branch75:
-    mov    esi,DWORD PTR [edx+0xc]
-    test   esi,esi
-    je     Branch76
-    cmp    BYTE PTR [esi],0x1
-    jne    Branch90
-  Branch76:
-    mov    esi,DWORD PTR [edx+0x8]
-    test   esi,esi
-    je     Branch77
-    mov    BYTE PTR [esi],0x1
-  Branch77:
-    mov    esi,DWORD PTR [edx+0x8]
-    mov    BYTE PTR [edx],0x0
-    mov    eax,DWORD PTR [esi+0xc]
-    mov    DWORD PTR [edx+0x8],eax
-    mov    edi,DWORD PTR [esi+0xc]
-    test   edi,edi
-    je     Branch78
-    mov    DWORD PTR [edi+0x4],edx
-  Branch78:
-    mov    eax,DWORD PTR [edx+0x4]
-    mov    DWORD PTR [esi+0x4],eax
-    mov    eax,DWORD PTR [esp+0x18]
-    cmp    edx,DWORD PTR [eax]
-    jne    Branch87
-    mov    DWORD PTR [eax],esi
-    jmp    Branch89
-  Branch79:
-    cmp    BYTE PTR [edx],0x0
-    jne    Branch84
-    mov    BYTE PTR [edx],0x1
-    mov    edx,DWORD PTR [ecx+0x8]
-    mov    BYTE PTR [ecx],0x0
-    mov    eax,DWORD PTR [edx+0xc]
-    mov    DWORD PTR [ecx+0x8],eax
-    mov    esi,DWORD PTR [edx+0xc]
-    test   esi,esi
-    je     Branch80
-    mov    DWORD PTR [esi+0x4],ecx
-  Branch80:
-    mov    eax,DWORD PTR [ecx+0x4]
-    mov    DWORD PTR [edx+0x4],eax
-    mov    eax,DWORD PTR [esp+0x18]
-    cmp    ecx,DWORD PTR [eax]
-    jne    Branch81
-    mov    DWORD PTR [eax],edx
-    jmp    Branch83
-  Branch81:
-    mov    esi,DWORD PTR [ecx+0x4]
-    cmp    ecx,DWORD PTR [esi+0xc]
-    jne    Branch82
-    mov    DWORD PTR [esi+0xc],edx
-    jmp    Branch83
-  Branch82:
-    mov    DWORD PTR [esi+0x8],edx
-  Branch83:
-    mov    DWORD PTR [edx+0xc],ecx
-    mov    DWORD PTR [ecx+0x4],edx
-    mov    edx,DWORD PTR [ecx+0x8]
-  Branch84:
-    mov    esi,DWORD PTR [edx+0xc]
-    test   esi,esi
-    je     Branch85
-    cmp    BYTE PTR [esi],0x1
-    jne    Branch95
-  Branch85:
-    mov    esi,DWORD PTR [edx+0x8]
-    test   esi,esi
-    je     Branch86
-    cmp    BYTE PTR [esi],0x1
-    jne    Branch95
-  Branch86:
-    mov    BYTE PTR [edx],0x0
-    mov    edx,DWORD PTR [esp+0x18]
-    mov    ebp,ecx
-    mov    ecx,DWORD PTR [ecx+0x4]
-    cmp    ebp,DWORD PTR [edx]
-    jne    Branch67
-    jmp    Branch109
-  Branch87:
-    mov    edi,DWORD PTR [edx+0x4]
-    cmp    edx,DWORD PTR [edi+0xc]
-    jne    Branch88
-    mov    DWORD PTR [edi+0xc],esi
-    jmp    Branch89
-  Branch88:
-    mov    DWORD PTR [edi+0x8],esi
-  Branch89:
-    mov    DWORD PTR [esi+0xc],edx
-    mov    DWORD PTR [edx+0x4],esi
-    mov    edx,DWORD PTR [ecx+0xc]
-  Branch90:
-    mov    al,BYTE PTR [ecx]
-    mov    BYTE PTR [edx],al
-    mov    BYTE PTR [ecx],0x1
-    mov    edx,DWORD PTR [edx+0xc]
-    test   edx,edx
-    je     Branch91
-    mov    BYTE PTR [edx],0x1
-  Branch91:
-    mov    edx,DWORD PTR [ecx+0xc]
-    mov    eax,DWORD PTR [edx+0x8]
-    mov    DWORD PTR [ecx+0xc],eax
-    mov    esi,DWORD PTR [edx+0x8]
-    test   esi,esi
-    je     Branch92
-    mov    DWORD PTR [esi+0x4],ecx
-  Branch92:
-    mov    eax,DWORD PTR [ecx+0x4]
-    mov    DWORD PTR [edx+0x4],eax
-    mov    eax,DWORD PTR [esp+0x18]
-    cmp    ecx,DWORD PTR [eax]
-    jne    Branch93
-    mov    DWORD PTR [eax],edx
-    mov    DWORD PTR [edx+0x8],ecx
-    jmp    Branch108
-  Branch93:
-    mov    esi,DWORD PTR [ecx+0x4]
-    cmp    ecx,DWORD PTR [esi+0x8]
-    jne    Branch94
-    mov    DWORD PTR [esi+0x8],edx
-    mov    DWORD PTR [edx+0x8],ecx
-    jmp    Branch108
-  Branch94:
-    mov    DWORD PTR [esi+0xc],edx
-    mov    DWORD PTR [edx+0x8],ecx
-    jmp    Branch108
-  Branch95:
-    mov    esi,DWORD PTR [edx+0x8]
-    test   esi,esi
-    je     Branch96
-    cmp    BYTE PTR [esi],0x1
-    jne    Branch102
-  Branch96:
-    mov    esi,DWORD PTR [edx+0xc]
-    test   esi,esi
-    je     Branch97
-    mov    BYTE PTR [esi],0x1
-  Branch97:
-    mov    esi,DWORD PTR [edx+0xc]
-    mov    BYTE PTR [edx],0x0
-    mov    eax,DWORD PTR [esi+0x8]
-    mov    DWORD PTR [edx+0xc],eax
-    mov    edi,DWORD PTR [esi+0x8]
-    test   edi,edi
-    je     Branch98
-    mov    DWORD PTR [edi+0x4],edx
-  Branch98:
-    mov    eax,DWORD PTR [edx+0x4]
-    mov    DWORD PTR [esi+0x4],eax
-    mov    eax,DWORD PTR [esp+0x18]
-    cmp    edx,DWORD PTR [eax]
-    jne    Branch99
-    mov    DWORD PTR [eax],esi
-    jmp    Branch101
-  Branch99:
-    mov    edi,DWORD PTR [edx+0x4]
-    cmp    edx,DWORD PTR [edi+0x8]
-    jne    Branch100
-    mov    DWORD PTR [edi+0x8],esi
-    jmp    Branch101
-  Branch100:
-    mov    DWORD PTR [edi+0xc],esi
-  Branch101:
-    mov    DWORD PTR [esi+0x8],edx
-    mov    DWORD PTR [edx+0x4],esi
-    mov    edx,DWORD PTR [ecx+0x8]
-  Branch102:
-    mov    al,BYTE PTR [ecx]
-    mov    BYTE PTR [edx],al
-    mov    BYTE PTR [ecx],0x1
-    mov    edx,DWORD PTR [edx+0x8]
-    test   edx,edx
-    je     Branch103
-    mov    BYTE PTR [edx],0x1
-  Branch103:
-    mov    edx,DWORD PTR [ecx+0x8]
-    mov    eax,DWORD PTR [edx+0xc]
-    mov    DWORD PTR [ecx+0x8],eax
-    mov    esi,DWORD PTR [edx+0xc]
-    test   esi,esi
-    je     Branch104
-    mov    DWORD PTR [esi+0x4],ecx
-  Branch104:
-    mov    eax,DWORD PTR [ecx+0x4]
-    mov    DWORD PTR [edx+0x4],eax
-    mov    eax,DWORD PTR [esp+0x18]
-    cmp    ecx,DWORD PTR [eax]
-    jne    Branch105
-    mov    DWORD PTR [eax],edx
-    jmp    Branch107
-  Branch105:
-    mov    esi,DWORD PTR [ecx+0x4]
-    cmp    ecx,DWORD PTR [esi+0xc]
-    jne    Branch106
-    mov    DWORD PTR [esi+0xc],edx
-    jmp    Branch107
-  Branch106:
-    mov    DWORD PTR [esi+0x8],edx
-  Branch107:
-    mov    DWORD PTR [edx+0xc],ecx
-  Branch108:
-    mov    DWORD PTR [ecx+0x4],edx
-  Branch109:
-    test   ebp,ebp
-    mov    eax,ebx
-    je     Branch111
-    pop    edi
-    mov    BYTE PTR [ebp+0x0],0x1
-    pop    esi
-    pop    ebp
-    pop    ebx
-    ret
-  Branch110:
-    mov    eax,ebx
-  Branch111:
-    pop    edi
-    pop    esi
-    pop    ebp
-    pop    ebx
-    ret
+  TreeNode *requested = (TreeNode *)node;
+  TreeNode *removed = requested;
+  TreeNode *replacement;
+  TreeNode *replacementParent;
+  TreeNode *left = requested->left;
+  bool transplanted = false;
+  if (left == nullptr) {
+    replacement = requested->right;
+  } else {
+    TreeNode *right = requested->right;
+    if (right == nullptr) {
+      replacement = left;
+    } else {
+      // The native argument word doubles as successor-search scratch and is restored before the final parent store.
+      node = (char *)right;
+      TreeNode *child = ((TreeNode *)node)->left;
+      while (child != nullptr) {
+        node = (char *)child;
+        child = child->left;
+      }
+      TreeNode *successor = (TreeNode *)node;
+      replacement = successor->right;
+      if (successor != requested) {
+        left->parent = successor;
+        successor->left = requested->left;
+        right = requested->right;
+        if (successor != right) {
+          replacementParent = successor->parent;
+          if (replacement != nullptr) replacement->parent = replacementParent;
+          TreeNode *parent = successor->parent;
+          parent->left = replacement;
+          successor->right = requested->right;
+          right = requested->right;
+          right->parent = successor;
+        } else {
+          replacementParent = successor;
+        }
+        TreeNode **rootSlot = (TreeNode **)root;
+        if (*rootSlot == requested) {
+          *rootSlot = successor;
+        } else {
+          TreeNode *parent = requested->parent;
+          if (parent->left == requested) parent->left = successor;
+          else parent->right = successor;
+        }
+        TreeNode *parent = requested->parent;
+        node = (char *)requested;
+        successor->parent = parent;
+        byte oldColor = requested->color;
+        byte successorColor = successor->color;
+        successor->color = oldColor;
+        requested->color = successorColor;
+        removed = requested;
+        transplanted = true;
+      } else {
+        removed = (TreeNode *)node;
+      }
+    }
   }
+  if (!transplanted) {
+    replacementParent = removed->parent;
+    if (replacement != nullptr) replacement->parent = replacementParent;
+    TreeNode **rootSlot = (TreeNode **)root;
+    if (*rootSlot == requested) {
+      *rootSlot = replacement;
+    } else {
+      TreeNode *parent = requested->parent;
+      if (parent->left == requested) parent->left = replacement;
+      else parent->right = replacement;
+    }
+    TreeNode **first = (TreeNode **)leftmost;
+    if (*first == requested) {
+      TreeNode *right = requested->right;
+      if (right == nullptr) {
+        *first = requested->parent;
+      } else {
+        TreeNode *child = replacement->left;
+        TreeNode *minimum = replacement;
+        while (child != nullptr) {
+          minimum = child;
+          child = minimum->left;
+        }
+        *first = minimum;
+      }
+    }
+    TreeNode **last = (TreeNode **)rightmost;
+    if (*last == requested) {
+      TreeNode *left = requested->left;
+      if (left == nullptr) {
+        *last = requested->parent;
+      } else {
+        TreeNode *child = replacement->right;
+        TreeNode *maximum = replacement;
+        while (child != nullptr) {
+          maximum = child;
+          child = maximum->right;
+        }
+        *last = maximum;
+      }
+    }
+  }
+  if (removed->color != 0) {
+    if (replacement != *(TreeNode **)root) {
+      while (replacement == nullptr || replacement->color == 1) {
+        TreeNode *sibling = replacementParent->left;
+        if (replacement == sibling) {
+          sibling = replacementParent->right;
+          if (sibling->color == 0) {
+            sibling->color = 1;
+            sibling = replacementParent->right;
+            replacementParent->color = 0;
+            RotateTreeLinksLeft(replacementParent,sibling,root);
+            sibling = replacementParent->right;
+          }
+          TreeNode *nearChild = sibling->left;
+          if (nearChild == nullptr || nearChild->color == 1) {
+            TreeNode *farChild = sibling->right;
+            if (farChild == nullptr || farChild->color == 1) {
+              sibling->color = 0;
+              TreeNode **rootAfterRecolor = (TreeNode **)root;
+              replacement = replacementParent;
+              replacementParent = replacementParent->parent;
+              if (replacement == *rootAfterRecolor) break;
+              continue;
+            }
+          }
+          TreeNode *farChild = sibling->right;
+          if (farChild == nullptr || farChild->color == 1) {
+            TreeNode *nearChild = sibling->left;
+            if (nearChild != nullptr) nearChild->color = 1;
+            nearChild = sibling->left;
+            sibling->color = 0;
+            RotateTreeLinksRight(sibling,nearChild,root);
+            sibling = replacementParent->right;
+          }
+          byte parentColor = replacementParent->color;
+          sibling->color = parentColor;
+          replacementParent->color = 1;
+          farChild = sibling->right;
+          if (farChild != nullptr) farChild->color = 1;
+          sibling = replacementParent->right;
+          RotateTreeLinksLeft(replacementParent,sibling,root);
+          break;
+        } else {
+          if (sibling->color == 0) {
+            sibling->color = 1;
+            sibling = replacementParent->left;
+            replacementParent->color = 0;
+            RotateTreeLinksRight(replacementParent,sibling,root);
+            sibling = replacementParent->left;
+          }
+          TreeNode *farChild = sibling->right;
+          if (farChild == nullptr || farChild->color == 1) {
+            TreeNode *nearChild = sibling->left;
+            if (nearChild == nullptr || nearChild->color == 1) {
+              sibling->color = 0;
+              TreeNode **rootAfterRecolor = (TreeNode **)root;
+              replacement = replacementParent;
+              replacementParent = replacementParent->parent;
+              if (replacement == *rootAfterRecolor) break;
+              continue;
+            }
+          }
+          TreeNode *nearChild = sibling->left;
+          if (nearChild == nullptr || nearChild->color == 1) {
+            TreeNode *farChild = sibling->right;
+            if (farChild != nullptr) farChild->color = 1;
+            farChild = sibling->right;
+            sibling->color = 0;
+            RotateTreeLinksLeft(sibling,farChild,root);
+            sibling = replacementParent->left;
+          }
+          byte parentColor = replacementParent->color;
+          sibling->color = parentColor;
+          replacementParent->color = 1;
+          nearChild = sibling->left;
+          if (nearChild != nullptr) nearChild->color = 1;
+          sibling = replacementParent->left;
+          RotateTreeLinksRight(replacementParent,sibling,root);
+          break;
+        }
+      }
+    }
+    if (replacement != nullptr) replacement->color = 1;
+  }
+  return (char *)removed;
 }
 
 // Deletes an owned virtual value, erases its map node and returns the next iterator; the header iterator is unchanged.
@@ -970,34 +658,17 @@ uint __thiscall DispatchOwnedMapKeyErase(void *owner,uint keyWord)
   return (*(EraseNode *)(vtable + 0x10))(owner,&keyWord,iteratorWord);
 }
 
-// Frees each right subtree before the current node, then follows left links; never releases payload values.
-// R6GameService.dll @ 10038eb0 : ECX forwarded context, node stack word, RET4; EAX=incoming for null or last free result.
-__declspec(naked) uint __thiscall ReleasePRNGMapTreeBranch(void *unusedTree,int nodeAddress)
+// Release right subtrees before each node, then follow the cached left child; payloads and header remain untouched.
+// R6GameService.dll @ 10038eb0 : void return inferred from callers; native EAX is entry/last-free residue.
+void __thiscall ReleasePRNGMapTreeBranch(void *unusedTree,int nodeAddress)
 {
-  __asm {
-    push   ebx
-    push   esi
-    mov    esi,dword ptr [esp+0xc]
-    mov    ebx,ecx
-    test   esi,esi
-    jz     branch_done
-    push   edi
-  branch_loop:
-    mov    eax,dword ptr [esi+0xc]
-    mov    ecx,ebx
-    push   eax
-    call   R6GameServiceAddresses::ReleasePRNGMapTreeBranch
-    mov    edi,dword ptr [esi+0x8]
-    push   esi
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    test   edi,edi
-    mov    esi,edi
-    jnz    branch_loop
-    pop    edi
-  branch_done:
-    pop    esi
-    pop    ebx
-    ret    0x4
+  uint node = (uint)nodeAddress;
+  while (node != 0) {
+    uint right = *(uint *)(node + 0xc);
+    ReleasePRNGMapTreeBranch(unusedTree,(int)right);
+    uint left = *(uint *)(node + 8);
+    TailFreeThroughGlobalAllocator((void *)node);
+    node = left;
   }
 }
 
@@ -1127,34 +798,17 @@ uint __fastcall DestroyHashMapTree(int *tree)
   return result;
 }
 
-// Frees each right subtree before the current node, then follows left links; never releases payload values.
-// R6GameService.dll @ 10038ee0 : ECX forwarded context, node stack word, RET4; EAX=incoming for null or last free result.
-__declspec(naked) uint __thiscall ReleaseCryptoMapTreeBranch(void *unusedTree,int nodeAddress)
+// Release right subtrees before each node, then follow the cached left child; payloads and header remain untouched.
+// R6GameService.dll @ 10038ee0 : void return inferred from callers; native EAX is entry/last-free residue.
+void __thiscall ReleaseCryptoMapTreeBranch(void *unusedTree,int nodeAddress)
 {
-  __asm {
-    push   ebx
-    push   esi
-    mov    esi,dword ptr [esp+0xc]
-    mov    ebx,ecx
-    test   esi,esi
-    jz     branch_done
-    push   edi
-  branch_loop:
-    mov    eax,dword ptr [esi+0xc]
-    mov    ecx,ebx
-    push   eax
-    call   R6GameServiceAddresses::ReleaseCryptoMapTreeBranch
-    mov    edi,dword ptr [esi+0x8]
-    push   esi
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    test   edi,edi
-    mov    esi,edi
-    jnz    branch_loop
-    pop    edi
-  branch_done:
-    pop    esi
-    pop    ebx
-    ret    0x4
+  uint node = (uint)nodeAddress;
+  while (node != 0) {
+    uint right = *(uint *)(node + 0xc);
+    ReleaseCryptoMapTreeBranch(unusedTree,(int)right);
+    uint left = *(uint *)(node + 8);
+    TailFreeThroughGlobalAllocator((void *)node);
+    node = left;
   }
 }
 
@@ -1192,34 +846,17 @@ uint __fastcall DestroyCryptoMapTree(int *tree)
   return result;
 }
 
-// Frees each right subtree before the current node, then follows left links; never releases payload values.
-// R6GameService.dll @ 10038f10 : ECX forwarded context, node stack word, RET4; EAX=incoming for null or last free result.
-__declspec(naked) uint __thiscall ReleasePKCMapTreeBranch(void *unusedTree,int nodeAddress)
+// Release right subtrees before each node, then follow the cached left child; payloads and header remain untouched.
+// R6GameService.dll @ 10038f10 : void return inferred from callers; native EAX is entry/last-free residue.
+void __thiscall ReleasePKCMapTreeBranch(void *unusedTree,int nodeAddress)
 {
-  __asm {
-    push   ebx
-    push   esi
-    mov    esi,dword ptr [esp+0xc]
-    mov    ebx,ecx
-    test   esi,esi
-    jz     branch_done
-    push   edi
-  branch_loop:
-    mov    eax,dword ptr [esi+0xc]
-    mov    ecx,ebx
-    push   eax
-    call   R6GameServiceAddresses::ReleasePKCMapTreeBranch
-    mov    edi,dword ptr [esi+0x8]
-    push   esi
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    test   edi,edi
-    mov    esi,edi
-    jnz    branch_loop
-    pop    edi
-  branch_done:
-    pop    esi
-    pop    ebx
-    ret    0x4
+  uint node = (uint)nodeAddress;
+  while (node != 0) {
+    uint right = *(uint *)(node + 0xc);
+    ReleasePKCMapTreeBranch(unusedTree,(int)right);
+    uint left = *(uint *)(node + 8);
+    TailFreeThroughGlobalAllocator((void *)node);
+    node = left;
   }
 }
 
@@ -3578,110 +3215,53 @@ __declspec(naked) uint __thiscall FindOrInsertByteDescriptorTreeEntry(
   }
 }
 
-// Compare unsigned byte prefixes then signed lengths; reuse incoming arguments for lengths and return full EAX0/1.
-// R6GameService.dll @ 10028350 : complete native control/access/raw ABI; descriptive shared helper name.
-__declspec(naked) uint __cdecl ByteDescriptorLess(const void *left,const void *right)
+// Compare unsigned byte prefixes and then signed wrapped lengths; argument slots retain the native length scratch.
+// R6GameService.dll @ 10028350 : inferred descriptor prefix is begin +0/end +4; full EAX is 0 or 1.
+uint __cdecl ByteDescriptorLess(const void *left,const void *right)
 {
-  __asm {
-    mov    eax,DWORD PTR [esp+0x4]
-    mov    ecx,DWORD PTR [esp+0x8]
-    push   ebx
-    push   esi
-    mov    esi,DWORD PTR [eax]
-    mov    eax,DWORD PTR [eax+0x4]
-    mov    edx,DWORD PTR [ecx+0x4]
-    push   edi
-    mov    edi,DWORD PTR [ecx]
-    sub    eax,esi
-    sub    edx,edi
-    mov    DWORD PTR [esp+0x10],eax
-    cmp    edx,eax
-    mov    DWORD PTR [esp+0x14],edx
-    lea    ecx,[esp+0x14]
-    jl     Branch287
-    lea    ecx,[esp+0x10]
-  Branch287:
-    mov    ecx,DWORD PTR [ecx]
-    xor    ebx,ebx
-    repz   cmps BYTE PTR ds:[esi],BYTE PTR es:[edi]
-    je     Branch288
-    sbb    ebx,ebx
-    sbb    ebx,0xffffffff
-  Branch288:
-    test   ebx,ebx
-    jne    Branch290
-    cmp    eax,edx
-    jge    Branch289
-    or     ebx,0xffffffff
-    xor    eax,eax
-    test   ebx,ebx
-    pop    edi
-    pop    esi
-    setl   al
-    pop    ebx
-    ret
-  Branch289:
-    xor    ebx,ebx
-    cmp    eax,edx
-    setg   bl
-  Branch290:
-    xor    eax,eax
-    pop    edi
-    test   ebx,ebx
-    pop    esi
-    pop    ebx
-    setl   al
-    ret
+  const byte *first = *(const byte **)left;
+  uint leftEnd = *(uint *)((const byte *)left + 4);
+  uint rightEnd = *(uint *)((const byte *)right + 4);
+  const byte *second = *(const byte **)right;
+  uint leftLength = leftEnd - (uint)first;
+  uint rightLength = rightEnd - (uint)second;
+  left = (const void *)leftLength;
+  right = (const void *)rightLength;
+  uint count = (int)rightLength < (int)leftLength ? (uint)right : (uint)left;
+  while (count != 0) {
+    byte firstByte = *first;
+    byte secondByte = *second;
+    first = (const byte *)((uint)first + 1);
+    second = (const byte *)((uint)second + 1);
+    if (firstByte != secondByte) return firstByte < secondByte ? 1 : 0;
+    --count;
   }
+  return (int)leftLength < (int)rightLength ? 1 : 0;
 }
 
-// Compare unsigned bytes then signed wrapped lengths; overwrite the first two argument words and return -1/0/1.
-// R6GameService.dll @ 100283e0 : complete native control/access/raw ABI; descriptive shared helper name.
-__declspec(naked) uint __cdecl CompareByteRanges(const byte *leftBegin,uint leftEnd,const byte *rightBegin,uint rightEnd)
+// Compare unsigned byte prefixes, then signed wrapped lengths; negative selected lengths remain unchecked counts.
+// R6GameService.dll @ 100283e0 : returns full-word -1/0/1 and reuses argument slots one/two for length scratch.
+uint __cdecl CompareByteRanges(const byte *leftBegin,uint leftEnd,const byte *rightBegin,uint rightEnd)
 {
-  __asm {
-    mov    edx,DWORD PTR [esp+0x8]
-    push   ebx
-    mov    ebx,DWORD PTR [esp+0x14]
-    push   esi
-    mov    esi,DWORD PTR [esp+0xc]
-    push   edi
-    mov    edi,DWORD PTR [esp+0x18]
-    sub    edx,esi
-    sub    ebx,edi
-    mov    DWORD PTR [esp+0x10],edx
-    cmp    ebx,edx
-    mov    DWORD PTR [esp+0x14],ebx
-    lea    eax,[esp+0x14]
-    jl     Branch291
-    lea    eax,[esp+0x10]
-  Branch291:
-    mov    ecx,DWORD PTR [eax]
-    xor    eax,eax
-    repz   cmps BYTE PTR ds:[esi],BYTE PTR es:[edi]
-    je     Branch292
-    sbb    eax,eax
-    sbb    eax,0xffffffff
-  Branch292:
-    test   eax,eax
-    jne    Branch294
-    cmp    edx,ebx
-    jge    Branch293
-    pop    edi
-    pop    esi
-    or     eax,0xffffffff
-    pop    ebx
-    ret
-  Branch293:
-    xor    eax,eax
-    cmp    edx,ebx
-    setg   al
-  Branch294:
-    pop    edi
-    pop    esi
-    pop    ebx
-    ret
+  uint leftLimit = leftEnd;
+  uint rightLimit = rightEnd;
+  const byte *first = leftBegin;
+  const byte *second = rightBegin;
+  uint leftLength = leftLimit - (uint)first;
+  uint rightLength = rightLimit - (uint)second;
+  leftBegin = (const byte *)leftLength;
+  leftEnd = rightLength;
+  uint count = (int)rightLength < (int)leftLength ? leftEnd : (uint)leftBegin;
+  while (count != 0) {
+    byte firstByte = *first;
+    byte secondByte = *second;
+    first = (const byte *)((uint)first + 1);
+    second = (const byte *)((uint)second + 1);
+    if (firstByte != secondByte) return firstByte < secondByte ? 0xffffffff : 1;
+    --count;
   }
+  if ((int)leftLength < (int)rightLength) return 0xffffffff;
+  return (int)leftLength > (int)rightLength ? 1 : 0;
 }
 
 // Allocate a32-byte node, clone begin/end at+10 and reload source before low16 port; preserve raw allocation result.
@@ -4510,131 +4090,59 @@ const R6GameServiceNative::FuncInfo ordered_tree_supportSharedLifetimeExceptionI
   0x00000000,
 };
 
-// Retain tree ECX for recursion; release subtree+c, then cache next8 BEFORE freeing current node.
-// RET4; NULL input retains incoming EAX, nonempty returns last free EAX; no own guard/cycle repair.
-// R6GameService.dll @ 10041710 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall ReleaseLinkedNodes(void *tree,int nodeAddress)
+// Release right subtrees before each node, then follow the cached left child; payloads and header remain untouched.
+// R6GameService.dll @ 10041710 : void return inferred from callers; native EAX is entry/last-free residue.
+void __thiscall ReleaseLinkedNodes(void *tree,int nodeAddress)
 {
-  __asm {
-    push   ebx
-    push   esi
-    mov    esi,DWORD PTR [esp+0xc]
-    mov    ebx,ecx
-    test   esi,esi
-    je     Branch327
-    push   edi
-  Branch326:
-    mov    eax,DWORD PTR [esi+0xc]
-    mov    ecx,ebx
-    push   eax
-    call   R6GameServiceAddresses::ReleaseLinkedNodes
-    mov    edi,DWORD PTR [esi+0x8]
-    push   esi
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    test   edi,edi
-    mov    esi,edi
-    jne    Branch326
-    pop    edi
-  Branch327:
-    pop    esi
-    pop    ebx
-    ret    0x4
+  uint node = (uint)nodeAddress;
+  while (node != 0) {
+    uint right = *(uint *)(node + 0xc);
+    ReleaseLinkedNodes(tree,(int)right);
+    uint left = *(uint *)(node + 8);
+    TailFreeThroughGlobalAllocator((void *)node);
+    node = left;
   }
 }
 
-// Recurse subtree+c with retained ECX receiver, cache next8, free current node, then continue cached chain.
-// NULL input retains EAX; otherwise raw last free result, RET4. Separate physical specialization; no own guard.
-// R6GameService.dll @ 10042d20 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall ordered_tree_support_ReleaseTreeNodes(void *tree,int nodeAddress)
+// Release right subtrees before each node, then follow the cached left child; payloads and header remain untouched.
+// R6GameService.dll @ 10042d20 : void return inferred from callers; native EAX is entry/last-free residue.
+void __thiscall ordered_tree_support_ReleaseTreeNodes(void *tree,int nodeAddress)
 {
-  __asm {
-    push   ebx
-    push   esi
-    mov    esi,DWORD PTR [esp+0xc]
-    mov    ebx,ecx
-    test   esi,esi
-    je     Branch329
-    push   edi
-  Branch328:
-    mov    eax,DWORD PTR [esi+0xc]
-    mov    ecx,ebx
-    push   eax
-    call   R6GameServiceAddresses::ordered_tree_support_ReleaseTreeNodes
-    mov    edi,DWORD PTR [esi+0x8]
-    push   esi
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    test   edi,edi
-    mov    esi,edi
-    jne    Branch328
-    pop    edi
-  Branch329:
-    pop    esi
-    pop    ebx
-    ret    0x4
+  uint node = (uint)nodeAddress;
+  while (node != 0) {
+    uint right = *(uint *)(node + 0xc);
+    ordered_tree_support_ReleaseTreeNodes(tree,(int)right);
+    uint left = *(uint *)(node + 8);
+    TailFreeThroughGlobalAllocator((void *)node);
+    node = left;
   }
 }
 
-// Recurse subtree+c with retained ECX receiver, cache next8, free current node, then continue cached chain.
-// NULL input retains EAX; otherwise raw last free result, RET4. Separate physical specialization; no own guard.
-// R6GameService.dll @ 10042d50 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall ordered_tree_support_ReleaseTreeNodes2(void *tree,int nodeAddress)
+// Release right subtrees before each node, then follow the cached left child; payloads and header remain untouched.
+// R6GameService.dll @ 10042d50 : void return inferred from callers; native EAX is entry/last-free residue.
+void __thiscall ordered_tree_support_ReleaseTreeNodes2(void *tree,int nodeAddress)
 {
-  __asm {
-    push   ebx
-    push   esi
-    mov    esi,DWORD PTR [esp+0xc]
-    mov    ebx,ecx
-    test   esi,esi
-    je     Branch331
-    push   edi
-  Branch330:
-    mov    eax,DWORD PTR [esi+0xc]
-    mov    ecx,ebx
-    push   eax
-    call   R6GameServiceAddresses::ordered_tree_support_ReleaseTreeNodes2
-    mov    edi,DWORD PTR [esi+0x8]
-    push   esi
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    test   edi,edi
-    mov    esi,edi
-    jne    Branch330
-    pop    edi
-  Branch331:
-    pop    esi
-    pop    ebx
-    ret    0x4
+  uint node = (uint)nodeAddress;
+  while (node != 0) {
+    uint right = *(uint *)(node + 0xc);
+    ordered_tree_support_ReleaseTreeNodes2(tree,(int)right);
+    uint left = *(uint *)(node + 8);
+    TailFreeThroughGlobalAllocator((void *)node);
+    node = left;
   }
 }
 
-// Recurse subtree+c with retained ECX receiver, cache next8, free current node, then continue cached chain.
-// NULL input retains EAX; otherwise raw last free result, RET4. Separate physical specialization; no own guard.
-// R6GameService.dll @ 10042d80 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall ordered_tree_support_ReleaseTreeNodes3(void *tree,int nodeAddress)
+// Release right subtrees before each node, then follow the cached left child; payloads and header remain untouched.
+// R6GameService.dll @ 10042d80 : void return inferred from callers; native EAX is entry/last-free residue.
+void __thiscall ordered_tree_support_ReleaseTreeNodes3(void *tree,int nodeAddress)
 {
-  __asm {
-    push   ebx
-    push   esi
-    mov    esi,DWORD PTR [esp+0xc]
-    mov    ebx,ecx
-    test   esi,esi
-    je     Branch333
-    push   edi
-  Branch332:
-    mov    eax,DWORD PTR [esi+0xc]
-    mov    ecx,ebx
-    push   eax
-    call   R6GameServiceAddresses::ordered_tree_support_ReleaseTreeNodes3
-    mov    edi,DWORD PTR [esi+0x8]
-    push   esi
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    test   edi,edi
-    mov    esi,edi
-    jne    Branch332
-    pop    edi
-  Branch333:
-    pop    esi
-    pop    ebx
-    ret    0x4
+  uint node = (uint)nodeAddress;
+  while (node != 0) {
+    uint right = *(uint *)(node + 0xc);
+    ordered_tree_support_ReleaseTreeNodes3(tree,(int)right);
+    uint left = *(uint *)(node + 8);
+    TailFreeThroughGlobalAllocator((void *)node);
+    node = left;
   }
 }
 
@@ -4675,45 +4183,29 @@ __declspec(naked) uint __thiscall ReleaseTreePayloadNodes(void *tree,int nodeAdd
 // Nonzero count4 drains right subtrees then cached next8/current nodes; reload header for each reset/count0.
 // Keep sentinel/slot, no own EH. Count0 returns0; reset path raw EAX is last reloaded header.
 // R6GameService.dll @ 100416c0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall ReleaseNestedServiceLinkedEntries(int *tree)
+uint __fastcall ReleaseNestedServiceLinkedEntries(int *tree)
 {
-  __asm {
-    push   edi
-    mov    edi,ecx
-    mov    eax,DWORD PTR [edi+0x4]
-    test   eax,eax
-    je     Branch338
-    mov    eax,DWORD PTR [edi]
-    push   esi
-    mov    esi,DWORD PTR [eax+0x4]
-    test   esi,esi
-    je     Branch337
-    push   ebx
-  Branch336:
-    mov    ecx,DWORD PTR [esi+0xc]
-    push   ecx
-    mov    ecx,edi
-    call   R6GameServiceAddresses::ReleaseLinkedNodes
-    mov    ebx,DWORD PTR [esi+0x8]
-    push   esi
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    test   ebx,ebx
-    mov    esi,ebx
-    jne    Branch336
-    pop    ebx
-  Branch337:
-    mov    eax,DWORD PTR [edi]
-    pop    esi
-    mov    DWORD PTR [eax+0x8],eax
-    mov    edx,DWORD PTR [edi]
-    mov    DWORD PTR [edx+0x4],0x0
-    mov    eax,DWORD PTR [edi]
-    mov    DWORD PTR [eax+0xc],eax
-    mov    DWORD PTR [edi+0x4],0x0
-  Branch338:
-    pop    edi
-    ret
+  uint count = *(uint *)((uint)tree + 4);
+  if (count == 0) return count;
+  uint head = *(uint *)tree;
+  uint node = *(uint *)(head + 4);
+  using SubtreeABI = void (__thiscall *)(int *,int);
+  using FreeABI = uint (__stdcall *)(void *);
+  while (node != 0) {
+    uint right = *(uint *)(node + 0xc);
+    ((SubtreeABI)R6GameServiceAddresses::ReleaseLinkedNodes)(tree,(int)right);
+    uint left = *(uint *)(node + 8);
+    ((FreeABI)R6GameServiceAddresses::TailFreeThroughGlobalAllocator)((void *)node);
+    node = left;
   }
+  head = *(uint *)tree;
+  *(uint *)(head + 8) = head;
+  uint rootHead = *(uint *)tree;
+  *(uint *)(rootHead + 4) = 0;
+  head = *(uint *)tree;
+  *(uint *)(head + 0xc) = head;
+  *(uint *)((uint)tree + 4) = 0;
+  return head;
 }
 
 // Install77d88 at owner4, use tree slot+c/count10, recurse entire root then reset live header/count.
@@ -6205,88 +5697,50 @@ const R6GameServiceNative::FuncInfo ordered_tree_supportSharedLifetimeExceptionI
   0x0,
 };
 
-// Release right subtree, cache current left, destroy owning pair at node10, free node, then continue left.
-// Context only forwards recursively; no field interpretation, own EH, deduplication or link/count reset.
-// Null node preserves incoming EAX; otherwise raw final free result, RET4.
+// Release right subtrees, cache the left link, destroy its owning pair at+10, then free the node and follow left.
+// Inferred void return matches every observed caller; no local guard, link repair or count reset.
 // R6GameService.dll @ 10041540 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall ReleaseServiceTreeSubtree(void *context,int nodeAddress)
+void __thiscall ReleaseServiceTreeSubtree(void *context,int nodeAddress)
 {
-  __asm {
-    push   ebx
-    push   esi
-    mov    esi,DWORD PTR [esp+0xc]
-    mov    ebx,ecx
-    test   esi,esi
-    je     Branch423
-    push   edi
-  Branch422:
-    mov    eax,DWORD PTR [esi+0xc]
-    mov    ecx,ebx
-    push   eax
-    call   R6GameServiceAddresses::ReleaseServiceTreeSubtree
-    mov    edi,DWORD PTR [esi+0x8]
-    lea    ecx,[esi+0x10]
-    call   R6GameServiceAddresses::DestroyServiceTreeRecord
-    push   esi
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    test   edi,edi
-    mov    esi,edi
-    jne    Branch422
-    pop    edi
-  Branch423:
-    pop    esi
-    pop    ebx
-    ret    0x4
+  uint node = (uint)nodeAddress;
+  while (node != 0) {
+    uint right = *(uint *)(node + 0xc);
+    ReleaseServiceTreeSubtree(context,(int)right);
+    uint left = *(uint *)(node + 8);
+    using ReleaseABI = uint (__fastcall *)(void *);
+    ((ReleaseABI)R6GameServiceAddresses::DestroyServiceTreeRecord)((void *)(node + 0x10));
+    TailFreeThroughGlobalAllocator((void *)node);
+    node = left;
   }
 }
 
-// Find a signed key for stable inputs and write node/head to current output pointer; historical lower-bound name retained.
-// Cache head/query pointer and first traversal key; reload CURRENT query for final query>=candidate acceptance.
-// Empty tree never dereferences the query. Raw output pointer EAX/RET8; only output DWORD written.
-// R6GameService.dll @ 100552b0 : complete native control/access order and raw ABI retained.
-__declspec(naked) int *__thiscall FindIndexedTreeLowerBound(void *tree,int *output,int *requestedKey)
+// Find an exact signed thirty-two-bit key, reloading the query before accepting the lower-bound candidate.
+// R6GameService.dll @ 100552b0 : inferred key at +0x10; empty trees never read the query.
+int * __thiscall FindIndexedTreeLowerBound(void *tree,int *output,int *requestedKey)
 {
-  __asm {
-    mov    ecx,DWORD PTR [ecx]
-    push   esi
-    push   edi
-    mov    edi,DWORD PTR [esp+0x10]
-    mov    eax,DWORD PTR [ecx+0x4]
-    mov    edx,ecx
-    test   eax,eax
-    je     Branch427
-    mov    esi,DWORD PTR [edi]
-  Branch424:
-    cmp    DWORD PTR [eax+0x10],esi
-    jl     Branch425
-    mov    edx,eax
-    mov    eax,DWORD PTR [eax+0x8]
-    jmp    Branch426
-  Branch425:
-    mov    eax,DWORD PTR [eax+0xc]
-  Branch426:
-    test   eax,eax
-    jne    Branch424
-  Branch427:
-    cmp    edx,ecx
-    je     Branch428
-    mov    eax,DWORD PTR [edi]
-    mov    esi,DWORD PTR [edx+0x10]
-    cmp    eax,esi
-    jge    Branch429
-  Branch428:
-    mov    eax,DWORD PTR [esp+0xc]
-    pop    edi
-    pop    esi
-    mov    DWORD PTR [eax],ecx
-    ret    0x8
-  Branch429:
-    mov    eax,DWORD PTR [esp+0xc]
-    pop    edi
-    pop    esi
-    mov    DWORD PTR [eax],edx
-    ret    0x8
+  byte *head = *(byte **)tree;
+  const int *query = requestedKey;
+  byte *node = *(byte **)(head + 4);
+  byte *candidate = head;
+  if (node != nullptr) {
+    int requested = *query;
+    do {
+      if (*(int *)(node + 0x10) >= requested) {
+        candidate = node;
+        node = *(byte **)(node + 8);
+      } else {
+        node = *(byte **)(node + 0xc);
+      }
+    } while (node != nullptr);
   }
+  if (candidate != head) {
+    int currentQuery = *query;
+    int candidateKey = *(int *)(candidate + 0x10);
+    if (currentQuery < candidateKey) candidate = head;
+  }
+  int *result = output;
+  *result = (int)candidate;
+  return result;
 }
 
 // Allocate/copy a record node and place it left for head, or for zero hint with nonzero leftChild/smaller key.
@@ -6666,46 +6120,31 @@ __declspec(naked) int *__thiscall ordered_tree_support_FindOrInsertIndexedTreeNo
   }
 }
 
-// Return exact signed-key node for stable inputs, otherwise cached head; final current query>=candidate test is literal.
-// Cache head/query pointer/traversal key, then reload current query for final acceptance; empty tree avoids query read.
-// Raw node word EAX/RET4, no writes or local guard.
-// R6GameService.dll @ 10055660 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall FindIndexedTreeKey(void *tree,int *requestedKey)
+// Find an exact signed thirty-two-bit key, reloading the query before accepting the lower-bound candidate.
+// R6GameService.dll @ 10055660 : inferred key at +0x10; empty trees never read the query.
+uint __thiscall FindIndexedTreeKey(void *tree,int *requestedKey)
 {
-  __asm {
-    mov    eax,DWORD PTR [ecx]
-    push   esi
-    push   edi
-    mov    edi,DWORD PTR [esp+0xc]
-    mov    ecx,DWORD PTR [eax+0x4]
-    mov    edx,eax
-    test   ecx,ecx
-    je     Branch466
-    mov    esi,DWORD PTR [edi]
-  Branch463:
-    cmp    DWORD PTR [ecx+0x10],esi
-    jl     Branch464
-    mov    edx,ecx
-    mov    ecx,DWORD PTR [ecx+0x8]
-    jmp    Branch465
-  Branch464:
-    mov    ecx,DWORD PTR [ecx+0xc]
-  Branch465:
-    test   ecx,ecx
-    jne    Branch463
-  Branch466:
-    cmp    edx,eax
-    je     Branch467
-    mov    ecx,DWORD PTR [edi]
-    mov    esi,DWORD PTR [edx+0x10]
-    cmp    ecx,esi
-    jl     Branch467
-    mov    eax,edx
-  Branch467:
-    pop    edi
-    pop    esi
-    ret    0x4
+  byte *head = *(byte **)tree;
+  const int *query = requestedKey;
+  byte *node = *(byte **)(head + 4);
+  byte *candidate = head;
+  if (node != nullptr) {
+    int requested = *query;
+    do {
+      if (*(int *)(node + 0x10) >= requested) {
+        candidate = node;
+        node = *(byte **)(node + 8);
+      } else {
+        node = *(byte **)(node + 0xc);
+      }
+    } while (node != nullptr);
   }
+  if (candidate != head) {
+    int currentQuery = *query;
+    int candidateKey = *(int *)(candidate + 0x10);
+    if (currentQuery < candidateKey) candidate = head;
+  }
+  return (uint)candidate;
 }
 
 // Insert or find signed-key record using leftmost/end/neighbor hint paths or native full-search fallback.
@@ -7289,120 +6728,69 @@ __declspec(naked) int *__thiscall FindOrInsertIndexedTreeNode(
 // Reload the current header before each byte/parent/left/right initialization; leave padding untouched.
 // Raw EAX/EDX/ECX retain the third/second/fourth loaded header pointers; no cached-header substitution.
 // R6GameService.dll @ 1004b490 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall InitializeServiceTreeHeader(void *headerSlot)
+uint __fastcall InitializeServiceTreeHeader(void *headerSlot)
 {
-  __asm {
-    mov    eax,DWORD PTR [ecx]
-    mov    BYTE PTR [eax],0x0
-    mov    edx,DWORD PTR [ecx]
-    mov    DWORD PTR [edx+0x4],0x0
-    mov    eax,DWORD PTR [ecx]
-    mov    DWORD PTR [eax+0x8],eax
-    mov    ecx,DWORD PTR [ecx]
-    mov    DWORD PTR [ecx+0xc],ecx
-    ret
-  }
+  uint head = *(uint *)headerSlot;
+  *(byte *)head = 0;
+  uint parentHead = *(uint *)headerSlot;
+  *(uint *)(parentHead + 4) = 0;
+  head = *(uint *)headerSlot;
+  *(uint *)(head + 8) = head;
+  uint rightHead = *(uint *)headerSlot;
+  *(uint *)(rightHead + 0xc) = rightHead;
+  return head;
 }
 
-// Recurse right, then capture current left link, release current node string and node, and continue on cached left.
-// No local guard or link repair; null input retains entry EAX and nonempty completion retains final free EAX.
+// Release right subtrees, cache the left link, destroy its string at+10, then free the node and follow left.
+// Inferred void return matches every observed caller; no local guard, link repair or count reset.
 // R6GameService.dll @ 1004b4b0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall FreeNestedListNodes(void *context,int node)
+void __thiscall FreeNestedListNodes(void *context,int nodeAddress)
 {
-  __asm {
-    push    ebx
-    push    esi
-    mov    esi,DWORD PTR [esp+0xc]
-    mov    ebx,ecx
-    test    esi,esi
-    je    Branch511
-    push    edi
-  Branch510:
-    mov    eax,DWORD PTR [esi+0xc]
-    mov    ecx,ebx
-    push    eax
-    call    R6GameServiceAddresses::FreeNestedListNodes
-    mov    edi,DWORD PTR [esi+0x8]
-    lea    ecx,[esi+0x10]
-    call    R6GameServiceAddresses::ReleaseFirstWordBuffer
-    push    esi
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    test    edi,edi
-    mov    esi,edi
-    jne    Branch510
-    pop    edi
-  Branch511:
-    pop    esi
-    pop    ebx
-    ret    0x4
+  uint node = (uint)nodeAddress;
+  while (node != 0) {
+    uint right = *(uint *)(node + 0xc);
+    FreeNestedListNodes(context,(int)right);
+    uint left = *(uint *)(node + 8);
+    using ReleaseABI = uint (__fastcall *)(void *);
+    ((ReleaseABI)R6GameServiceAddresses::ReleaseFirstWordBuffer)((void *)(node + 0x10));
+    TailFreeThroughGlobalAllocator((void *)node);
+    node = left;
   }
 }
 
 // Allocate raw1c node, guard string at+10, allocate length+1 and move captured key range; publish returned end/NUL.
 // Preserve raw adjusted-pointer guard, captured descriptor, current raw-node return slot and catch/unwind stages.
 // R6GameService.dll @ 1004b6b0 : complete native control/access order and raw ABI retained.
-__declspec(naked) void *__thiscall CreateServiceTreeByteStringNode(void *treeContext,void *keyDescriptor)
+void *__thiscall CreateServiceTreeByteStringNode(void *treeContext,void *keyDescriptor)
 {
-  __asm {
-    push    ebp
-    mov    ebp,esp
-    push    0xffffffff
-    push    R6GameServiceAddresses::SelectServiceStringNodeEH
-    mov    eax,fs:0x0
-    push    eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x10
-    push    ebx
-    push    esi
-    push    edi
-    mov    DWORD PTR [ebp-0x10],esp
-    push    0x1c
-    call    R6GameServiceAddresses::AllocateGameServiceBytes
-    xor    edi,edi
-    lea    esi,[eax+0x10]
-    mov    DWORD PTR [ebp-0x14],eax
-    mov    DWORD PTR [ebp-0x4],edi
-    mov    DWORD PTR [ebp-0x18],esi
-    mov    DWORD PTR [ebp-0x1c],esi
-    cmp    esi,edi
-    mov    BYTE PTR [ebp-0x4],0x1
-    je    Branch512
-    mov    ebx,DWORD PTR [ebp+0x8]
-    lea    eax,[ebp+0xb]
-    push    eax
-    mov    ecx,ebx
-    call    R6GameServiceAddresses::ForwardStackWord
-    mov    DWORD PTR [esi],edi
-    mov    DWORD PTR [esi+0x4],edi
-    mov    DWORD PTR [esi+0x8],edi
-    mov    edi,DWORD PTR [ebx+0x4]
-    mov    ebx,DWORD PTR [ebx]
-    mov    eax,edi
-    mov    ecx,esi
-    sub    eax,ebx
-    mov    BYTE PTR [ebp-0x4],0x2
-    inc    eax
-    push    eax
-    call    R6GameServiceAddresses::InitializeHeapByteString
-    mov    eax,DWORD PTR [esi]
-    lea    ecx,[ebp+0xb]
-    push    ecx
-    push    eax
-    push    edi
-    push    ebx
-    call    R6GameServiceAddresses::CopyByteRange
-    mov    DWORD PTR [esi+0x4],eax
-    mov    BYTE PTR [eax],0x0
-    mov    eax,DWORD PTR [ebp-0x14]
-  Branch512:
-    mov    ecx,DWORD PTR [ebp-0xc]
-    pop    edi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
-    ret    0x4
+  void *rawNode = AllocateGameServiceBytes(0x1c);
+  void *string = (void *)((uint)rawNode + 0x10);
+  try {
+    ServiceStringBufferCleanup cleanup{string, false};
+    if (string != 0) {
+      void *key = keyDescriptor;
+      byte *tag = (byte *)&keyDescriptor + 3;
+      using ForwardABI = uint (__stdcall *)(uint);
+      ((ForwardABI)R6GameServiceAddresses::ForwardStackWord)((uint)tag);
+      *(uint *)string = 0;
+      *(uint *)((uint)string + 4) = 0;
+      *(uint *)((uint)string + 8) = 0;
+      uint last = *(uint *)((uint)key + 4);
+      uint first = *(uint *)key;
+      cleanup.armed = true;
+      using InitializeABI = uint (__thiscall *)(void *,uint);
+      ((InitializeABI)R6GameServiceAddresses::InitializeHeapByteString)(string,last - first + 1);
+      void *destination = *(void **)string;
+      using CopyABI = void * (__stdcall *)(void *,void *,void *,void *);
+      void *end = ((CopyABI)R6GameServiceAddresses::CopyByteRange)((void *)first,(void *)last,destination,tag);
+      *(void **)((uint)string + 4) = end;
+      *(byte *)end = 0;
+    }
+    cleanup.armed = false;
+    return rawNode;
+  } catch (...) {
+    TailFreeThroughGlobalAllocator(rawNode);
+    throw;
   }
 }
 
@@ -7491,313 +6879,153 @@ const R6GameServiceNative::FuncInfo CreateServiceTreeByteStringNodeExceptionInfo
 // Find equal byte key or copy/link/rebalance a new node, increment count and publish node plus BYTE insertion flag.
 // Preserve predecessor candidate argument rewrite, late output/current header reads, native count wrap and raw EAX.
 // R6GameService.dll @ 1004b4f0 : complete native control/access order and raw ABI retained.
-__declspec(naked) void *__thiscall FindOrInsertServiceTreeByteString(
-    void *tree,void *result,void *keyDescriptor)
+void *__thiscall FindOrInsertServiceTreeByteString(void *tree,void *result,void *keyDescriptor)
 {
-  __asm {
-    push    ebx
-    push    ebp
-    mov    ebp,ecx
-    mov    ebx,DWORD PTR [esp+0x10]
-    push    esi
-    push    edi
-    mov    esi,DWORD PTR [ebp+0x0]
-    mov    al,0x1
-    mov    edi,DWORD PTR [esi+0x4]
-    test    edi,edi
-    je    Branch516
-  Branch513:
-    mov    eax,DWORD PTR [edi+0x14]
-    mov    ecx,DWORD PTR [edi+0x10]
-    mov    edx,DWORD PTR [ebx]
-    push    eax
-    mov    eax,DWORD PTR [ebx+0x4]
-    push    ecx
-    push    eax
-    push    edx
-    mov    esi,edi
-    call    R6GameServiceAddresses::CompareByteRanges
-    add    esp,0x10
-    test    eax,eax
-    setl    al
-    test    al,al
-    je    Branch514
-    mov    edi,DWORD PTR [edi+0x8]
-    jmp    Branch515
-  Branch514:
-    mov    edi,DWORD PTR [edi+0xc]
-  Branch515:
-    test    edi,edi
-    jne    Branch513
-  Branch516:
-    mov    ecx,esi
-    test    al,al
-    mov    DWORD PTR [esp+0x18],ecx
-    je    Branch521
-    mov    eax,DWORD PTR [ebp+0x0]
-    cmp    esi,DWORD PTR [eax+0x8]
-    jne    Branch520
-    cmp    esi,eax
-    je    Branch517
-    test    edi,edi
-    jne    Branch517
-    lea    eax,[esi+0x10]
-    push    eax
-    push    ebx
-    call    R6GameServiceAddresses::ByteDescriptorLess
-    add    esp,0x8
-    test    al,al
-    jne    Branch517
-    push    ebx
-    mov    ecx,ebp
-    call    R6GameServiceAddresses::CreateServiceTreeByteStringNode
-    mov    edi,eax
-    mov    DWORD PTR [esi+0xc],edi
-    mov    eax,DWORD PTR [ebp+0x0]
-    cmp    esi,DWORD PTR [eax+0xc]
-    jne    Branch519
-    mov    DWORD PTR [eax+0xc],edi
-    jmp    Branch519
-  Branch517:
-    push    ebx
-    mov    ecx,ebp
-    call    R6GameServiceAddresses::CreateServiceTreeByteStringNode
-    mov    edi,eax
-    mov    DWORD PTR [esi+0x8],edi
-    mov    eax,DWORD PTR [ebp+0x0]
-    cmp    esi,eax
-    jne    Branch518
-    mov    DWORD PTR [eax+0x4],edi
-    mov    ecx,DWORD PTR [ebp+0x0]
-    mov    DWORD PTR [ecx+0xc],edi
-    jmp    Branch519
-  Branch518:
-    cmp    esi,DWORD PTR [eax+0x8]
-    jne    Branch519
-    mov    DWORD PTR [eax+0x8],edi
-  Branch519:
-    xor    eax,eax
-    mov    DWORD PTR [edi+0x4],esi
-    mov    DWORD PTR [edi+0x8],eax
-    mov    DWORD PTR [edi+0xc],eax
-    mov    edx,DWORD PTR [ebp+0x0]
-    add    edx,0x4
-    push    edx
-    push    edi
-    call    R6GameServiceAddresses::RebalanceOrderedTreeAfterInsertion
-    mov    eax,DWORD PTR [ebp+0x4]
-    add    esp,0x8
-    inc    eax
-    mov    DWORD PTR [ebp+0x4],eax
-    mov    eax,DWORD PTR [esp+0x14]
-    mov    DWORD PTR [eax],edi
-    pop    edi
-    pop    esi
-    pop    ebp
-    mov    BYTE PTR [eax+0x4],0x1
-    pop    ebx
-    ret    0x8
-  Branch520:
-    push    esi
-    call    R6GameServiceAddresses::OrderedTreePredecessor
-    add    esp,0x4
-    mov    DWORD PTR [esp+0x18],eax
-    mov    ecx,eax
-  Branch521:
-    mov    eax,DWORD PTR [ebx+0x4]
-    mov    edx,DWORD PTR [ecx+0x14]
-    mov    ecx,DWORD PTR [ecx+0x10]
-    push    eax
-    mov    eax,DWORD PTR [ebx]
-    push    eax
-    push    edx
-    push    ecx
-    call    R6GameServiceAddresses::CompareByteRanges
-    add    esp,0x10
-    test    eax,eax
-    jge    Branch525
-    cmp    esi,DWORD PTR [ebp+0x0]
-    je    Branch522
-    test    edi,edi
-    jne    Branch522
-    lea    eax,[esi+0x10]
-    push    eax
-    push    ebx
-    call    R6GameServiceAddresses::ByteDescriptorLess
-    add    esp,0x8
-    test    al,al
-    jne    Branch522
-    push    ebx
-    mov    ecx,ebp
-    call    R6GameServiceAddresses::CreateServiceTreeByteStringNode
-    mov    edi,eax
-    mov    DWORD PTR [esi+0xc],edi
-    mov    eax,DWORD PTR [ebp+0x0]
-    cmp    esi,DWORD PTR [eax+0xc]
-    jne    Branch524
-    mov    DWORD PTR [eax+0xc],edi
-    jmp    Branch524
-  Branch522:
-    push    ebx
-    mov    ecx,ebp
-    call    R6GameServiceAddresses::CreateServiceTreeByteStringNode
-    mov    edi,eax
-    mov    DWORD PTR [esi+0x8],edi
-    mov    eax,DWORD PTR [ebp+0x0]
-    cmp    esi,eax
-    jne    Branch523
-    mov    DWORD PTR [eax+0x4],edi
-    mov    ecx,DWORD PTR [ebp+0x0]
-    mov    DWORD PTR [ecx+0xc],edi
-    jmp    Branch524
-  Branch523:
-    cmp    esi,DWORD PTR [eax+0x8]
-    jne    Branch524
-    mov    DWORD PTR [eax+0x8],edi
-  Branch524:
-    xor    eax,eax
-    mov    DWORD PTR [edi+0x4],esi
-    mov    DWORD PTR [edi+0x8],eax
-    mov    DWORD PTR [edi+0xc],eax
-    mov    edx,DWORD PTR [ebp+0x0]
-    add    edx,0x4
-    push    edx
-    push    edi
-    call    R6GameServiceAddresses::RebalanceOrderedTreeAfterInsertion
-    mov    eax,DWORD PTR [ebp+0x4]
-    add    esp,0x8
-    inc    eax
-    mov    DWORD PTR [ebp+0x4],eax
-    mov    eax,DWORD PTR [esp+0x14]
-    mov    DWORD PTR [eax],edi
-    pop    edi
-    pop    esi
-    pop    ebp
-    mov    BYTE PTR [eax+0x4],0x1
-    pop    ebx
-    ret    0x8
-  Branch525:
-    mov    eax,DWORD PTR [esp+0x14]
-    mov    ecx,DWORD PTR [esp+0x18]
-    pop    edi
-    pop    esi
-    pop    ebp
-    mov    DWORD PTR [eax],ecx
-    mov    BYTE PTR [eax+0x4],0x0
-    pop    ebx
-    ret    0x8
+  void *key = keyDescriptor;
+  uint parent = *(uint *)tree;
+  uint node = *(uint *)(parent + 4);
+  bool less = true;
+  using CompareABI = int (__cdecl *)(uint,uint,uint,uint);
+  while (node != 0) {
+    uint nodeEnd = *(uint *)(node + 0x14);
+    uint nodeBegin = *(uint *)(node + 0x10);
+    uint keyBegin = *(uint *)key;
+    uint keyEnd = *(uint *)((uint)key + 4);
+    parent = node;
+    less = ((CompareABI)R6GameServiceAddresses::CompareByteRanges)(keyBegin,keyEnd,nodeBegin,nodeEnd) < 0;
+    node = *(uint *)(parent + (less ? 8 : 0xc));
   }
+  uint candidate = parent;
+  keyDescriptor = (void *)candidate;
+  uint insertionHead = 0;
+  bool insert = false;
+  if (less) {
+    uint head = *(uint *)tree;
+    uint minimum = *(uint *)(head + 8);
+    if (parent == minimum) {
+      insertionHead = head;
+      insert = true;
+    } else {
+      using PredecessorABI = uint (__cdecl *)(void *);
+      candidate = ((PredecessorABI)R6GameServiceAddresses::OrderedTreePredecessor)((void *)parent);
+      keyDescriptor = (void *)candidate;
+    }
+  }
+  if (!insert) {
+    uint keyEnd = *(uint *)((uint)key + 4);
+    uint candidateEnd = *(uint *)(candidate + 0x14);
+    uint candidateBegin = *(uint *)(candidate + 0x10);
+    uint keyBegin = *(uint *)key;
+    int compared = ((CompareABI)R6GameServiceAddresses::CompareByteRanges)(candidateBegin,candidateEnd,keyBegin,keyEnd);
+    if (compared >= 0) {
+      void *output = result;
+      uint accepted = (uint)keyDescriptor;
+      *(uint *)output = accepted;
+      *(byte *)((uint)output + 4) = 0;
+      return output;
+    }
+    insertionHead = *(uint *)tree;
+  }
+  bool attachLeft = parent == insertionHead || node != 0;
+  if (!attachLeft) {
+    using LessABI = uint (__cdecl *)(const void *,const void *);
+    uint compared = ((LessABI)R6GameServiceAddresses::ByteDescriptorLess)(key,(void *)(parent + 0x10));
+    attachLeft = (byte)compared != 0;
+  }
+  using CreateABI = void * (__thiscall *)(void *,void *);
+  node = (uint)((CreateABI)R6GameServiceAddresses::CreateServiceTreeByteStringNode)(tree,key);
+  if (attachLeft) {
+    *(uint *)(parent + 8) = node;
+    uint head = *(uint *)tree;
+    if (parent == head) {
+      *(uint *)(head + 4) = node;
+      uint currentHead = *(uint *)tree;
+      *(uint *)(currentHead + 0xc) = node;
+    } else {
+      uint minimum = *(uint *)(head + 8);
+      if (parent == minimum) *(uint *)(head + 8) = node;
+    }
+  } else {
+    *(uint *)(parent + 0xc) = node;
+    uint head = *(uint *)tree;
+    uint maximum = *(uint *)(head + 0xc);
+    if (parent == maximum) *(uint *)(head + 0xc) = node;
+  }
+  *(uint *)(node + 4) = parent;
+  *(uint *)(node + 8) = 0;
+  *(uint *)(node + 0xc) = 0;
+  uint head = *(uint *)tree;
+  using RepairABI = uint (__cdecl *)(void *,void *);
+  ((RepairABI)R6GameServiceAddresses::RebalanceOrderedTreeAfterInsertion)((void *)node,(void *)(head + 4));
+  uint count = *(uint *)((uint)tree + 4) + 1;
+  *(uint *)((uint)tree + 4) = count;
+  void *output = result;
+  *(uint *)output = node;
+  *(byte *)((uint)output + 4) = 1;
+  return output;
 }
 
 // Copy1023 bytes, release old name tree, then tokenize/copy/insert each distinct name with per-token string guards.
 // Keep the untouched last buffer byte, partial replacement, current normal free slot and raw final helper return.
 // R6GameService.dll @ 1004b350 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall ReplaceServiceTreeNamesFromDelimitedText(void *owner,char *inputText)
+uint __thiscall ReplaceServiceTreeNamesFromDelimitedText(void *owner,char *inputText)
 {
-  __asm {
-    mov    eax,fs:0x0
-    push    0xffffffff
-    push    R6GameServiceAddresses::SelectServiceNameTokenEH
-    push    eax
-    mov    eax,DWORD PTR [esp+0x10]
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x418
-    push    ebx
-    push    ebp
-    push    esi
-    mov    esi,ecx
-    push    0x3ff
-    lea    ecx,[esp+0x28]
-    push    eax
-    push    ecx
-    call    R6GameServiceAddresses::strncpy
-    mov    eax,DWORD PTR [esi+0x28]
-    lea    ebp,[esi+0x24]
-    xor    ebx,ebx
-    add    esp,0xc
-    cmp    eax,ebx
-    je    Branch526
-    mov    edx,DWORD PTR [ebp+0x0]
-    mov    ecx,ebp
-    mov    eax,DWORD PTR [edx+0x4]
-    push    eax
-    call    R6GameServiceAddresses::FreeNestedListNodes
-    mov    eax,DWORD PTR [ebp+0x0]
-    mov    DWORD PTR [eax+0x8],eax
-    mov    ecx,DWORD PTR [ebp+0x0]
-    mov    DWORD PTR [ecx+0x4],ebx
-    mov    eax,DWORD PTR [ebp+0x0]
-    mov    DWORD PTR [eax+0xc],eax
-    mov    DWORD PTR [ebp+0x4],ebx
-  Branch526:
-    lea    edx,[esp+0x24]
-    push    R6GameServiceAddresses::TextPunctuation3
-    push    edx
-    call    R6GameServiceAddresses::strtok
-    mov    esi,eax
-    add    esp,0x8
-    cmp    esi,ebx
-    je    Branch528
-    push    edi
-  Branch527:
-    lea    eax,[esp+0x13]
-    push    ebx
-    push    eax
-    lea    ecx,[esp+0x24]
-    mov    DWORD PTR [esp+0x438],ebx
-    mov    DWORD PTR [esp+0x1c],ebx
-    mov    DWORD PTR [esp+0x20],ebx
-    call    R6GameServiceAddresses::StoreFirstWordIgnoringContext
-    mov    edi,esi
-    or    ecx,0xffffffff
-    xor    eax,eax
-    mov    BYTE PTR [esp+0x430],0x1
-    repnz    scas al,BYTE PTR es:[edi]
-    not    ecx
-    dec    ecx
-    mov    edi,ecx
-    lea    ecx,[esp+0x14]
-    add    edi,esi
-    mov    eax,edi
-    sub    eax,esi
-    inc    eax
-    push    eax
-    call    R6GameServiceAddresses::InitializeHeapByteString
-    mov    ecx,DWORD PTR [esp+0x14]
-    push    ecx
-    push    edi
-    push    esi
-    call    R6GameServiceAddresses::MoveByteRange
-    mov    DWORD PTR [esp+0x18],eax
-    mov    BYTE PTR [eax],bl
-    lea    edx,[esp+0x14]
-    lea    eax,[esp+0x20]
-    push    edx
-    push    eax
-    mov    ecx,ebp
-    mov    BYTE PTR [esp+0x438],0x3
-    call    R6GameServiceAddresses::FindOrInsertServiceTreeByteString
-    push    R6GameServiceAddresses::TextPunctuation3
-    push    ebx
-    call    R6GameServiceAddresses::strtok
-    mov    ecx,DWORD PTR [esp+0x1c]
-    add    esp,0x8
-    mov    esi,eax
-    mov    DWORD PTR [esp+0x430],0xffffffff
-    push    ecx
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    cmp    esi,ebx
-    jne    Branch527
-    pop    edi
-  Branch528:
-    mov    ecx,DWORD PTR [esp+0x424]
-    pop    esi
-    pop    ebp
-    pop    ebx
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x424
-    ret    0x4
+  char tokenBuffer[1024];
+  using CopyABI = char * (__cdecl *)(char *,const char *,uint);
+  ((CopyABI)R6GameServiceAddresses::strncpy)(tokenBuffer,inputText,1023);
+  void *tree = (void *)((uint)owner + 0x24);
+  uint count = *(uint *)((uint)tree + 4);
+  if (count != 0) {
+    uint head = *(uint *)tree;
+    uint root = *(uint *)(head + 4);
+    FreeNestedListNodes(tree,(int)root);
+    head = *(uint *)tree;
+    *(uint *)(head + 8) = head;
+    uint rootHead = *(uint *)tree;
+    *(uint *)(rootHead + 4) = 0;
+    head = *(uint *)tree;
+    *(uint *)(head + 0xc) = head;
+    *(uint *)((uint)tree + 4) = 0;
   }
+  using TokenABI = char * (__cdecl *)(char *,const char *);
+  const char *delimiters = (const char *)R6GameServiceAddresses::TextPunctuation3;
+  char *token = ((TokenABI)R6GameServiceAddresses::strtok)(tokenBuffer,delimiters);
+  uint result = 0;
+  while (token != 0) {
+    byte tag;
+    uint descriptor[3];
+    uint insertionResult[2];
+    ServiceStringBufferCleanup cleanup{descriptor, false};
+    descriptor[0] = 0;
+    descriptor[1] = 0;
+    using StoreABI = void * (__thiscall *)(void *,uint,uint);
+    ((StoreABI)R6GameServiceAddresses::StoreFirstWordIgnoringContext)(descriptor + 2,(uint)&tag,0);
+    cleanup.armed = true;
+    uint cursor = (uint)token;
+    uint remaining = 0xffffffff;
+    do {
+      byte value = *(byte *)cursor;
+      ++cursor;
+      --remaining;
+      if (value == 0) break;
+    } while (remaining != 0);
+    uint length = ~remaining - 1;
+    uint last = (uint)token + length;
+    using InitializeABI = uint (__thiscall *)(void *,uint);
+    ((InitializeABI)R6GameServiceAddresses::InitializeHeapByteString)(descriptor,last - (uint)token + 1);
+    void *destination = (void *)descriptor[0];
+    using MoveABI = void * (__stdcall *)(void *,void *,void *);
+    void *end = ((MoveABI)R6GameServiceAddresses::MoveByteRange)(token,(void *)last,destination);
+    descriptor[1] = (uint)end;
+    *(byte *)end = 0;
+    FindOrInsertServiceTreeByteString(tree,insertionResult,descriptor);
+    char *next = ((TokenABI)R6GameServiceAddresses::strtok)(0,delimiters);
+    void *buffer = (void *)descriptor[0];
+    token = next;
+    cleanup.armed = false;
+    result = TailFreeThroughGlobalAllocator(buffer);
+  }
+  return result;
 }
 
 // Forward inherited EBP-421 cookie address to the genuine empty guard; do not invent descriptor cleanup.
@@ -8035,120 +7263,81 @@ __declspec(naked) void * __fastcall InitializeTreeSentinel24(void *tree)
   }
 }
 
-// If count is nonzero, free right-recursive/left-iterative nodes, reset CURRENT header/count, then free head.
-// Never delete values; shared one-state guard releases CURRENT head slot after interruption. Raw EAX retained.
-// R6GameService.dll @ 100428e0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall ClearOrderedTreeStorage(void *tree)
-{
-  __asm {
-    push    0xffffffff
-    push    R6GameServiceAddresses::SelectSharedTreeStorageDestroyEH
-    mov    eax,fs:0x0
-    push    eax
-    mov    DWORD PTR fs:0x0,esp
-    push    ecx
-    push    edi
-    mov    edi,ecx
-    mov    DWORD PTR [esp+0x4],edi
-    mov    eax,DWORD PTR [edi+0x4]
-    mov    DWORD PTR [esp+0x10],0x0
-    test    eax,eax
-    je    Branch533
-    mov    eax,DWORD PTR [edi]
-    push    esi
-    mov    esi,DWORD PTR [eax+0x4]
-    test    esi,esi
-    je    Branch532
-    push    ebx
-  Branch531:
-    mov    ecx,DWORD PTR [esi+0xc]
-    push    ecx
-    mov    ecx,edi
-    call    R6GameServiceAddresses::ordered_tree_support_ReleaseTreeNodes
-    mov    ebx,DWORD PTR [esi+0x8]
-    push    esi
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    test    ebx,ebx
-    mov    esi,ebx
-    jne    Branch531
-    pop    ebx
-  Branch532:
-    mov    eax,DWORD PTR [edi]
-    pop    esi
-    mov    DWORD PTR [eax+0x8],eax
-    mov    edx,DWORD PTR [edi]
-    mov    DWORD PTR [edx+0x4],0x0
-    mov    eax,DWORD PTR [edi]
-    mov    DWORD PTR [eax+0xc],eax
-    mov    DWORD PTR [edi+0x4],0x0
-  Branch533:
-    mov    eax,DWORD PTR [edi]
-    push    eax
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    ecx,DWORD PTR [esp+0x8]
-    pop    edi
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x10
-    ret
+namespace {
+// Inferred one-state guard; interrupted destruction releases only the current header, without retrying node cleanup.
+struct TreeHeaderReleaseCleanup {
+  void *savedTree;
+  bool armed;
+  // Keep header cleanup armed through the normal header free, including any allocator interruption.
+  ~TreeHeaderReleaseCleanup() noexcept(false) {
+    if (armed) {
+      using ReleaseABI = uint (__fastcall *)(void *);
+      ((ReleaseABI)R6GameServiceAddresses::ReleaseFirstWordBuffer)(savedTree);
+    }
   }
+};
 }
 
-// If count is nonzero, free right-recursive/left-iterative nodes, reset CURRENT header/count, then free head.
-// Never delete values; shared one-state guard releases CURRENT head slot after interruption. Raw EAX retained.
-// R6GameService.dll @ 10041ce0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall DestroyServiceSubtreeContainer(void *tree)
+// When count is nonzero, release structural nodes and reset current header links; always free the current header.
+// R6GameService.dll @ 100428e0 : payloads remain borrowed; failure runs current-header cleanup without node retries.
+uint __fastcall ClearOrderedTreeStorage(void *tree)
 {
-  __asm {
-    push    0xffffffff
-    push    R6GameServiceAddresses::SelectSharedTreeStorageDestroyEH
-    mov    eax,fs:0x0
-    push    eax
-    mov    DWORD PTR fs:0x0,esp
-    push    ecx
-    push    edi
-    mov    edi,ecx
-    mov    DWORD PTR [esp+0x4],edi
-    mov    eax,DWORD PTR [edi+0x4]
-    mov    DWORD PTR [esp+0x10],0x0
-    test    eax,eax
-    je    Branch536
-    mov    eax,DWORD PTR [edi]
-    push    esi
-    mov    esi,DWORD PTR [eax+0x4]
-    test    esi,esi
-    je    Branch535
-    push    ebx
-  Branch534:
-    mov    ecx,DWORD PTR [esi+0xc]
-    push    ecx
-    mov    ecx,edi
-    call    R6GameServiceAddresses::ordered_tree_support_ReleaseTreeNodes2
-    mov    ebx,DWORD PTR [esi+0x8]
-    push    esi
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    test    ebx,ebx
-    mov    esi,ebx
-    jne    Branch534
-    pop    ebx
-  Branch535:
-    mov    eax,DWORD PTR [edi]
-    pop    esi
-    mov    DWORD PTR [eax+0x8],eax
-    mov    edx,DWORD PTR [edi]
-    mov    DWORD PTR [edx+0x4],0x0
-    mov    eax,DWORD PTR [edi]
-    mov    DWORD PTR [eax+0xc],eax
-    mov    DWORD PTR [edi+0x4],0x0
-  Branch536:
-    mov    eax,DWORD PTR [edi]
-    push    eax
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    ecx,DWORD PTR [esp+0x8]
-    pop    edi
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x10
-    ret
+  TreeHeaderReleaseCleanup cleanup{tree, false};
+  uint count = *(uint *)((byte *)tree + 4);
+  cleanup.armed = true;
+  if (count != 0) {
+    uint head = *(uint *)tree;
+    uint node = *(uint *)(head + 4);
+    while (node != 0) {
+      uint right = *(uint *)(node + 0xc);
+      ordered_tree_support_ReleaseTreeNodes(tree,(int)right);
+      uint left = *(uint *)(node + 8);
+      TailFreeThroughGlobalAllocator((void *)node);
+      node = left;
+    }
+    head = *(uint *)tree;
+    *(uint *)(head + 8) = head;
+    uint rootHead = *(uint *)tree;
+    *(uint *)(rootHead + 4) = 0;
+    head = *(uint *)tree;
+    *(uint *)(head + 0xc) = head;
+    *(uint *)((byte *)tree + 4) = 0;
   }
+  uint head = *(uint *)tree;
+  uint result = TailFreeThroughGlobalAllocator((void *)head);
+  cleanup.armed = false;
+  return result;
+}
+
+// When count is nonzero, release structural nodes and reset current header links; always free the current header.
+// R6GameService.dll @ 10041ce0 : payloads remain borrowed; failure runs current-header cleanup without node retries.
+uint __fastcall DestroyServiceSubtreeContainer(void *tree)
+{
+  TreeHeaderReleaseCleanup cleanup{tree, false};
+  uint count = *(uint *)((byte *)tree + 4);
+  cleanup.armed = true;
+  if (count != 0) {
+    uint head = *(uint *)tree;
+    uint node = *(uint *)(head + 4);
+    while (node != 0) {
+      uint right = *(uint *)(node + 0xc);
+      ordered_tree_support_ReleaseTreeNodes2(tree,(int)right);
+      uint left = *(uint *)(node + 8);
+      TailFreeThroughGlobalAllocator((void *)node);
+      node = left;
+    }
+    head = *(uint *)tree;
+    *(uint *)(head + 8) = head;
+    uint rootHead = *(uint *)tree;
+    *(uint *)(rootHead + 4) = 0;
+    head = *(uint *)tree;
+    *(uint *)(head + 0xc) = head;
+    *(uint *)((byte *)tree + 4) = 0;
+  }
+  uint head = *(uint *)tree;
+  uint result = TailFreeThroughGlobalAllocator((void *)head);
+  cleanup.armed = false;
+  return result;
 }
 
 // Release CURRENT saved tree first word; entered node destruction is not retried.
@@ -8308,35 +7497,18 @@ __declspec(naked) uint __fastcall DestroyServicePayloadTreeContainer(void *tree)
   }
 }
 
-// Recurse right+c, cache left8 and free each node; forward inherited ECX without object accesses. RET4.
-// Original member/free-helper spelling remains unresolved; raw ECX/last result retained.
+// Release right subtrees and each current node, caching the left link after right recursion; forward context only.
+// Inferred void return matches every observed caller; no local guard, link repair or count reset.
 // R6GameService.dll @ 10051a70 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __stdcall ordered_tree_support_ReleaseLinkedNodes(int nodeAddress)
+void __thiscall ordered_tree_support_ReleaseLinkedNodes(void *context,int nodeAddress)
 {
-  __asm {
-    push    ebx
-    push    esi
-    mov    esi,DWORD PTR [esp+0xc]
-    mov    ebx,ecx
-    test    esi,esi
-    je    Branch544
-    push    edi
-  Branch543:
-    mov    eax,DWORD PTR [esi+0xc]
-    mov    ecx,ebx
-    push    eax
-    call    R6GameServiceAddresses::ordered_tree_support_ReleaseLinkedNodes
-    mov    edi,DWORD PTR [esi+0x8]
-    push    esi
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    test    edi,edi
-    mov    esi,edi
-    jne    Branch543
-    pop    edi
-  Branch544:
-    pop    esi
-    pop    ebx
-    ret    0x4
+  uint node = (uint)nodeAddress;
+  while (node != 0) {
+    uint right = *(uint *)(node + 0xc);
+    ordered_tree_support_ReleaseLinkedNodes(context,(int)right);
+    uint left = *(uint *)(node + 8);
+    TailFreeThroughGlobalAllocator((void *)node);
+    node = left;
   }
 }
 
@@ -9736,44 +8908,31 @@ __declspec(naked) int * __thiscall FindOrInsertOrderedTreeNodeByU16Key(
   }
 }
 
-// Find unsigned U16 lower bound, then reload key for final validation; return accepted node or captured head.
-// Cache the initial query only during descent; no header reload, normalization or own guard. RET4.
-// R6GameService.dll @ 10052580 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall ordered_tree_support_FindOrderedTreeNodeByU16Key(void *tree,const ushort *key)
+// Find an exact unsigned sixteen-bit key, reloading the query before accepting the lower-bound candidate.
+// R6GameService.dll @ 10052580 : inferred key at +0x10; empty trees never read the query.
+uint __thiscall ordered_tree_support_FindOrderedTreeNodeByU16Key(void *tree,const ushort *key)
 {
-  __asm {
-    mov    eax,DWORD PTR [ecx]
-    push    edi
-    mov    edi,DWORD PTR [esp+0x8]
-    mov    edx,eax
-    mov    ecx,DWORD PTR [eax+0x4]
-    test    ecx,ecx
-    je    Branch658
-    push    esi
-    mov    si,WORD PTR [edi]
-  Branch655:
-    cmp    WORD PTR [ecx+0x10],si
-    jb    Branch656
-    mov    edx,ecx
-    mov    ecx,DWORD PTR [ecx+0x8]
-    jmp    Branch657
-  Branch656:
-    mov    ecx,DWORD PTR [ecx+0xc]
-  Branch657:
-    test    ecx,ecx
-    jne    Branch655
-    pop    esi
-  Branch658:
-    cmp    edx,eax
-    je    Branch659
-    mov    cx,WORD PTR [edi]
-    cmp    cx,WORD PTR [edx+0x10]
-    jb    Branch659
-    mov    eax,edx
-  Branch659:
-    pop    edi
-    ret    0x4
+  byte *head = *(byte **)tree;
+  const ushort *query = key;
+  byte *node = *(byte **)(head + 4);
+  byte *candidate = head;
+  if (node != nullptr) {
+    ushort requested = *query;
+    do {
+      if (*(ushort *)(node + 0x10) >= requested) {
+        candidate = node;
+        node = *(byte **)(node + 8);
+      } else {
+        node = *(byte **)(node + 0xc);
+      }
+    } while (node != nullptr);
   }
+  if (candidate != head) {
+    ushort currentQuery = *query;
+    ushort candidateKey = *(ushort *)(candidate + 0x10);
+    if (currentQuery < candidateKey) candidate = head;
+  }
+  return (uint)candidate;
 }
 
 // Allocateb4 bytes, copy key and record fields with native gaps, construct treea0, then copy trailing WORDb0.

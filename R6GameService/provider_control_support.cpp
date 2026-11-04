@@ -813,7 +813,7 @@ const R6GameServiceNative::UnwindEntry provider_control_supportSharedLifetimeUnw
 };
 
 // Literal native cleanup map/FuncInfo keeps descriptor ownership separate from raw buffer/record ownership.
-// R6GameService.dll data @ 100840a8 : native storage identity retained.
+// R6GameService.dll data @ 100840b0 : native storage identity retained.
 const R6GameServiceNative::FuncInfo provider_control_supportSharedLifetimeExceptionInfo = {
   0x19930520,
   0x1,
@@ -1324,288 +1324,197 @@ const R6GameServiceNative::FuncInfo provider_control_supportSharedLifetimeExcept
   0x0,
 };
 
+// Inferred provider-update slots at entry ESP-3c; size/socket/node/prefixed bytes/pending record precede descriptor-24.
+struct ProviderUpdateLocals {
+  uint size;
+  uint socket;
+  uint node;
+  void *prefixedBytes;
+  void *pendingRecord;
+  uint eraseOutput;
+  uint descriptor[6];
+};
+
+// Track only the descriptor and raw record under construction; prefixed/serialized buffers have no retry guard.
+struct ProviderUpdateCleanup {
+  ProviderUpdateLocals *frame;
+  int state;
+  // Lower ownership before invoking a cleanup that may itself throw.
+  ~ProviderUpdateCleanup() noexcept(false)
+  {
+    using MethodABI = uint (__fastcall *)(void *);
+    if (state == 4) {
+      state = -1;
+      ForwardToAllocatorTail(frame->pendingRecord);
+    } else {
+      if (state == 2) {
+        state = 1;
+        ForwardToAllocatorTail(frame->prefixedBytes);
+      }
+      if (state == 1) {
+        state = -1;
+        ((MethodABI)R6GameServiceAddresses::DestroyClDataListAlias)(frame->descriptor);
+      } else if (state == 0 || state == 3) {
+        state = -1;
+        ((MethodABI)R6GameServiceAddresses::ResetClDataVtable)(frame->descriptor);
+      }
+    }
+  }
+};
+
 // Flush/pump optional stream, decode/drain, emit elapsed-time3a notification, then process datagram queue.
 // ENTRY ESP S: sizeS-3c/socketS-38/nodeS-34/prefixed bytesS-30/raw recordS-2c/descriptorS-24/stateS-4.
 // Send failure retains current record but still returns AL1; no endpoint discards records. Only pending record storage is guarded.
 // Preserve cached versus current fields, raw argument upper bits, reused size/serialization scratch and current virtual erase.
-// R6GameService.dll @ 10057980 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall UpdateTransportProvider(void *owner)
+// R6GameService.dll @ 10057980 : ECX receiver, RET0; five-state descriptor/pending-record lifetime.
+uint __fastcall UpdateTransportProvider(void *owner)
 {
-  __asm {
-    push    0xffffffff
-    push    R6GameServiceAddresses::SelectProviderUpdateEH
-    mov    eax,fs:0x0
-    push    eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x30
-    push    ebx
-    push    ebp
-    mov    ebp,ecx
-    xor    ebx,ebx
-    mov    DWORD PTR [esp+0x14],ebx
-    push    esi
-    mov    ecx,DWORD PTR [ebp+0x14]
-    push    edi
-    cmp    ecx,ebx
-    je    Branch51
-    mov    al,BYTE PTR [ecx+0x44]
-    test    al,al
-    jne    Branch49
-    xor    al,al
-    mov    ecx,DWORD PTR [esp+0x40]
-    mov    DWORD PTR fs:0x0,ecx
-    pop    edi
-    pop    esi
-    pop    ebp
-    pop    ebx
-    add    esp,0x3c
-    ret
-  Branch49:
-    call    R6GameServiceAddresses::FlushConnectionSendQueue
-    test    al,al
-    jne    Branch50
-    mov    ecx,DWORD PTR [esp+0x40]
-    mov    DWORD PTR fs:0x0,ecx
-    pop    edi
-    pop    esi
-    pop    ebp
-    pop    ebx
-    add    esp,0x3c
-    ret
-  Branch50:
-    mov    ecx,DWORD PTR [ebp+0x14]
-    call    R6GameServiceAddresses::PumpConnectionReceiveQueue
-    test    al,al
-    jne    Branch51
-    mov    ecx,DWORD PTR [esp+0x40]
-    mov    DWORD PTR fs:0x0,ecx
-    pop    edi
-    pop    esi
-    pop    ebp
-    pop    ebx
-    add    esp,0x3c
-    ret
-  Branch51:
-    mov    ecx,ebp
-    call    R6GameServiceAddresses::DecodeQueuedTransportRecords
-    test    al,al
-    jne    Branch52
-    mov    ecx,DWORD PTR [esp+0x40]
-    mov    DWORD PTR fs:0x0,ecx
-    pop    edi
-    pop    esi
-    pop    ebp
-    pop    ebx
-    add    esp,0x3c
-    ret
-  Branch52:
-    mov    ecx,ebp
-    call    R6GameServiceAddresses::DrainQueuedTransportPayloads
-    mov    esi,DWORD PTR [ebp+0x14]
-    cmp    esi,ebx
-    je    Branch57
-    push    ebx
-    call    R6GameServiceAddresses::time
-    mov    edi,DWORD PTR [esi+0x48]
-    mov    ecx,DWORD PTR [ebp+0x8]
-    sub    eax,edi
-    add    esp,0x4
-    cmp    eax,ecx
-    jbe    Branch56
-    cmp    ecx,ebx
-    je    Branch56
-    mov    edi,0x3
-    mov    DWORD PTR [esp+0x2c],R6GameServiceAddresses::ClDataListBaseOffsets
-    mov    DWORD PTR [esp+0x3c],R6GameServiceAddresses::ClDataListInnerBaseOffsets
-    mov    DWORD PTR [esp+0x30],edi
-    mov    DWORD PTR [esp+0x28],R6GameServiceAddresses::PTR_LAB
-    push    ebx
-    lea    ecx,[esp+0x38]
-    mov    DWORD PTR [esp+0x4c],ebx
-    call    R6GameServiceAddresses::ConstructClDataPointerList
-    mov    ebx,R6GameServiceAddresses::clDataListPTR_LAB
-    mov    DWORD PTR [esp+0x28],R6GameServiceAddresses::clDataListPTR_FUN
-    mov    DWORD PTR [esp+0x34],ebx
-    push    0x18
-    mov    DWORD PTR [esp+0x4c],0x1
-    call    R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    DWORD PTR [esp+0x1c],eax
-    test    eax,eax
-    mov    BYTE PTR [esp+0x48],0x2
-    je    Branch53
-    mov    dl,BYTE PTR [ebp+0xd]
-    lea    ecx,[esp+0x28]
-    push    0x1
-    push    ecx
-    mov    cl,BYTE PTR [ebp+0xc]
-    push    edx
-    mov    edx,DWORD PTR [ebp+0x4c]
-    push    ecx
-    push    0x0
-    push    0x3a
-    push    edx
-    mov    ecx,eax
-    call    R6GameServiceAddresses::ConstructClGSMessage
-    mov    esi,eax
-    jmp    Branch54
-  Branch53:
-    xor    esi,esi
-  Branch54:
-    push    esi
-    mov    ecx,ebp
-    mov    BYTE PTR [esp+0x4c],0x1
-    call    R6GameServiceAddresses::EnqueueBorrowedRecord
-    test    esi,esi
-    je    Branch55
-    mov    eax,DWORD PTR [esi]
-    push    0x1
-    mov    ecx,esi
-    call    DWORD PTR [eax]
-  Branch55:
-    mov    DWORD PTR [esp+0x28],R6GameServiceAddresses::clDataListPTR_FUN
-    mov    DWORD PTR [esp+0x34],ebx
-    lea    ecx,[esp+0x34]
-    mov    DWORD PTR [esp+0x48],edi
-    call    R6GameServiceAddresses::DestroyClDataPointerList
-    mov    DWORD PTR [esp+0x48],0xffffffff
-  Branch56:
-    mov    ecx,DWORD PTR [ebp+0x14]
-    mov    eax,DWORD PTR [ecx+0x40]
-    test    eax,eax
-    je    Branch57
-    xor    al,al
-    mov    ecx,DWORD PTR [esp+0x40]
-    mov    DWORD PTR fs:0x0,ecx
-    pop    edi
-    pop    esi
-    pop    ebp
-    pop    ebx
-    add    esp,0x3c
-    ret
-  Branch57:
-    mov    ecx,DWORD PTR [ebp+0x24]
-    mov    eax,DWORD PTR [ecx]
-    cmp    eax,ecx
-    mov    DWORD PTR [esp+0x18],eax
-    je    Branch65
-    jmp    Branch59
-  Branch58:
-    mov    eax,DWORD PTR [esp+0x18]
-  Branch59:
-    mov    ecx,DWORD PTR [ebp+0x18]
-    test    ecx,ecx
-    je    Branch60
-    mov    DWORD PTR [esp+0x14],ecx
-    jmp    Branch61
-  Branch60:
-    mov    edx,DWORD PTR [ebp+0x1c]
-    mov    DWORD PTR [esp+0x14],edx
-  Branch61:
-    mov    ecx,DWORD PTR [esp+0x14]
-    test    ecx,ecx
-    je    Branch64
-    mov    ebx,DWORD PTR [eax+0x8]
-    mov    eax,DWORD PTR [ebx+0x14]
-    mov    DWORD PTR [esp+0x10],eax
-    add    eax,0x4
-    push    eax
-    call    R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    ecx,DWORD PTR [ebp+0x54]
-    lea    edi,[eax+0x4]
-    mov    DWORD PTR [eax],ecx
-    mov    ecx,DWORD PTR [esp+0x10]
-    mov    esi,DWORD PTR [ebx+0x10]
-    mov    edx,ecx
-    shr    ecx,0x2
-    rep    movs DWORD PTR es:[edi],DWORD PTR ds:[esi]
-    mov    ecx,edx
-    push    0x1c
-    and    ecx,0x3
-    mov    DWORD PTR [esp+0x20],eax
-    rep    movs BYTE PTR es:[edi],BYTE PTR ds:[esi]
-    mov    edi,DWORD PTR [esp+0x14]
-    mov    esi,0x4
-    add    edi,esi
-    mov    DWORD PTR [esp+0x14],edi
-    call    R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    DWORD PTR [esp+0x20],eax
-    test    eax,eax
-    mov    DWORD PTR [esp+0x48],esi
-    je    Branch62
-    mov    ecx,DWORD PTR [esp+0x10]
-    mov    edx,DWORD PTR [esp+0x1c]
-    push    0x1
-    push    ecx
-    mov    cl,BYTE PTR [ebx+0xe]
-    push    edx
-    mov    dl,BYTE PTR [ebx+0xd]
-    push    ecx
-    mov    cx,WORD PTR [ebx+0x18]
-    push    edx
-    mov    edx,DWORD PTR [ebp+0x4c]
-    push    ecx
-    push    edx
-    mov    ecx,eax
-    call    R6GameServiceAddresses::ConstructPayloadRecord
-    mov    esi,eax
-    jmp    Branch63
-  Branch62:
-    xor    esi,esi
-  Branch63:
-    mov    eax,DWORD PTR [esp+0x1c]
-    mov    DWORD PTR [esp+0x48],0xffffffff
-    push    eax
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    edx,DWORD PTR [esi]
-    lea    eax,[esp+0x10]
-    push    eax
-    mov    ecx,esi
-    call    DWORD PTR [edx+0x4]
-    mov    cx,WORD PTR [ebp+0x64]
-    mov    edx,DWORD PTR [ebp+0x60]
-    mov    edi,eax
-    mov    eax,DWORD PTR [esp+0x10]
-    push    ecx
-    mov    ecx,DWORD PTR [esp+0x18]
-    push    edx
-    push    eax
-    push    edi
-    call    R6GameServiceAddresses::SendDatagramToIPv4
-    mov    edx,DWORD PTR [esi]
-    push    0x1
-    mov    ecx,esi
-    mov    bl,al
-    call    DWORD PTR [edx]
-    push    edi
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    test    bl,bl
-    je    Branch65
-    mov    eax,DWORD PTR [esp+0x18]
-  Branch64:
-    mov    esi,DWORD PTR [eax]
-    push    ecx
-    mov    ecx,esp
-    lea    edx,[esp+0x28]
-    mov    DWORD PTR [esp+0x24],esp
-    push    edx
-    mov    DWORD PTR [ecx],eax
-    mov    eax,DWORD PTR [ebp+0x20]
-    lea    ecx,[ebp+0x20]
-    mov    DWORD PTR [esp+0x20],esi
-    call    DWORD PTR [eax+0x14]
-    cmp    esi,DWORD PTR [ebp+0x24]
-    jne    Branch58
-  Branch65:
-    mov    ecx,DWORD PTR [esp+0x40]
-    pop    edi
-    pop    esi
-    pop    ebp
-    mov    al,0x1
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    add    esp,0x3c
-    ret
+  uint entryRegistration = (uint)ExceptionList;
+  uint base = (uint)owner;
+  ProviderUpdateLocals frame;
+  ProviderUpdateCleanup cleanup{&frame,-1};
+  frame.socket = 0;
+  using MethodABI = uint (__fastcall *)(void *);
+  using DeleteABI = uint (__thiscall *)(void *,uint);
+  void *stream = *(void **)(base + 0x14);
+  uint result;
+  if (stream != nullptr) {
+    byte ready = *(byte *)((uint)stream + 0x44);
+    if (ready == 0) return entryRegistration & 0xffffff00;
+    result = ((MethodABI)R6GameServiceAddresses::FlushConnectionSendQueue)(stream);
+    if ((byte)result == 0) return result;
+    stream = *(void **)(base + 0x14);
+    result = ((MethodABI)R6GameServiceAddresses::PumpConnectionReceiveQueue)(stream);
+    if ((byte)result == 0) return result;
   }
+  result = ((MethodABI)R6GameServiceAddresses::DecodeQueuedTransportRecords)(owner);
+  if ((byte)result == 0) return result;
+  ((MethodABI)R6GameServiceAddresses::DrainQueuedTransportPayloads)(owner);
+  stream = *(void **)(base + 0x14);
+  if (stream != nullptr) {
+    using TimeABI = uint (__cdecl *)(void *);
+    uint now = ((TimeABI)R6GameServiceAddresses::time)(nullptr);
+    uint lastReceive = *(uint *)((uint)stream + 0x48);
+    uint interval = *(uint *)(base + 8);
+    if (now - lastReceive > interval && interval != 0) {
+      frame.descriptor[1] = R6GameServiceAddresses::ClDataListBaseOffsets;
+      frame.descriptor[5] = R6GameServiceAddresses::ClDataListInnerBaseOffsets;
+      frame.descriptor[2] = 3;
+      frame.descriptor[0] = R6GameServiceAddresses::PTR_LAB;
+      cleanup.state = 0;
+      ConstructClDataPointerList(frame.descriptor + 3,0);
+      frame.descriptor[0] = R6GameServiceAddresses::clDataListPTR_FUN;
+      frame.descriptor[3] = R6GameServiceAddresses::clDataListPTR_LAB;
+      cleanup.state = 1;
+      void *allocation = AllocateGameServiceBytes(0x18);
+      [[r6abi::register_snapshot("edx")]] uint edxAfterAllocation;
+      frame.prefixedBytes = allocation;
+      cleanup.state = 2;
+      void *notification = nullptr;
+      if (allocation != nullptr) {
+        uint field11 = (edxAfterAllocation & 0xffffff00) | *(byte *)(base + 0xd);
+        uint descriptorAddress = (uint)frame.descriptor;
+        uint field10 = (descriptorAddress & 0xffffff00) | *(byte *)(base + 0xc);
+        uint context = *(uint *)(base + 0x4c);
+        notification = ConstructClGSMessage(allocation,context,0x3a,0,field10,field11,descriptorAddress,1);
+      }
+      cleanup.state = 1;
+      using BorrowABI = uint (__thiscall *)(void *,void *);
+      ((BorrowABI)R6GameServiceAddresses::EnqueueBorrowedRecord)(owner,notification);
+      if (notification != nullptr) {
+        uint table = *(uint *)notification;
+        (*(DeleteABI *)table)(notification,1);
+      }
+      frame.descriptor[0] = R6GameServiceAddresses::clDataListPTR_FUN;
+      frame.descriptor[3] = R6GameServiceAddresses::clDataListPTR_LAB;
+      cleanup.state = 3;
+      DestroyClDataPointerList(frame.descriptor + 3);
+      cleanup.state = -1;
+    }
+    stream = *(void **)(base + 0x14);
+    uint blocked = *(uint *)((uint)stream + 0x40);
+    if (blocked != 0) return blocked & 0xffffff00;
+  }
+  uint head = *(uint *)(base + 0x24);
+  uint node = *(uint *)head;
+  frame.node = node;
+  result = node;
+  if (node == head) return (result & 0xffffff00) | 1;
+  for (;;) {
+    uint socket = *(uint *)(base + 0x18);
+    if (socket == 0) socket = *(uint *)(base + 0x1c);
+    frame.socket = socket;
+    if (socket != 0) {
+      uint message = *(uint *)(node + 8);
+      frame.size = *(uint *)(message + 0x14);
+      uint requested = frame.size + 4;
+      uint prefixed = (uint)AllocateGameServiceBytes(requested);
+      uint prefix = *(uint *)(base + 0x54);
+      *(uint *)prefixed = prefix;
+      uint originalSize = frame.size;
+      uint source = *(uint *)(message + 0x10);
+      uint destination = prefixed + 4;
+      uint words = originalSize >> 2;
+      while (words-- != 0) {
+        uint word = *(uint *)source;
+        *(uint *)destination = word;
+        source += 4;
+        destination += 4;
+      }
+      frame.prefixedBytes = (void *)prefixed;
+      uint bytes = originalSize & 3;
+      while (bytes-- != 0) {
+        byte value = *(byte *)source;
+        *(byte *)destination = value;
+        ++source;
+        ++destination;
+      }
+      frame.size += 4;
+      void *allocation = AllocateGameServiceBytes(0x1c);
+      frame.pendingRecord = allocation;
+      cleanup.state = 4;
+      void *record = nullptr;
+      if (allocation != nullptr) {
+        uint size = frame.size;
+        uint prefixedWord = (uint)frame.prefixedBytes;
+        uint field0e = (size & 0xffffff00) | *(byte *)(message + 0xe);
+        uint field0d = (prefixedWord & 0xffffff00) | *(byte *)(message + 0xd);
+        uint field18 = (field0e & 0xffff0000) | *(ushort *)(message + 0x18);
+        uint context = *(uint *)(base + 0x4c);
+        record = ConstructPayloadRecord(allocation,context,field18,field0d,field0e,
+                                        (void *)prefixedWord,size,1);
+      }
+      void *currentPrefixed = frame.prefixedBytes;
+      cleanup.state = -1;
+      TailFreeThroughGlobalAllocator(currentPrefixed);
+      uint table = *(uint *)record;
+      using SerializeABI = uint (__thiscall *)(void *,uint *);
+      uint serialized = (*(SerializeABI *)(table + 4))(record,&frame.size);
+      [[r6abi::register_snapshot("ecx")]] uint ecxAfterSerialize;
+      uint portWord = (ecxAfterSerialize & 0xffff0000) | *(ushort *)(base + 0x64);
+      uint address = *(uint *)(base + 0x60);
+      uint size = frame.size;
+      uint currentSocket = frame.socket;
+      using SendABI = uint (__thiscall *)(void *,uint,uint,uint,uint);
+      uint sent = ((SendABI)R6GameServiceAddresses::SendDatagramToIPv4)(
+          (void *)currentSocket,serialized,size,address,portWord);
+      table = *(uint *)record;
+      byte success = (byte)sent;
+      (*(DeleteABI *)table)(record,1);
+      result = TailFreeThroughGlobalAllocator((void *)serialized);
+      if (success == 0) break;
+      node = frame.node;
+    }
+    uint successor = *(uint *)node;
+    uint iteratorWord = node;
+    uint table = *(uint *)(base + 0x20);
+    frame.node = successor;
+    using EraseABI = uint (__thiscall *)(void *,uint *,uint);
+    result = (*(EraseABI *)(table + 0x14))((void *)(base + 0x20),&frame.eraseOutput,iteratorWord);
+    if (successor == *(uint *)(base + 0x24)) break;
+    node = frame.node;
+  }
+  return (result & 0xffffff00) | 1;
 }
 
 // Reset parent descriptor primary table at S-24.
@@ -1694,68 +1603,46 @@ const R6GameServiceNative::FuncInfo UpdateTransportProviderExceptionInfo = {
   0x0,
 };
 
-// Allocate tagged record, guard pending construction only, insert compact copy at owner+2c, then delete temporary.
-// ECX owner; opcode/byte10/byte11/descriptor are four FULL words. Read them and owner+4c after allocation.
-// ENTRY ESP S: raw recordS-10/stateS-4. Disarm before compact insertion; force AL1 after insertion or deletion, RET16.
+// Inferred builder guard: current raw allocationS-10 is owned only until state0 is disarmed before insertion.
+struct PayloadBuilderAllocationCleanup {
+  void *allocation;
+  bool armed;
+  // Release the current saved allocation on construction failure; completed messages have no parent retry guard.
+  ~PayloadBuilderAllocationCleanup() noexcept(false)
+  {
+    if (armed) ForwardToAllocatorTail(allocation);
+  }
+};
+
+// Construct a temporary message from late full words, submit it to the compact queue, then delete the temporary.
+// Queue status is ignored. NULL allocation still reaches insertion; final delete/insertion supplies upper EAX with AL1.
 // R6GameService.dll @ 10057f80 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall QueueCopiedTransportRecord(
+uint __thiscall QueueCopiedTransportRecord(
     void *owner,uint opcodeWord,uint byte10Word,uint byte11Word,void *taggedPayloadDescriptor)
 {
-  __asm {
-    push    0xffffffff
-    push    R6GameServiceAddresses::SelectPayloadBuilderEH
-    mov    eax,fs:0x0
-    push    eax
-    mov    DWORD PTR fs:0x0,esp
-    push    ecx
-    push    esi
-    push    edi
-    push    0x18
-    mov    edi,ecx
-    call    R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    DWORD PTR [esp+0x8],eax
-    test    eax,eax
-    mov    DWORD PTR [esp+0x14],0x0
-    je    Branch66
-    mov    ecx,DWORD PTR [esp+0x28]
-    mov    edx,DWORD PTR [esp+0x24]
-    push    0x1
-    push    ecx
-    mov    ecx,DWORD PTR [esp+0x28]
-    push    edx
-    mov    edx,DWORD PTR [esp+0x28]
-    push    ecx
-    mov    ecx,DWORD PTR [edi+0x4c]
-    push    0x0
-    push    edx
-    push    ecx
-    mov    ecx,eax
-    call    R6GameServiceAddresses::ConstructClGSMessage
-    mov    esi,eax
-    jmp    Branch67
-  Branch66:
-    xor    esi,esi
-  Branch67:
-    push    esi
-    push    0x0
-    lea    ecx,[edi+0x2c]
-    mov    DWORD PTR [esp+0x1c],0xffffffff
-    call    R6GameServiceAddresses::InsertOrReplaceCompactPayloadRecord
-    test    esi,esi
-    je    Branch68
-    mov    edx,DWORD PTR [esi]
-    push    0x1
-    mov    ecx,esi
-    call    DWORD PTR [edx]
-  Branch68:
-    mov    ecx,DWORD PTR [esp+0xc]
-    pop    edi
-    mov    al,0x1
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x10
-    ret    0x10
+  PayloadBuilderAllocationCleanup cleanup{nullptr,false};
+  void *savedOwner = owner;
+  void *allocation = (void *)AllocateGameServiceBytes(0x18);
+  cleanup.allocation = allocation;
+  cleanup.armed = true;
+  void *record = nullptr;
+  if (allocation != nullptr) {
+    void *payload = taggedPayloadDescriptor;
+    uint field11 = byte11Word;
+    uint field10 = byte10Word;
+    uint opcode = opcodeWord;
+    uint context = *(uint *)((byte *)savedOwner + 0x4c);
+    record = ConstructClGSMessage(allocation,context,opcode,0,field10,field11,(uint)payload,1);
   }
+  void *queue = (byte *)savedOwner + 0x2c;
+  cleanup.armed = false;
+  uint result = InsertOrReplaceCompactPayloadRecord(queue,0,record);
+  if (record != nullptr) {
+    uint table = *(uint *)record;
+    using DeleteABI = uint (__thiscall *)(void *,uint);
+    result = ((DeleteABI)*(uint *)table)(record,1);
+  }
+  return (result & 0xffffff00u) | 1;
 }
 
 // Construct one list, preserve cdecl no-op args/ECX, append CURRENT signed caller word and queue full6/2/8 fields.
@@ -2179,7 +2066,8 @@ void * __thiscall ConstructPayloadRecord(
     void *message,uint context,uint word18,uint byte0d,uint byte0e,void *payload,uint size,uint initializeBaseWord);
 bool __thiscall SendDatagramToIPv4(
     void *socketOwner,void *bytes,int byteCount,undefined4 address,undefined4 port);
-uint __stdcall IsEncodedHeaderSizeValid(const byte *header,int inputLength);
+uint IsEncodedHeaderSizeValid(
+    const byte *header,int inputLength,[[r6abi::register_input("eax")]] uint eaxAtEntry);
 
 struct NativeDescriptorArgument24 {
   undefined4 words[6];

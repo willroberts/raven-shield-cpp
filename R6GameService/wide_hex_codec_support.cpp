@@ -178,38 +178,28 @@ __declspec(naked) std::basic_string<unsigned short> * __cdecl ConvertByteRangeTo
   }
 }
 
-// Decodes low-first wide hex pairs, maps invalid digits to zero, drops an odd digit and copy-constructs the result.
-// R6GameService.dll @ 10034710 : C++ low-first hex decoding with native temporary/unwind and argument slots.
-__declspec(naked) void * __cdecl DecodeWideHexToByteVector
-    (void *outputVector,const std::basic_string<unsigned short> *encodedText)
-{
-  byte *nativeFrame;
-  __asm {
-    push   0xffffffff
-    push   R6GameServiceAddresses::LocalByteVectorExceptionHandler
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x18
-    push   ebp
-    push   esi
-    xor    esi,esi
-    xor    ebp,ebp
-    mov    nativeFrame,esp
+// Inferred state0 cleanup for the decoder's local descriptor; normal free retains ownership until it returns.
+struct WideHexVectorCleanup {
+  uint *vector;
+  bool armed;
+  ~WideHexVectorCleanup() noexcept(false) {
+    if (armed) ReleaseAndResetStorageAt04((int)vector);
   }
-  *(uint *)(nativeFrame + 0xc) = 0;
-  *(uint *)(nativeFrame + 0x14) = 0;
-  *(uint *)(nativeFrame + 0x18) = 0;
-  *(uint *)(nativeFrame + 0x1c) = 0;
+};
+
+// Decodes low-first wide hex pairs, maps invalid digits to zero, drops an odd digit and copy-constructs the result.
+// R6GameService.dll @ 10034710 : cdecl result/input words; returns the result pointer captured after decoding.
+void *__cdecl DecodeWideHexToByteVector(void *outputVector,const std::basic_string<unsigned short> *encodedText)
+{
+  uint temporary[4];
+  temporary[1] = 0;
+  temporary[2] = 0;
+  temporary[3] = 0;
   uint index = 0;
   uint cachedBegin = 0;
-  byte *input = *(byte **)(nativeFrame + 0x34);
+  byte *input = (byte *)encodedText;
   uint length = *(uint *)(input + 0x14);
-  *(uint *)(nativeFrame + 0x28) = 0;
-  using InsertABI = void (__thiscall *)(void *,uint,uint,const byte *);
-  using CopyABI = void * (__thiscall *)(void *,const void *);
-  using FreeABI = void (__cdecl *)(void *);
-  // The same inline digit conversion is applied to both UTF-16 units; invalid units contribute zero.
+  WideHexVectorCleanup cleanup{temporary, true};
   auto nibble = [](ushort unit) -> byte {
     if (unit >= '0' && unit <= '9') return (byte)(unit - '0');
     if (unit >= 'A' && unit <= 'F') return (byte)(unit - 'A' + 10);
@@ -217,10 +207,6 @@ __declspec(naked) void * __cdecl DecodeWideHexToByteVector
     return 0;
   };
   if (length != 0) {
-    __asm {
-      push   ebx
-      push   edi
-    }
     while (index < length) {
       uint capacity = *(uint *)(input + 0x18);
       byte *storage = input + 4;
@@ -228,50 +214,34 @@ __declspec(naked) void * __cdecl DecodeWideHexToByteVector
       byte low = nibble(characters[index]) & 0xf;
       ++index;
       if (index >= length) break;
-      // Capacity is cached for the pair, while the heap pointer is reloaded for the second unit.
       characters = capacity < 8 ? (const ushort *)storage : *(const ushort **)storage;
       byte high = nibble(characters[index]);
-      uint end = *(uint *)(nativeFrame + 0x18);
+      uint end = temporary[2];
       byte value = low | (byte)(high << 4);
       ++index;
-      *(byte *)(nativeFrame + 0xb) = value;
       bool direct = false;
       if (cachedBegin != 0) {
-        uint limit = *(uint *)(nativeFrame + 0x1c);
+        uint limit = temporary[3];
         direct = end - cachedBegin < limit - cachedBegin;
       }
       if (direct) {
         *(byte *)end = value;
-        *(uint *)(nativeFrame + 0x18) = end + 1;
+        temporary[2] = end + 1;
       } else {
-        ((InsertABI)R6GameServiceAddresses::InsertRepeatedByte)
-            (nativeFrame + 0x10,end,1,nativeFrame + 0xb);
-        cachedBegin = *(uint *)(nativeFrame + 0x14);
+        InsertRepeatedByte(temporary,(byte *)end,1,&value);
+        cachedBegin = temporary[1];
       }
-      byte *currentInput = *(byte **)(nativeFrame + 0x34);
+      byte *currentInput = (byte *)encodedText;
       length = *(uint *)(currentInput + 0x14);
       if (index >= length) break;
-      input = *(byte **)(nativeFrame + 0x34);
-    }
-    __asm {
-      pop    edi
-      pop    ebx
+      input = (byte *)encodedText;
     }
   }
-  void *output = *(void **)(nativeFrame + 0x30);
-  ((CopyABI)R6GameServiceAddresses::CopyByteVector)(output,nativeFrame + 0x10);
-  // Copy/free leave state0 and the temporary descriptor live; unwind may revisit a throwing free.
-  if (cachedBegin != 0) ((FreeABI)R6GameServiceAddresses::FreeThroughGlobalAllocator)((void *)cachedBegin);
-  __asm {
-    mov    esi,output
-    mov    ecx,DWORD PTR [esp+0x20]
-    mov    eax,esi
-    pop    esi
-    pop    ebp
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x24
-    ret
-  }
+  void *output = outputVector;
+  CopyByteVector(output,temporary);
+  if (cachedBegin != 0) FreeThroughGlobalAllocator((void *)cachedBegin);
+  cleanup.armed = false;
+  return output;
 }
 
 // Tail-destroys the encoder local CRT string at inherited parent EBP-0x2c.

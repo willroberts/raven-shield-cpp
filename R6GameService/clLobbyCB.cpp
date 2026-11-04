@@ -72,44 +72,35 @@ __declspec(naked) void *__thiscall InitializeServiceStateBlock(void *owner,uint 
   }
 }
 
-// Capture owner=secondary-b8, reset base tables, restore fixed secondary allocator-base vtable, then read late flagBYTE.
+// Restore tables from secondary-b8, capture the current flag BYTE, then install the fixed allocator-base table.
 // Bit0 frees captured owner; return that owner regardless of free EAX. RET4, no local guard or member destruction.
 // R6GameService.dll @ 10052870 : complete native control/access order and raw ABI retained.
-__declspec(naked) void *__thiscall DeleteClLobbyCBFromSecondary(void *secondary,uint deleteFlags)
+void *__thiscall DeleteClLobbyCBFromSecondary(void *secondary,uint deletionFlags)
 {
-  __asm {
-    push    esi
-    lea    esi,[ecx-0xb8]
-    push    edi
-    lea    edi,[esi+0xb8]
-    mov    ecx,edi
-    call    R6GameServiceAddresses::RestoreBaseSubobjectVtables
-    mov    al,BYTE PTR [esp+0xc]
-    mov    DWORD PTR [edi],R6GameServiceAddresses::clExtalloc_Override_BaseclassVTable
-    test    al,0x1
-    je    Branch2
-    push    esi
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch2:
-    mov    eax,esi
-    pop    edi
-    pop    esi
-    ret    0x4
+  uint owner = (uint)secondary - 0xb8;
+  void *fixedBase = (void *)(owner + 0xb8);
+  using RestoreABI = uint (__fastcall *)(void *);
+  ((RestoreABI)R6GameServiceAddresses::RestoreBaseSubobjectVtables)(fixedBase);
+  byte flags = *(byte *)&deletionFlags;
+  *(uint *)fixedBase = R6GameServiceAddresses::clExtalloc_Override_BaseclassVTable;
+  if ((flags & 1) != 0) {
+    using FreeABI = uint (__stdcall *)(void *);
+    ((FreeABI)R6GameServiceAddresses::TailFreeThroughGlobalAllocator)((void *)owner);
   }
+  return (void *)owner;
 }
 
 // Capture offset table atsecondary-b4, reset primary atsecondary-b8, then read captured table+8 for adjusted reset.
 // Return the raw captured table pointer in EAX; do not clear members or register a local exception frame.
 // R6GameService.dll @ 100528a0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall RestoreBaseSubobjectVtables(void *secondary)
+uint __fastcall RestoreBaseSubobjectVtables(void *secondary)
 {
-  __asm {
-    mov    eax,DWORD PTR [ecx-0xb4]
-    mov    DWORD PTR [ecx-0xb8],R6GameServiceAddresses::clLobbyCBVTable
-    mov    edx,DWORD PTR [eax+0x8]
-    mov    DWORD PTR [edx+ecx*1-0xb4],R6GameServiceAddresses::clLobbyCBVTableAdjusted184
-    ret
-  }
+  uint owner = (uint)secondary - 0xb8;
+  uint offsetTable = *(uint *)(owner + 4);
+  *(uint *)owner = R6GameServiceAddresses::clLobbyCBVTable;
+  uint displacement = *(uint *)(offsetTable + 8);
+  *(uint *)(owner + 4 + displacement) = R6GameServiceAddresses::clLobbyCBVTableAdjusted184;
+  return offsetTable;
 }
 
 // If current clLobbyCB callback is present, tail-forward with native argument self-accesses and register residue.

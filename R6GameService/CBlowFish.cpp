@@ -211,18 +211,16 @@ uint __fastcall DestroyCBlowFish(uint *state)
 
 // Clears exactly0x412 working words starting at+8, preserving both dispatch words and saved constants.
 // R6GameService.dll @ 10039020 : ECX state, plain RET; EAX=0, ECX=0, EDX=state after REP STOSD.
-__declspec(naked) uint __fastcall ClearBlowfishWorkingTables(int stateAddress)
+uint __fastcall ClearBlowfishWorkingTables(int stateAddress)
 {
-  __asm {
-    mov    edx,ecx
-    push   edi
-    mov    ecx,0x412
-    xor    eax,eax
-    lea    edi,[edx+8]
-    rep stosd
-    pop    edi
-    ret
-  }
+  uint destination = (uint)stateAddress + 8;
+  uint remaining = 0x412;
+  do {
+    *(uint *)destination = 0;
+    destination += 4;
+    --remaining;
+  } while (remaining != 0);
+  return 0;
 }
 
 // Combines the four byte-indexed S-box loads with native-order unsigned wrapping addition/XOR/addition.

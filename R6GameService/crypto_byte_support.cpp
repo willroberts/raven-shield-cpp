@@ -145,285 +145,192 @@ __declspec(naked) uint __thiscall CopySha1DigestBytes(
   }
 }
 
-// XORs input first, fills a signed-sqrt-sized WORD sentinel matrix diagonally, then compacts row-major and frees it.
-// Original buffer/count words reload during traversal; count slot becomes row pointer, saved ECX becomes row counter.
-// R6GameService.dll @ 10039230 : native control/access order and raw ABI retained.
-__declspec(naked) void __thiscall EncodeMaskedSquareTransposition(void* unusedContext,byte* buffer,int byteCount)
+// XORs input first, fills a WORD sentinel matrix diagonally, then compacts occupied cells row-major and frees it.
+// float10/sqrt denote live x87 FSQRT under the inherited control word; the signed64 cast denotes imported _ftol.
+// Neither operation adds a spill/stack operand; masked invalid conversion retains the CRT indefinite result.
+// R6GameService.dll @ 10039230 : thiscall RET8; raw final allocator EAX, no local allocation guard.
+uint __thiscall EncodeMaskedSquareTransposition(void *unusedContext,byte *buffer,int byteCount)
 {
-  __asm {
-    push   ecx
-    mov    eax,DWORD PTR [esp+0x8]
-    push   ebx
-    mov    ebx,DWORD PTR [esp+0x10]
-    push   ebp
-    push   esi
-    push   edi
-    push   ebx
-    push   eax
-    call   R6GameServiceAddresses::XorBytesWithIndexMask
-    fild   DWORD PTR [esp+0x1c]
-    fsqrt
-    call   R6GameServiceAddresses::ftol
-    mov    esi,eax
-    mov    ecx,esi
-    imul   ecx,esi
-    cmp    ecx,ebx
-    jge    Branch1
-    inc    esi
-  Branch1:
-    mov    eax,esi
-    imul   eax,esi
-    lea    edi,[eax+eax*1]
-    push   edi
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    ecx,edi
-    mov    ebp,eax
-    mov    edx,ecx
-    or     eax,0xffffffff
-    mov    edi,ebp
-    shr    ecx,0x2
-    rep    stos DWORD PTR es:[edi],eax
-    mov    ecx,edx
-    xor    edx,edx
-    and    ecx,0x3
-    rep    stos BYTE PTR es:[edi],al
-    xor    eax,eax
-    xor    ecx,ecx
-    test   ebx,ebx
-    jle    Branch5
-  Branch2:
-    cmp    ecx,esi
-    jl     Branch3
-    lea    ecx,[eax+0x2]
-    lea    eax,[esi-0x1]
-    jmp    Branch4
-  Branch3:
-    test   eax,eax
-    jge    Branch4
-    mov    eax,ecx
-    xor    ecx,ecx
-  Branch4:
-    mov    ebx,eax
-    mov    edi,DWORD PTR [esp+0x18]
-    imul   ebx,esi
-    movzx  di,BYTE PTR [edx+edi*1]
-    add    ebx,ecx
-    dec    eax
-    inc    ecx
-    inc    edx
-    mov    WORD PTR [ebp+ebx*2+0x0],di
-    mov    edi,DWORD PTR [esp+0x1c]
-    cmp    edx,edi
-    jl     Branch2
-  Branch5:
-    xor    edi,edi
-    test   esi,esi
-    jle    Branch9
-    mov    DWORD PTR [esp+0x1c],ebp
-    mov    DWORD PTR [esp+0x10],esi
-  Branch6:
-    mov    eax,DWORD PTR [esp+0x1c]
-    mov    ecx,esi
-  Branch7:
-    cmp    WORD PTR [eax],0xffff
-    je     Branch8
-    mov    ebx,DWORD PTR [esp+0x18]
-    mov    dl,BYTE PTR [eax]
-    mov    BYTE PTR [edi+ebx*1],dl
-    inc    edi
-  Branch8:
-    add    eax,0x2
-    dec    ecx
-    jne    Branch7
-    mov    ecx,DWORD PTR [esp+0x1c]
-    lea    eax,[esi+esi*1]
-    add    ecx,eax
-    mov    eax,DWORD PTR [esp+0x10]
-    dec    eax
-    mov    DWORD PTR [esp+0x1c],ecx
-    mov    DWORD PTR [esp+0x10],eax
-    jne    Branch6
-  Branch9:
-    push   ebp
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    pop    edi
-    pop    esi
-    pop    ebp
-    pop    ebx
-    pop    ecx
-    ret    0x8
+  int initialCount = byteCount;
+  byte *initialBuffer = buffer;
+  XorBytesWithIndexMask(initialBuffer,initialCount);
+  float10 root = sqrt((float10)byteCount);
+  uint side = (uint)(longlong)root;
+  if ((int)(side * side) < initialCount) ++side;
+  uint allocationBytes = side * side * 2;
+  uint matrix = (uint)AllocateGameServiceBytes(allocationBytes);
+  uint cursor = matrix;
+  uint words = allocationBytes >> 2;
+  while (words != 0) {
+    *(uint *)cursor = 0xffffffff;
+    cursor += 4;
+    --words;
   }
+  uint tail = allocationBytes & 3;
+  while (tail != 0) {
+    *(byte *)cursor = 0xff;
+    ++cursor;
+    --tail;
+  }
+  uint row = 0,column = 0,index = 0;
+  if (initialCount > 0) {
+    do {
+      if ((int)column >= (int)side) {
+        column = row + 2;
+        row = side - 1;
+      } else if ((int)row < 0) {
+        row = column;
+        column = 0;
+      }
+      uint offset = row * side;
+      uint currentBuffer = (uint)buffer;
+      ushort value = *(byte *)(currentBuffer + index);
+      offset += column;
+      --row;
+      ++column;
+      ++index;
+      *(ushort *)(matrix + offset * 2) = value;
+      int currentCount = byteCount;
+      if ((int)index >= currentCount) break;
+    } while (true);
+  }
+  uint outputIndex = 0;
+  if ((int)side > 0) {
+    byteCount = (int)matrix; // The original count argument becomes the current row pointer.
+    uint remainingRows = side; // The native saved-ECX slot becomes the row counter.
+    do {
+      uint cell = (uint)byteCount;
+      uint remainingColumns = side;
+      do {
+        if (*(ushort *)cell != 0xffff) {
+          uint currentBuffer = (uint)buffer;
+          byte value = *(byte *)cell;
+          *(byte *)(currentBuffer + outputIndex) = value;
+          ++outputIndex;
+        }
+        cell += 2;
+        --remainingColumns;
+      } while (remainingColumns != 0);
+      uint nextRow = (uint)byteCount + side * 2;
+      --remainingRows;
+      byteCount = (int)nextRow;
+    } while (remainingRows != 0);
+  }
+  using FreeABI = uint (__stdcall *)(void *);
+  return ((FreeABI)R6GameServiceAddresses::TailFreeThroughGlobalAllocator)((void *)matrix);
 }
 
-// Builds diagonal occupancy bytes, consumes row-major input into occupied cells, emits diagonally, then XORs and frees.
-// Native x87 comparison/rounding, cached versus reloaded arguments and byte access order remain explicit.
-// R6GameService.dll @ 10039310 : native control/access order and raw ABI retained.
-__declspec(naked) void __thiscall DecodeMaskedSquareTransposition(void* unusedContext,byte* buffer,int byteCount)
+// Marks diagonal occupancy, consumes row-major input into occupied cells, emits diagonally, then XORs and frees.
+// The duplicated x87 root survives imported _ftol; only an ordered truncated-width < root comparison increments it.
+// R6GameService.dll @ 10039310 : thiscall RET8; raw final allocator EAX, unchecked temporary and original pointers.
+uint __thiscall DecodeMaskedSquareTransposition(void *unusedContext,byte *buffer,int byteCount)
 {
-  __asm {
-    sub    esp,0xc
-    fild   DWORD PTR [esp+0x14]
-    push   ebx
-    push   ebp
-    push   esi
-    push   edi
-    fsqrt
-    mov    DWORD PTR [esp+0x18],ecx
-    fld    st(0)
-    call   R6GameServiceAddresses::ftol
-    mov    esi,eax
-    mov    DWORD PTR [esp+0x14],esi
-    fild   DWORD PTR [esp+0x14]
-    fcompp
-    fnstsw ax
-    test   ah,0x5
-    jp     Branch10
-    inc    esi
-  Branch10:
-    mov    edi,esi
-    imul   edi,esi
-    push   edi
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    ecx,edi
-    mov    ebp,eax
-    mov    edx,ecx
-    xor    eax,eax
-    mov    edi,ebp
-    shr    ecx,0x2
-    rep    stos DWORD PTR es:[edi],eax
-    mov    ecx,edx
-    mov    edx,DWORD PTR [esp+0x24]
-    and    ecx,0x3
-    rep    stos BYTE PTR es:[edi],al
-    xor    eax,eax
-    xor    ecx,ecx
-    test   edx,edx
-    jle    Branch14
-    mov    edi,edx
-  Branch11:
-    cmp    ecx,esi
-    jl     Branch12
-    lea    ecx,[eax+0x2]
-    lea    eax,[esi-0x1]
-    jmp    Branch13
-  Branch12:
-    test   eax,eax
-    jge    Branch13
-    mov    eax,ecx
-    xor    ecx,ecx
-  Branch13:
-    mov    ebx,eax
-    imul   ebx,esi
-    add    ebx,ecx
-    dec    eax
-    inc    ecx
-    dec    edi
-    mov    BYTE PTR [ebx+ebp*1],0x1
-    jne    Branch11
-  Branch14:
-    mov    ebx,DWORD PTR [esp+0x20]
-    xor    eax,eax
-    cmp    edx,eax
-    mov    DWORD PTR [esp+0x10],eax
-    jle    Branch18
-    mov    DWORD PTR [esp+0x14],eax
-  Branch15:
-    cmp    eax,esi
-    jl     Branch16
-    mov    eax,DWORD PTR [esp+0x14]
-    add    eax,esi
-    mov    DWORD PTR [esp+0x14],eax
-    xor    eax,eax
-  Branch16:
-    mov    ecx,DWORD PTR [esp+0x14]
-    add    ecx,eax
-    add    ecx,ebp
-    cmp    BYTE PTR [ecx],0x0
-    je     Branch17
-    mov    edi,DWORD PTR [esp+0x10]
-    mov    ebx,DWORD PTR [esp+0x20]
-    mov    bl,BYTE PTR [edi+ebx*1]
-    mov    BYTE PTR [ecx],bl
-    mov    ecx,edi
-    inc    ecx
-    mov    DWORD PTR [esp+0x10],ecx
-  Branch17:
-    mov    ecx,DWORD PTR [esp+0x10]
-    inc    eax
-    cmp    ecx,edx
-    jl     Branch15
-    mov    ebx,DWORD PTR [esp+0x20]
-  Branch18:
-    xor    eax,eax
-    xor    ecx,ecx
-    xor    edi,edi
-    test   edx,edx
-    jle    Branch22
-  Branch19:
-    cmp    ecx,esi
-    jl     Branch20
-    lea    ecx,[eax+0x2]
-    lea    eax,[esi-0x1]
-    jmp    Branch21
-  Branch20:
-    test   eax,eax
-    jge    Branch21
-    mov    eax,ecx
-    xor    ecx,ecx
-  Branch21:
-    mov    edx,eax
-    imul   edx,esi
-    add    edx,ecx
-    dec    eax
-    inc    ecx
-    inc    edi
-    mov    dl,BYTE PTR [edx+ebp*1]
-    mov    BYTE PTR [edi+ebx*1-0x1],dl
-    mov    edx,DWORD PTR [esp+0x24]
-    cmp    edi,edx
-    jl     Branch19
-  Branch22:
-    mov    ecx,DWORD PTR [esp+0x18]
-    push   edx
-    push   ebx
-    call   R6GameServiceAddresses::XorBytesWithIndexMask
-    push   ebp
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    pop    edi
-    pop    esi
-    pop    ebp
-    pop    ebx
-    add    esp,0xc
-    ret    0x8
+  struct { // Inferred three native local words at entry ESP-0x0c/-0x08/-0x04.
+    uint consumed;
+    uint rowOffset;
+    void *savedContext;
+  } frame;
+  float10 root = sqrt((float10)byteCount);
+  frame.savedContext = unusedContext;
+  uint side = (uint)(longlong)root;
+  frame.rowOffset = side;
+  if ((float10)(int)frame.rowOffset < root) ++side;
+  uint allocationBytes = side * side;
+  uint matrix = (uint)AllocateGameServiceBytes(allocationBytes);
+  uint cursor = matrix;
+  uint words = allocationBytes >> 2;
+  while (words != 0) {
+    *(uint *)cursor = 0;
+    cursor += 4;
+    --words;
   }
+  int count = byteCount; // Loaded after DWORD clearing and before the trailing byte stores.
+  uint tail = allocationBytes & 3;
+  while (tail != 0) {
+    *(byte *)cursor = 0;
+    ++cursor;
+    --tail;
+  }
+  uint row = 0,column = 0;
+  if (count > 0) {
+    uint remaining = (uint)count;
+    do {
+      if ((int)column >= (int)side) {
+        column = row + 2;
+        row = side - 1;
+      } else if ((int)row < 0) {
+        row = column;
+        column = 0;
+      }
+      uint offset = row * side + column;
+      --row;
+      ++column;
+      --remaining;
+      *(byte *)(matrix + offset) = 1;
+    } while (remaining != 0);
+  }
+  uint retainedBuffer = (uint)buffer;
+  frame.consumed = 0;
+  if (count > 0) {
+    frame.rowOffset = 0;
+    column = 0;
+    do {
+      if ((int)column >= (int)side) {
+        frame.rowOffset += side;
+        column = 0;
+      }
+      uint cell = frame.rowOffset + column + matrix;
+      if (*(byte *)cell != 0) {
+        uint inputIndex = frame.consumed;
+        retainedBuffer = (uint)buffer;
+        byte value = *(byte *)(retainedBuffer + inputIndex);
+        *(byte *)cell = value;
+        frame.consumed = inputIndex + 1;
+      }
+      ++column;
+    } while ((int)frame.consumed < count);
+    retainedBuffer = (uint)buffer;
+  }
+  row = 0;
+  column = 0;
+  uint outputIndex = 0;
+  if (count > 0) {
+    do {
+      if ((int)column >= (int)side) {
+        column = row + 2;
+        row = side - 1;
+      } else if ((int)row < 0) {
+        row = column;
+        column = 0;
+      }
+      uint offset = row * side + column;
+      --row;
+      ++column;
+      ++outputIndex;
+      byte value = *(byte *)(matrix + offset);
+      *(byte *)(retainedBuffer + outputIndex - 1) = value;
+      count = byteCount;
+    } while ((int)outputIndex < count);
+  }
+  XorBytesWithIndexMask((byte *)retainedBuffer,count);
+  using FreeABI = uint (__stdcall *)(void *);
+  return ((FreeABI)R6GameServiceAddresses::TailFreeThroughGlobalAllocator)((void *)matrix);
 }
 
-// XORs each byte with low8(index-0x77) for positive signed count; returns count EAX or zero, no pointer guard.
-// R6GameService.dll @ 10039440 : native control/access order and raw ABI retained.
-__declspec(naked) void __stdcall XorBytesWithIndexMask(byte* buffer,int byteCount)
+// XOR positive signed lengths with the low byte of index-0x77; cache the input pointer and count before writing.
+// R6GameService.dll @ 10039440 : nonpositive counts access no buffer; native EAX is zero/count residue.
+void __stdcall XorBytesWithIndexMask(byte *buffer,int byteCount)
 {
-  __asm {
-    push   esi
-    mov    esi,DWORD PTR [esp+0xc]
-    xor    eax,eax
-    test   esi,esi
-    jle    Branch24
-    mov    ecx,DWORD PTR [esp+0x8]
-    push   ebx
-  Branch23:
-    mov    bl,BYTE PTR [eax+ecx*1]
-    mov    dl,al
-    sub    dl,0x77
-    xor    bl,dl
-    mov    BYTE PTR [eax+ecx*1],bl
-    inc    eax
-    cmp    eax,esi
-    jl     Branch23
-    pop    ebx
-  Branch24:
-    pop    esi
-    ret    0x8
-  }
+  int count = byteCount;
+  uint index = 0;
+  if (count <= 0) return;
+  uint first = (uint)buffer;
+  do {
+    byte value = *(byte *)(first + index);
+    byte mask = (byte)(index - 0x77);
+    *(byte *)(first + index) = value ^ mask;
+    ++index;
+  } while ((int)index < count);
 }
 
 // Folds both input words through actual logical-shift helper and returns parity bit; raw register effects retained.

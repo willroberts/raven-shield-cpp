@@ -43,106 +43,61 @@ __declspec(naked) void *__thiscall ConstructClGSEncryptMessage(
   }
 }
 
-// Run shared message destruction, then test CURRENT original flag lowBYTE bit0 and optionally free receiver. Return
-// receiver/RET4.
-// R6GameService.dll @ 1005c060 : complete native control/access order and raw ABI retained.
-__declspec(naked) void *__thiscall DeleteClGSEncryptMessage(void *message,uint deleteFlags)
+// Destroy owned members, then inspect the current deletion flag and optionally free the cached message allocation.
+// R6GameService.dll @ 1005c060 : flag bit 0 controls storage release; returns the original receiver.
+void * __thiscall DeleteClGSEncryptMessage(void *message,uint deleteFlags)
 {
-  __asm {
-    push    esi
-    mov    esi,ecx
-    call    R6GameServiceAddresses::DestroyClGSEncryptMessage
-    test    BYTE PTR [esp+0x8],0x1
-    je    Branch2
-    push    esi
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch2:
-    mov    eax,esi
-    pop    esi
-    ret    0x4
-  }
+  using DestroyABI = void (__fastcall *)(void *);
+  ((DestroyABI)R6GameServiceAddresses::DestroyClGSEncryptMessage)(message);
+  if ((deleteFlags & 1) != 0) TailFreeThroughGlobalAllocator(message);
+  return message;
 }
 
-// Tail shared clGSMessage destruction with original receiver/stack, retaining full raw EAX; no derived vtable
-// write/guard.
-// R6GameService.dll @ 1005c080 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall DestroyClGSEncryptMessage(void *message)
+// Forward shared destruction with its inferred void ABI; the deleting caller replaces native EAX residue.
+// R6GameService.dll @ 1005c080 : native tail alias; no additional derived-table publication.
+void __fastcall DestroyClGSEncryptMessage(void *message)
 {
-  __asm {
-    jmp    R6GameServiceAddresses::DestroyClGSMessage
-  }
+  using DestroyABI = void (__fastcall *)(void *);
+  ((DestroyABI)R6GameServiceAddresses::DestroyClGSMessage)(message);
 }
 
-// Optionally install derived virtual-base table, initialize base fields with flag0, then publish derived table/kind2;
-// ECX0/RET8.
-// R6GameService.dll @ 1005c090 : complete native control/access order and raw ABI retained.
-__declspec(naked) void *__thiscall InitializeClGSEncryptMessageFields(
-        void *message,uint contextWord,uint initializeBaseWord)
+// Initialize shared message fields with base initialization disabled, then install encrypted identity and kind two.
+// R6GameService.dll @ 1005c090 : optional derived base-offset table precedes context sampling and base initialization.
+void * __thiscall InitializeClGSEncryptMessageFields(void *message,uint contextWord,uint initializeBaseWord)
 {
-  __asm {
-    push    ecx
-    mov    eax,DWORD PTR [esp+0xc]
-    push    esi
-    test    eax,eax
-    mov    esi,ecx
-    mov    DWORD PTR [esp+0x4],0x0
-    je    Branch3
-    mov    DWORD PTR [esi+0x4],0x10078228
-  Branch3:
-    mov    eax,DWORD PTR [esp+0xc]
-    push    0x0
-    push    eax
-    mov    ecx,esi
-    call    R6GameServiceAddresses::InitializeClGSMessageFields
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clGSEncryptMessageVTable
-    mov    BYTE PTR [esi+0xc],0x2
-    mov    eax,esi
-    pop    esi
-    pop    ecx
-    ret    0x8
-  }
+  if (initializeBaseWord != 0) *(uint *)((byte *)message + 4) = 0x10078228;
+  uint context = contextWord;
+  using InitializeABI = void * (__thiscall *)(void *,uint,uint);
+  ((InitializeABI)R6GameServiceAddresses::InitializeClGSMessageFields)(message,context,0);
+  *(uint *)message = R6GameServiceAddresses::clGSEncryptMessageVTable;
+  *((byte *)message + 0xc) = 2;
+  return message;
 }
 
-// Load CURRENT helper8 and forward four full words/literal selector2 through shared slot0c dispatch; raw EAX/RET16.
-// R6GameService.dll @ 1005c0d0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall DispatchEncryptedMessageSlot0C(
-        void *message,uint word0,uint word1,uint word2,uint word3)
+// Forward four words through the current helper using the encrypted-family selector two.
+// R6GameService.dll @ 1005c0d0 : helper at +8 is sampled between the high and low argument pairs.
+uint __thiscall DispatchEncryptedMessageSlot0C(void *message,uint word0,uint word1,uint word2,uint word3)
 {
-  __asm {
-    mov    eax,DWORD PTR [esp+0x10]
-    mov    edx,DWORD PTR [esp+0xc]
-    mov    ecx,DWORD PTR [ecx+0x8]
-    push    0x2
-    push    eax
-    mov    eax,DWORD PTR [esp+0x10]
-    push    edx
-    mov    edx,DWORD PTR [esp+0x10]
-    push    eax
-    push    edx
-    call    R6GameServiceAddresses::DispatchThroughSelectedSlot0C
-    ret    0x10
-  }
+  uint last = word3;
+  uint third = word2;
+  void *helper = *(void **)((byte *)message + 8);
+  uint second = word1;
+  uint first = word0;
+  using DispatchABI = uint (__thiscall *)(void *,uint,uint,uint,uint,uint);
+  return ((DispatchABI)R6GameServiceAddresses::DispatchThroughSelectedSlot0C)(helper,first,second,third,last,2);
 }
 
-// Load CURRENT helper8 and forward four full words/literal selector2 through shared slot10 dispatch; raw EAX/RET16.
-// R6GameService.dll @ 1005c100 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall DispatchEncryptedMessageSlot10(
-        void *message,uint word0,uint word1,uint word2,uint word3)
+// Forward four words through the current helper using the encrypted-family selector two.
+// R6GameService.dll @ 1005c100 : helper at +8 is sampled between the high and low argument pairs.
+uint __thiscall DispatchEncryptedMessageSlot10(void *message,uint word0,uint word1,uint word2,uint word3)
 {
-  __asm {
-    mov    eax,DWORD PTR [esp+0x10]
-    mov    edx,DWORD PTR [esp+0xc]
-    mov    ecx,DWORD PTR [ecx+0x8]
-    push    0x2
-    push    eax
-    mov    eax,DWORD PTR [esp+0x10]
-    push    edx
-    mov    edx,DWORD PTR [esp+0x10]
-    push    eax
-    push    edx
-    call    R6GameServiceAddresses::DispatchThroughSelectedSlot10
-    ret    0x10
-  }
+  uint last = word3;
+  uint third = word2;
+  void *helper = *(void **)((byte *)message + 8);
+  uint second = word1;
+  uint first = word0;
+  using DispatchABI = uint (__thiscall *)(void *,uint,uint,uint,uint,uint);
+  return ((DispatchABI)R6GameServiceAddresses::DispatchThroughSelectedSlot10)(helper,first,second,third,last,2);
 }
 
 // Native virtual-table prefix: clGSEncryptMessageVTable

@@ -12408,360 +12408,245 @@ const R6GameServiceNative::FuncInfo request_state_supportSharedLifetimeException
   0x0,
 };
 
-// Guard service10, append decimal value, transfer six-word clone to request2c/mode2.
-// Reload service/arguments after clone, preserve exact consumer AL through split node/header release and RET.
-// Retain cookie/base/full/entered-clear/entered-free six-state cleanup and rewritten key argument.
+// Inferred physical locals: cookieS-2d, outgoing-slot scratchS-2c, head scratchS-28 and descriptorS-24.
+struct CommonRequestLocals {
+  byte cookieStorage[4];
+  uint cloneScratch;
+  uint headScratch;
+  uint descriptor[6];
+};
+
+// Raw six-word outgoing ABI record. The consumer owns this slot; it has no additional caller-side destructor.
+struct CommonRequestTransfer {
+  uint words[6];
+};
+
+// Release the current descriptor stage; entered clear/free stages preserve the native lack of retries.
+struct CommonRequestCleanup {
+  CommonRequestLocals *frame;
+  uint *keyWord;
+  int state;
+  bool armed;
+  // Base, cookie, full-list, entered-clear and entered-free actions use the current saved argument/scratch.
+  ~CommonRequestCleanup() noexcept(false)
+  {
+    if (!armed) return;
+    using EmptyABI = void (__fastcall *)(void *);
+    while (state >= 0) {
+      switch (state) {
+      case 0: case 3:
+        state = -1;
+        ResetClDataVtable(frame->descriptor);
+        break;
+      case 1:
+        state = 0;
+        ((EmptyABI)R6GameServiceAddresses::list_node_support_NoOp)(frame->cookieStorage + 3);
+        break;
+      case 2:
+        state = -1;
+        DestroyClDataListAlias(frame->descriptor);
+        break;
+      case 4:
+        state = 3;
+        frame->headScratch = *keyWord == 0 ? 0 : *keyWord + 4;
+        ReleaseNodesAndSentinel((void *)frame->headScratch);
+        break;
+      case 5:
+        state = 3;
+        ((EmptyABI)R6GameServiceAddresses::list_node_support_NoOp)((void *)frame->headScratch);
+        break;
+      }
+    }
+  }
+};
+
+// Append a decimal value, transfer a six-word clone to request2c/mode2, then release the local descriptor.
+// Consumer owns the outgoing slot. Reload service/scalars after cloning; ignore append/clone status; retain exact AL.
+// Inferred local frame preserves the untouched cookie, rewritten key argument and six native lifetime states.
 // R6GameService.dll @ 10044520 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall SendSerializedRequest2c(void *dispatcher,uint value,uint key)
+uint __thiscall SendSerializedRequest2c(void *dispatcher,uint value,uint key)
 {
-  __asm {
-    push    0xffffffff
-    push    R6GameServiceAddresses::SelectCommonRequestsEH
-    mov    eax,fs:0x0
-    push    eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x24
-    push    ebx
-    push    esi
-    mov    esi,ecx
-    mov    DWORD PTR [esp+0xc],0x0
-    mov    eax,DWORD PTR [esi+0x10]
-    test    eax,eax
-    jne    Branch400
-    xor    al,al
-    mov    ecx,DWORD PTR [esp+0x2c]
-    mov    DWORD PTR fs:0x0,ecx
-    pop    esi
-    pop    ebx
-    add    esp,0x30
-    ret    0x8
-  Branch400:
-    mov    DWORD PTR [esp+0x18],R6GameServiceAddresses::ClDataListBaseOffsets
-    mov    DWORD PTR [esp+0x28],R6GameServiceAddresses::ClDataListInnerBaseOffsets
-    mov    DWORD PTR [esp+0x1c],0x3
-    mov    DWORD PTR [esp+0x14],R6GameServiceAddresses::PTR_LAB
-    lea    eax,[esp+0xb]
-    lea    ecx,[esp+0x24]
-    push    eax
-    mov    DWORD PTR [esp+0x38],0x1
-    call    R6GameServiceAddresses::InitializeCircularListSentinel
-    mov    DWORD PTR [esp+0x14],R6GameServiceAddresses::clDataListPTR_FUN
-    mov    DWORD PTR [esp+0x20],R6GameServiceAddresses::clDataListPTR_LAB
-    lea    ecx,[esp+0x3c]
-    mov    DWORD PTR [esp+0x34],0x2
-    push    ecx
-    lea    ecx,[esp+0x18]
-    call    R6GameServiceAddresses::AppendClDataListSignedDecimal
-    sub    esp,0x18
-    lea    edx,[esp+0x2c]
-    mov    ecx,esp
-    mov    DWORD PTR [esp+0x24],esp
-    push    0x1
-    push    edx
-    call    R6GameServiceAddresses::CopyConstructClDataList
-    mov    eax,DWORD PTR [esp+0x58]
-    mov    ecx,DWORD PTR [esp+0x54]
-    push    0x2
-    push    0x2c
-    push    eax
-    push    ecx
-    mov    ecx,DWORD PTR [esi+0x10]
-    call    R6GameServiceAddresses::ApplyIndexedKeyUpdate
-    mov    bl,al
-    mov    DWORD PTR [esp+0x14],R6GameServiceAddresses::clDataListPTR_FUN
-    lea    edx,[esp+0x20]
-    mov    DWORD PTR [esp+0x34],0x3
-    mov    DWORD PTR [esp+0x40],edx
-    mov    DWORD PTR [esp+0x20],R6GameServiceAddresses::clDataListPTR_FUN2
-    lea    ecx,[esp+0x20]
-    mov    BYTE PTR [esp+0x34],0x4
-    call    R6GameServiceAddresses::InvokePointerListClearRange
-    lea    eax,[esp+0x24]
-    mov    DWORD PTR [esp+0x10],eax
-    lea    ecx,[esp+0x24]
-    mov    BYTE PTR [esp+0x34],0x5
-    call    R6GameServiceAddresses::ReleaseListNodesRetainHeader
-    mov    ecx,DWORD PTR [esp+0x24]
-    push    0x1
-    push    ecx
-    lea    ecx,[esp+0x2c]
-    call    R6GameServiceAddresses::ReleaseMemoryIgnoringSize
-    mov    ecx,DWORD PTR [esp+0x2c]
-    mov    al,bl
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    add    esp,0x30
-    ret    0x8
-  }
+  CommonRequestLocals frame;
+  CommonRequestCleanup cleanup{&frame,&key,-1,true};
+  void *savedDispatcher = dispatcher;
+  frame.cloneScratch = 0;
+  uint service = *(uint *)((byte *)savedDispatcher + 0x10);
+  if (service == 0) return 0;
+  frame.descriptor[1] = R6GameServiceAddresses::ClDataListBaseOffsets;
+  frame.descriptor[5] = R6GameServiceAddresses::ClDataListInnerBaseOffsets;
+  frame.descriptor[2] = 3;
+  frame.descriptor[0] = R6GameServiceAddresses::PTR_LAB;
+  cleanup.state = 1;
+  InitializeCircularListSentinel(frame.descriptor + 4,(uint)(frame.cookieStorage + 3));
+  frame.descriptor[0] = R6GameServiceAddresses::clDataListPTR_FUN;
+  frame.descriptor[3] = R6GameServiceAddresses::clDataListPTR_LAB;
+  cleanup.state = 2;
+  AppendClDataListSignedDecimal(frame.descriptor,&value);
+  CommonRequestTransfer outgoing;
+  frame.cloneScratch = (uint)&outgoing;
+  CopyConstructClDataList(&outgoing,frame.descriptor,1);
+  uint currentKey = key;
+  uint currentValue = value;
+  void *currentService = *(void **)((byte *)savedDispatcher + 0x10);
+  using ConsumeABI = uint (__thiscall *)(void *,uint,uint,uint,uint,CommonRequestTransfer);
+  uint consumed = ((ConsumeABI)R6GameServiceAddresses::ApplyIndexedKeyUpdate)(
+      currentService,currentValue,currentKey,0x2c,2,outgoing);
+  byte resultByte = (byte)consumed;
+  frame.descriptor[0] = R6GameServiceAddresses::clDataListPTR_FUN;
+  cleanup.state = 3;
+  key = (uint)(frame.descriptor + 3);
+  frame.descriptor[3] = R6GameServiceAddresses::clDataListPTR_FUN2;
+  cleanup.state = 4;
+  InvokePointerListClearRange(frame.descriptor + 3);
+  frame.headScratch = (uint)(frame.descriptor + 4);
+  cleanup.state = 5;
+  ReleaseListNodesRetainHeader(frame.descriptor + 4);
+  void *currentHead = (void *)frame.descriptor[4];
+  uint released = ReleaseMemoryIgnoringSize(currentHead,1);
+  cleanup.armed = false;
+  return (released & 0xffffff00u) | resultByte;
 }
 
-// Guard service10, append decimal value, transfer six-word clone to request46/mode2.
-// Reload service/arguments after clone, preserve exact consumer AL through split node/header release and RET.
-// Retain cookie/base/full/entered-clear/entered-free six-state cleanup and rewritten key argument.
+// Append a decimal value, transfer a six-word clone to request46/mode2, then release the local descriptor.
+// Consumer owns the outgoing slot. Reload service/scalars after cloning; ignore append/clone status; retain exact AL.
+// Inferred local frame preserves the untouched cookie, rewritten key argument and six native lifetime states.
 // R6GameService.dll @ 10044660 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall SendSerializedRequest46(void *dispatcher,uint value,uint key)
+uint __thiscall SendSerializedRequest46(void *dispatcher,uint value,uint key)
 {
-  __asm {
-    push    0xffffffff
-    push    R6GameServiceAddresses::SelectCommonRequestsEH
-    mov    eax,fs:0x0
-    push    eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x24
-    push    ebx
-    push    esi
-    mov    esi,ecx
-    mov    DWORD PTR [esp+0xc],0x0
-    mov    eax,DWORD PTR [esi+0x10]
-    test    eax,eax
-    jne    Branch401
-    xor    al,al
-    mov    ecx,DWORD PTR [esp+0x2c]
-    mov    DWORD PTR fs:0x0,ecx
-    pop    esi
-    pop    ebx
-    add    esp,0x30
-    ret    0x8
-  Branch401:
-    mov    DWORD PTR [esp+0x18],R6GameServiceAddresses::ClDataListBaseOffsets
-    mov    DWORD PTR [esp+0x28],R6GameServiceAddresses::ClDataListInnerBaseOffsets
-    mov    DWORD PTR [esp+0x1c],0x3
-    mov    DWORD PTR [esp+0x14],R6GameServiceAddresses::PTR_LAB
-    lea    eax,[esp+0xb]
-    lea    ecx,[esp+0x24]
-    push    eax
-    mov    DWORD PTR [esp+0x38],0x1
-    call    R6GameServiceAddresses::InitializeCircularListSentinel
-    mov    DWORD PTR [esp+0x14],R6GameServiceAddresses::clDataListPTR_FUN
-    mov    DWORD PTR [esp+0x20],R6GameServiceAddresses::clDataListPTR_LAB
-    lea    ecx,[esp+0x3c]
-    mov    DWORD PTR [esp+0x34],0x2
-    push    ecx
-    lea    ecx,[esp+0x18]
-    call    R6GameServiceAddresses::AppendClDataListSignedDecimal
-    sub    esp,0x18
-    lea    edx,[esp+0x2c]
-    mov    ecx,esp
-    mov    DWORD PTR [esp+0x24],esp
-    push    0x1
-    push    edx
-    call    R6GameServiceAddresses::CopyConstructClDataList
-    mov    eax,DWORD PTR [esp+0x58]
-    mov    ecx,DWORD PTR [esp+0x54]
-    push    0x2
-    push    0x46
-    push    eax
-    push    ecx
-    mov    ecx,DWORD PTR [esi+0x10]
-    call    R6GameServiceAddresses::ApplyIndexedKeyUpdate
-    mov    bl,al
-    mov    DWORD PTR [esp+0x14],R6GameServiceAddresses::clDataListPTR_FUN
-    lea    edx,[esp+0x20]
-    mov    DWORD PTR [esp+0x34],0x3
-    mov    DWORD PTR [esp+0x40],edx
-    mov    DWORD PTR [esp+0x20],R6GameServiceAddresses::clDataListPTR_FUN2
-    lea    ecx,[esp+0x20]
-    mov    BYTE PTR [esp+0x34],0x4
-    call    R6GameServiceAddresses::InvokePointerListClearRange
-    lea    eax,[esp+0x24]
-    mov    DWORD PTR [esp+0x10],eax
-    lea    ecx,[esp+0x24]
-    mov    BYTE PTR [esp+0x34],0x5
-    call    R6GameServiceAddresses::ReleaseListNodesRetainHeader
-    mov    ecx,DWORD PTR [esp+0x24]
-    push    0x1
-    push    ecx
-    lea    ecx,[esp+0x2c]
-    call    R6GameServiceAddresses::ReleaseMemoryIgnoringSize
-    mov    ecx,DWORD PTR [esp+0x2c]
-    mov    al,bl
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    add    esp,0x30
-    ret    0x8
-  }
+  CommonRequestLocals frame;
+  CommonRequestCleanup cleanup{&frame,&key,-1,true};
+  void *savedDispatcher = dispatcher;
+  frame.cloneScratch = 0;
+  uint service = *(uint *)((byte *)savedDispatcher + 0x10);
+  if (service == 0) return 0;
+  frame.descriptor[1] = R6GameServiceAddresses::ClDataListBaseOffsets;
+  frame.descriptor[5] = R6GameServiceAddresses::ClDataListInnerBaseOffsets;
+  frame.descriptor[2] = 3;
+  frame.descriptor[0] = R6GameServiceAddresses::PTR_LAB;
+  cleanup.state = 1;
+  InitializeCircularListSentinel(frame.descriptor + 4,(uint)(frame.cookieStorage + 3));
+  frame.descriptor[0] = R6GameServiceAddresses::clDataListPTR_FUN;
+  frame.descriptor[3] = R6GameServiceAddresses::clDataListPTR_LAB;
+  cleanup.state = 2;
+  AppendClDataListSignedDecimal(frame.descriptor,&value);
+  CommonRequestTransfer outgoing;
+  frame.cloneScratch = (uint)&outgoing;
+  CopyConstructClDataList(&outgoing,frame.descriptor,1);
+  uint currentKey = key;
+  uint currentValue = value;
+  void *currentService = *(void **)((byte *)savedDispatcher + 0x10);
+  using ConsumeABI = uint (__thiscall *)(void *,uint,uint,uint,uint,CommonRequestTransfer);
+  uint consumed = ((ConsumeABI)R6GameServiceAddresses::ApplyIndexedKeyUpdate)(
+      currentService,currentValue,currentKey,0x46,2,outgoing);
+  byte resultByte = (byte)consumed;
+  frame.descriptor[0] = R6GameServiceAddresses::clDataListPTR_FUN;
+  cleanup.state = 3;
+  key = (uint)(frame.descriptor + 3);
+  frame.descriptor[3] = R6GameServiceAddresses::clDataListPTR_FUN2;
+  cleanup.state = 4;
+  InvokePointerListClearRange(frame.descriptor + 3);
+  frame.headScratch = (uint)(frame.descriptor + 4);
+  cleanup.state = 5;
+  ReleaseListNodesRetainHeader(frame.descriptor + 4);
+  void *currentHead = (void *)frame.descriptor[4];
+  uint released = ReleaseMemoryIgnoringSize(currentHead,1);
+  cleanup.armed = false;
+  return (released & 0xffffff00u) | resultByte;
 }
 
-// Guard service10, append decimal value/extra value, transfer six-word clone to request9/mode2.
-// Reload service/arguments after clone, preserve exact consumer AL through split node/header release and RET.
-// Retain cookie/base/full/entered-clear/entered-free six-state cleanup and rewritten key argument.
+// Append two decimal values, transfer a six-word clone to request9/mode2, then release the local descriptor.
+// Consumer owns the outgoing slot. Reload service/scalars after cloning; ignore append/clone status; retain exact AL.
+// Inferred local frame preserves the untouched cookie, rewritten key argument and six native lifetime states.
 // R6GameService.dll @ 10044940 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall SendSerializedRequest9(void *dispatcher,uint value,uint key,uint extraValue)
+uint __thiscall SendSerializedRequest9(void *dispatcher,uint value,uint key,uint extraValue)
 {
-  __asm {
-    push    0xffffffff
-    push    R6GameServiceAddresses::SelectCommonRequestsEH
-    mov    eax,fs:0x0
-    push    eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x24
-    push    ebx
-    push    esi
-    mov    esi,ecx
-    mov    DWORD PTR [esp+0xc],0x0
-    mov    eax,DWORD PTR [esi+0x10]
-    test    eax,eax
-    jne    Branch402
-    xor    al,al
-    mov    ecx,DWORD PTR [esp+0x2c]
-    mov    DWORD PTR fs:0x0,ecx
-    pop    esi
-    pop    ebx
-    add    esp,0x30
-    ret    0xc
-  Branch402:
-    mov    DWORD PTR [esp+0x18],R6GameServiceAddresses::ClDataListBaseOffsets
-    mov    DWORD PTR [esp+0x28],R6GameServiceAddresses::ClDataListInnerBaseOffsets
-    mov    DWORD PTR [esp+0x1c],0x3
-    mov    DWORD PTR [esp+0x14],R6GameServiceAddresses::PTR_LAB
-    lea    eax,[esp+0xb]
-    lea    ecx,[esp+0x24]
-    push    eax
-    mov    DWORD PTR [esp+0x38],0x1
-    call    R6GameServiceAddresses::InitializeCircularListSentinel
-    mov    DWORD PTR [esp+0x14],R6GameServiceAddresses::clDataListPTR_FUN
-    mov    DWORD PTR [esp+0x20],R6GameServiceAddresses::clDataListPTR_LAB
-    lea    ecx,[esp+0x3c]
-    mov    DWORD PTR [esp+0x34],0x2
-    push    ecx
-    lea    ecx,[esp+0x18]
-    call    R6GameServiceAddresses::AppendClDataListSignedDecimal
-    lea    edx,[esp+0x44]
-    lea    ecx,[esp+0x14]
-    push    edx
-    call    R6GameServiceAddresses::AppendClDataListSignedDecimal
-    sub    esp,0x18
-    lea    eax,[esp+0x2c]
-    mov    ecx,esp
-    mov    DWORD PTR [esp+0x24],esp
-    push    0x1
-    push    eax
-    call    R6GameServiceAddresses::CopyConstructClDataList
-    mov    ecx,DWORD PTR [esp+0x58]
-    mov    edx,DWORD PTR [esp+0x54]
-    push    0x2
-    push    0x9
-    push    ecx
-    mov    ecx,DWORD PTR [esi+0x10]
-    push    edx
-    call    R6GameServiceAddresses::ApplyIndexedKeyUpdate
-    mov    bl,al
-    mov    DWORD PTR [esp+0x14],R6GameServiceAddresses::clDataListPTR_FUN
-    lea    eax,[esp+0x20]
-    mov    DWORD PTR [esp+0x34],0x3
-    mov    DWORD PTR [esp+0x40],eax
-    mov    DWORD PTR [esp+0x20],R6GameServiceAddresses::clDataListPTR_FUN2
-    lea    ecx,[esp+0x20]
-    mov    BYTE PTR [esp+0x34],0x4
-    call    R6GameServiceAddresses::InvokePointerListClearRange
-    lea    ecx,[esp+0x24]
-    mov    DWORD PTR [esp+0x10],ecx
-    lea    ecx,[esp+0x24]
-    mov    BYTE PTR [esp+0x34],0x5
-    call    R6GameServiceAddresses::ReleaseListNodesRetainHeader
-    mov    edx,DWORD PTR [esp+0x24]
-    push    0x1
-    push    edx
-    lea    ecx,[esp+0x2c]
-    call    R6GameServiceAddresses::ReleaseMemoryIgnoringSize
-    mov    ecx,DWORD PTR [esp+0x2c]
-    mov    al,bl
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    add    esp,0x30
-    ret    0xc
-  }
+  CommonRequestLocals frame;
+  CommonRequestCleanup cleanup{&frame,&key,-1,true};
+  void *savedDispatcher = dispatcher;
+  frame.cloneScratch = 0;
+  uint service = *(uint *)((byte *)savedDispatcher + 0x10);
+  if (service == 0) return 0;
+  frame.descriptor[1] = R6GameServiceAddresses::ClDataListBaseOffsets;
+  frame.descriptor[5] = R6GameServiceAddresses::ClDataListInnerBaseOffsets;
+  frame.descriptor[2] = 3;
+  frame.descriptor[0] = R6GameServiceAddresses::PTR_LAB;
+  cleanup.state = 1;
+  InitializeCircularListSentinel(frame.descriptor + 4,(uint)(frame.cookieStorage + 3));
+  frame.descriptor[0] = R6GameServiceAddresses::clDataListPTR_FUN;
+  frame.descriptor[3] = R6GameServiceAddresses::clDataListPTR_LAB;
+  cleanup.state = 2;
+  AppendClDataListSignedDecimal(frame.descriptor,&value);
+  AppendClDataListSignedDecimal(frame.descriptor,&extraValue);
+  CommonRequestTransfer outgoing;
+  frame.cloneScratch = (uint)&outgoing;
+  CopyConstructClDataList(&outgoing,frame.descriptor,1);
+  uint currentKey = key;
+  uint currentValue = value;
+  void *currentService = *(void **)((byte *)savedDispatcher + 0x10);
+  using ConsumeABI = uint (__thiscall *)(void *,uint,uint,uint,uint,CommonRequestTransfer);
+  uint consumed = ((ConsumeABI)R6GameServiceAddresses::ApplyIndexedKeyUpdate)(
+      currentService,currentValue,currentKey,0x9,2,outgoing);
+  byte resultByte = (byte)consumed;
+  frame.descriptor[0] = R6GameServiceAddresses::clDataListPTR_FUN;
+  cleanup.state = 3;
+  key = (uint)(frame.descriptor + 3);
+  frame.descriptor[3] = R6GameServiceAddresses::clDataListPTR_FUN2;
+  cleanup.state = 4;
+  InvokePointerListClearRange(frame.descriptor + 3);
+  frame.headScratch = (uint)(frame.descriptor + 4);
+  cleanup.state = 5;
+  ReleaseListNodesRetainHeader(frame.descriptor + 4);
+  void *currentHead = (void *)frame.descriptor[4];
+  uint released = ReleaseMemoryIgnoringSize(currentHead,1);
+  cleanup.armed = false;
+  return (released & 0xffffff00u) | resultByte;
 }
 
-// Guard service10, append decimal value, transfer six-word clone to request2e/mode2.
-// Reload service/arguments after clone, preserve exact consumer AL through split node/header release and RET.
-// Retain cookie/base/full/entered-clear/entered-free six-state cleanup and rewritten key argument.
+// Append a decimal value, transfer a six-word clone to request2e/mode2, then release the local descriptor.
+// Consumer owns the outgoing slot. Reload service/scalars after cloning; ignore append/clone status; retain exact AL.
+// Inferred local frame preserves the untouched cookie, rewritten key argument and six native lifetime states.
 // R6GameService.dll @ 10044a80 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall SendSerializedRequest2e(void *dispatcher,uint value,uint key)
+uint __thiscall SendSerializedRequest2e(void *dispatcher,uint value,uint key)
 {
-  __asm {
-    push    0xffffffff
-    push    R6GameServiceAddresses::SelectCommonRequestsEH
-    mov    eax,fs:0x0
-    push    eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x24
-    push    ebx
-    push    esi
-    mov    esi,ecx
-    mov    DWORD PTR [esp+0xc],0x0
-    mov    eax,DWORD PTR [esi+0x10]
-    test    eax,eax
-    jne    Branch403
-    xor    al,al
-    mov    ecx,DWORD PTR [esp+0x2c]
-    mov    DWORD PTR fs:0x0,ecx
-    pop    esi
-    pop    ebx
-    add    esp,0x30
-    ret    0x8
-  Branch403:
-    mov    DWORD PTR [esp+0x18],R6GameServiceAddresses::ClDataListBaseOffsets
-    mov    DWORD PTR [esp+0x28],R6GameServiceAddresses::ClDataListInnerBaseOffsets
-    mov    DWORD PTR [esp+0x1c],0x3
-    mov    DWORD PTR [esp+0x14],R6GameServiceAddresses::PTR_LAB
-    lea    eax,[esp+0xb]
-    lea    ecx,[esp+0x24]
-    push    eax
-    mov    DWORD PTR [esp+0x38],0x1
-    call    R6GameServiceAddresses::InitializeCircularListSentinel
-    mov    DWORD PTR [esp+0x14],R6GameServiceAddresses::clDataListPTR_FUN
-    mov    DWORD PTR [esp+0x20],R6GameServiceAddresses::clDataListPTR_LAB
-    lea    ecx,[esp+0x3c]
-    mov    DWORD PTR [esp+0x34],0x2
-    push    ecx
-    lea    ecx,[esp+0x18]
-    call    R6GameServiceAddresses::AppendClDataListSignedDecimal
-    sub    esp,0x18
-    lea    edx,[esp+0x2c]
-    mov    ecx,esp
-    mov    DWORD PTR [esp+0x24],esp
-    push    0x1
-    push    edx
-    call    R6GameServiceAddresses::CopyConstructClDataList
-    mov    eax,DWORD PTR [esp+0x58]
-    mov    ecx,DWORD PTR [esp+0x54]
-    push    0x2
-    push    0x2e
-    push    eax
-    push    ecx
-    mov    ecx,DWORD PTR [esi+0x10]
-    call    R6GameServiceAddresses::ApplyIndexedKeyUpdate
-    mov    bl,al
-    mov    DWORD PTR [esp+0x14],R6GameServiceAddresses::clDataListPTR_FUN
-    lea    edx,[esp+0x20]
-    mov    DWORD PTR [esp+0x34],0x3
-    mov    DWORD PTR [esp+0x40],edx
-    mov    DWORD PTR [esp+0x20],R6GameServiceAddresses::clDataListPTR_FUN2
-    lea    ecx,[esp+0x20]
-    mov    BYTE PTR [esp+0x34],0x4
-    call    R6GameServiceAddresses::InvokePointerListClearRange
-    lea    eax,[esp+0x24]
-    mov    DWORD PTR [esp+0x10],eax
-    lea    ecx,[esp+0x24]
-    mov    BYTE PTR [esp+0x34],0x5
-    call    R6GameServiceAddresses::ReleaseListNodesRetainHeader
-    mov    ecx,DWORD PTR [esp+0x24]
-    push    0x1
-    push    ecx
-    lea    ecx,[esp+0x2c]
-    call    R6GameServiceAddresses::ReleaseMemoryIgnoringSize
-    mov    ecx,DWORD PTR [esp+0x2c]
-    mov    al,bl
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    add    esp,0x30
-    ret    0x8
-  }
+  CommonRequestLocals frame;
+  CommonRequestCleanup cleanup{&frame,&key,-1,true};
+  void *savedDispatcher = dispatcher;
+  frame.cloneScratch = 0;
+  uint service = *(uint *)((byte *)savedDispatcher + 0x10);
+  if (service == 0) return 0;
+  frame.descriptor[1] = R6GameServiceAddresses::ClDataListBaseOffsets;
+  frame.descriptor[5] = R6GameServiceAddresses::ClDataListInnerBaseOffsets;
+  frame.descriptor[2] = 3;
+  frame.descriptor[0] = R6GameServiceAddresses::PTR_LAB;
+  cleanup.state = 1;
+  InitializeCircularListSentinel(frame.descriptor + 4,(uint)(frame.cookieStorage + 3));
+  frame.descriptor[0] = R6GameServiceAddresses::clDataListPTR_FUN;
+  frame.descriptor[3] = R6GameServiceAddresses::clDataListPTR_LAB;
+  cleanup.state = 2;
+  AppendClDataListSignedDecimal(frame.descriptor,&value);
+  CommonRequestTransfer outgoing;
+  frame.cloneScratch = (uint)&outgoing;
+  CopyConstructClDataList(&outgoing,frame.descriptor,1);
+  uint currentKey = key;
+  uint currentValue = value;
+  void *currentService = *(void **)((byte *)savedDispatcher + 0x10);
+  using ConsumeABI = uint (__thiscall *)(void *,uint,uint,uint,uint,CommonRequestTransfer);
+  uint consumed = ((ConsumeABI)R6GameServiceAddresses::ApplyIndexedKeyUpdate)(
+      currentService,currentValue,currentKey,0x2e,2,outgoing);
+  byte resultByte = (byte)consumed;
+  frame.descriptor[0] = R6GameServiceAddresses::clDataListPTR_FUN;
+  cleanup.state = 3;
+  key = (uint)(frame.descriptor + 3);
+  frame.descriptor[3] = R6GameServiceAddresses::clDataListPTR_FUN2;
+  cleanup.state = 4;
+  InvokePointerListClearRange(frame.descriptor + 3);
+  frame.headScratch = (uint)(frame.descriptor + 4);
+  cleanup.state = 5;
+  ReleaseListNodesRetainHeader(frame.descriptor + 4);
+  void *currentHead = (void *)frame.descriptor[4];
+  uint released = ReleaseMemoryIgnoringSize(currentHead,1);
+  cleanup.armed = false;
+  return (released & 0xffffff00u) | resultByte;
 }
 
 // Reset common request descriptor EBP-24 base after header constructor failure.
@@ -12863,25 +12748,22 @@ __declspec(naked) uint __thiscall ForwardRequest46ViaOffset158(void *owner,uint 
   }
 }
 
-// Load dispatcher POINTER from owner+158 and tail-forward scalar arguments; preserve raw upperEAX/exact AL.
+// Forward full scalar words through owner+0x158 and return the raw serializer result; parameter names are inferred.
 // R6GameService.dll @ 10041380 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall DispatchSelector9ThroughOptionalChannel(
-    void *owner,uint value,uint key,uint extraValue)
+uint __thiscall DispatchSelector9ThroughOptionalChannel(void *owner,uint value,uint key,uint extraValue)
 {
-  __asm {
-    mov    ecx,DWORD PTR [ecx+0x158]
-    jmp    R6GameServiceAddresses::SendSerializedRequest9
-  }
+  void *dispatcher = *(void **)((uint)owner + 0x158);
+  using DispatchABI = uint (__thiscall *)(void *,uint,uint,uint);
+  return ((DispatchABI)R6GameServiceAddresses::SendSerializedRequest9)(dispatcher,value,key,extraValue);
 }
 
-// Load dispatcher POINTER from owner+158 and tail-forward scalar arguments; preserve raw upperEAX/exact AL.
+// Forward full scalar words through owner+0x158 and return the raw serializer result; parameter names are inferred.
 // R6GameService.dll @ 10041390 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall DispatchSelector2eThroughOptionalChannel(void *owner,uint value,uint key)
+uint __thiscall DispatchSelector2eThroughOptionalChannel(void *owner,uint value,uint key)
 {
-  __asm {
-    mov    ecx,DWORD PTR [ecx+0x158]
-    jmp    R6GameServiceAddresses::SendSerializedRequest2e
-  }
+  void *dispatcher = *(void **)((uint)owner + 0x158);
+  using DispatchABI = uint (__thiscall *)(void *,uint,uint);
+  return ((DispatchABI)R6GameServiceAddresses::SendSerializedRequest2e)(dispatcher,value,key);
 }
 
 // Literal shared request2c/46/9/2e cleanup map/FuncInfo words.

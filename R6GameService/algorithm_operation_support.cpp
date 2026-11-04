@@ -40,24 +40,18 @@ __declspec(naked) uint __stdcall FillPRNGBytesThunk(void *receiver,byte *output,
   }
 }
 
-// Tail-forwards the original stack and raw registers to 10038030.
-// R6GameService.dll @ 10037410 : stdcall, 5 stack words; raw EAX retained except stated AL/mask.
-__declspec(naked) uint __stdcall EncodeCryptoBufferThunk(
-    void *receiver,const byte *input,uint inputBytes,byte *output,uint *outputBytes)
+// Forwards the five physical codec words and the complete dispatcher result.
+// R6GameService.dll @ 10037410 : stdcall tail alias; null EAX is fixed by the closed selector caller chain.
+uint __stdcall EncodeCryptoBufferThunk(void *receiver,const byte *input,uint inputBytes,byte *output,uint *outputBytes)
 {
-  __asm {
-    jmp    R6GameServiceAddresses::EncodeCryptoBuffer
-  }
+  return EncodeCryptoBuffer(receiver,input,inputBytes,output,outputBytes);
 }
 
-// Tail-forwards the original stack and raw registers to 10038060.
-// R6GameService.dll @ 10037420 : stdcall, 5 stack words; raw EAX retained except stated AL/mask.
-__declspec(naked) uint __stdcall DecodeCryptoBufferThunk(
-    void *receiver,const byte *input,uint inputBytes,byte *output,uint *outputBytes)
+// Forwards the five physical codec words and the complete dispatcher result.
+// R6GameService.dll @ 10037420 : stdcall tail alias; null EAX is fixed by the closed selector caller chain.
+uint __stdcall DecodeCryptoBufferThunk(void *receiver,const byte *input,uint inputBytes,byte *output,uint *outputBytes)
 {
-  __asm {
-    jmp    R6GameServiceAddresses::DecodeCryptoBuffer
-  }
+  return DecodeCryptoBuffer(receiver,input,inputBytes,output,outputBytes);
 }
 
 // Tail-forwards the original stack and raw registers to 10038240.
@@ -258,56 +252,34 @@ __declspec(naked) uint __stdcall FillPRNGBytes(void *receiver,byte *output,uint 
   }
 }
 
-// Forwards cipher encode arguments through the primary table; null clears only AL.
-// R6GameService.dll @ 10038030 : stdcall, 5 stack words; raw EAX retained except stated AL/mask.
-__declspec(naked) uint __stdcall EncodeCryptoBuffer(
-    void *receiver,const byte *input,uint inputBytes,byte *output,uint *outputBytes)
+// Dispatches a codec operation through its primary table, retaining the complete virtual result.
+// R6GameService.dll @ 10038030 : stdcall five words; null return0 is inferred from the closed native caller chain.
+uint __stdcall EncodeCryptoBuffer(void *receiver,const byte *input,uint inputBytes,byte *output,uint *outputBytes)
 {
-  __asm {
-    mov    ecx,DWORD PTR [esp+0x4]
-    test   ecx,ecx
-    jne Branch7
-    xor    al,al
-    ret    0x14
-  Branch7:
-    mov    edx,DWORD PTR [esp+0x14]
-    mov    eax,DWORD PTR [ecx]
-    push   edx
-    mov    edx,DWORD PTR [esp+0x14]
-    push   edx
-    mov    edx,DWORD PTR [esp+0x14]
-    push   edx
-    mov    edx,DWORD PTR [esp+0x14]
-    push   edx
-    call   DWORD PTR [eax+0xc]
-    ret    0x14
-  }
+  void *object = receiver;
+  if (object == nullptr) return 0;
+  uint *size = outputBytes;
+  uint table = *(uint *)object;
+  byte *destination = output;
+  uint count = inputBytes;
+  const byte *source = input;
+  using CodecABI = uint (__thiscall *)(void *,const byte *,uint,byte *,uint *);
+  return (*(CodecABI *)(table + 0xc))(object,source,count,destination,size);
 }
 
-// Forwards cipher decode arguments through the primary table; null clears only AL.
-// R6GameService.dll @ 10038060 : stdcall, 5 stack words; raw EAX retained except stated AL/mask.
-__declspec(naked) uint __stdcall DecodeCryptoBuffer(
-    void *receiver,const byte *input,uint inputBytes,byte *output,uint *outputBytes)
+// Dispatches a codec operation through its primary table, retaining the complete virtual result.
+// R6GameService.dll @ 10038060 : stdcall five words; null return0 is inferred from the closed native caller chain.
+uint __stdcall DecodeCryptoBuffer(void *receiver,const byte *input,uint inputBytes,byte *output,uint *outputBytes)
 {
-  __asm {
-    mov    ecx,DWORD PTR [esp+0x4]
-    test   ecx,ecx
-    jne Branch8
-    xor    al,al
-    ret    0x14
-  Branch8:
-    mov    edx,DWORD PTR [esp+0x14]
-    mov    eax,DWORD PTR [ecx]
-    push   edx
-    mov    edx,DWORD PTR [esp+0x14]
-    push   edx
-    mov    edx,DWORD PTR [esp+0x14]
-    push   edx
-    mov    edx,DWORD PTR [esp+0x14]
-    push   edx
-    call   DWORD PTR [eax+0x10]
-    ret    0x14
-  }
+  void *object = receiver;
+  if (object == nullptr) return 0;
+  uint *size = outputBytes;
+  uint table = *(uint *)object;
+  byte *destination = output;
+  uint count = inputBytes;
+  const byte *source = input;
+  using CodecABI = uint (__thiscall *)(void *,const byte *,uint,byte *,uint *);
+  return (*(CodecABI *)(table + 0x10))(object,source,count,destination,size);
 }
 
 // Forwards key-record generation through slot +4; null clears only AL.

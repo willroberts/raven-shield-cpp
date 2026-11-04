@@ -691,226 +691,136 @@ const R6GameServiceNative::FuncInfo ThrowByteStringLengthErrorExceptionInfo = {
   0x0,
 };
 
+// Inferred construction locals: native head/tag/length/receiver are at EBP-134/-12d/-12c/-128.
+struct PooledStringConstructionLocals {
+  uint headOrBlock;
+  byte padding[3];
+  byte diagnosticTag;
+  uint copyBytes;
+  uint *cleanupReceiver;
+  uint diagnostic[3];
+  byte exceptionStorage[0x10c];
+};
+
 // Clears an owning descriptor, scans its source, obtains pool/heap storage and publishes a terminated copy.
 // Late source argument, saved length/receiver/head words, recursive length error and all three states remain explicit.
 // R6GameService.dll @ 10017640 : native control/access order and raw ABI retained.
-__declspec(naked) void * __thiscall ConstructPooledByteString(void *owner,char *source,void *unusedTag)
+void * __thiscall ConstructPooledByteString(void *owner,char *source,void *unusedTag)
 {
-  __asm {
-    push   0xffffffff
-    push   R6GameServiceAddresses::PooledByteStringConstructExceptionHandler
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x128
-    push   ebx
-    push   ebp
-    push   esi
-    mov    esi,ecx
-    xor    edx,edx
-    push   edi
-    mov    DWORD PTR [esi],edx
-    mov    DWORD PTR [esi+0x4],edx
-    mov    DWORD PTR [esp+0x1c],esi
-    mov    DWORD PTR [esi+0x8],edx
-    mov    ebx,DWORD PTR [esp+0x148]
-    or     ecx,0xffffffff
-    mov    edi,ebx
-    xor    eax,eax
-    repnz  scas al,BYTE PTR es:[edi]
-    not    ecx
-    dec    ecx
-    mov    DWORD PTR [esp+0x140],edx
-    mov    ebp,ecx
-    add    ebp,ebx
-    mov    edi,ebp
-    sub    edi,ebx
-    mov    DWORD PTR [esp+0x18],edi
-    inc    edi
-    cmp    edi,0xffffffff
-    ja     Branch25
-    cmp    edi,edx
-    jbe    Branch25
-    cmp    edi,0x80
-    jbe    Branch20
-    push   edi
-    call   R6GameServiceAddresses::AllocateTaggedBytesCdecl
-    add    esp,0x4
-    jmp    Branch23
-  Branch20:
-    lea    eax,[edi-0x1]
-    shr    eax,0x3
-    lea    ecx,[eax*4+R6GameServiceAddresses::GByteStringPoolFreeLists]
-    mov    DWORD PTR [esp+0x10],ecx
-    mov    ecx,R6GameServiceAddresses::GByteStringPoolLock
-    call   R6GameServiceAddresses::pooled_string_support_AcquireBufferPoolLock
-    mov    ecx,DWORD PTR [esp+0x10]
-    mov    BYTE PTR [esp+0x140],0x1
-    mov    eax,DWORD PTR [ecx]
-    test   eax,eax
-    mov    DWORD PTR [esp+0x10],eax
-    je     Branch21
-    mov    edx,DWORD PTR [eax]
-    mov    DWORD PTR [ecx],edx
-    jmp    Branch22
-  Branch21:
-    push   edi
-    call   R6GameServiceAddresses::AllocatePooledByteStringBlock
-    add    esp,0x4
-    mov    DWORD PTR [esp+0x10],eax
-  Branch22:
-    mov    ecx,R6GameServiceAddresses::GByteStringPoolLock
-    mov    BYTE PTR [esp+0x140],0x0
-    call   R6GameServiceAddresses::ReleaseBufferPoolLock
-    mov    eax,DWORD PTR [esp+0x10]
-  Branch23:
-    lea    ecx,[eax+edi*1]
-    cmp    ebp,ebx
-    mov    DWORD PTR [esi],eax
-    mov    DWORD PTR [esi+0x4],eax
-    mov    DWORD PTR [esi+0x8],ecx
-    je     Branch24
-    mov    edi,DWORD PTR [esp+0x18]
-    push   edi
-    push   ebx
-    push   eax
-    call   R6GameServiceAddresses::memmove
-    add    esp,0xc
-    add    eax,edi
-  Branch24:
-    mov    ecx,DWORD PTR [esp+0x138]
-    mov    DWORD PTR [esi+0x4],eax
-    mov    BYTE PTR [eax],0x0
-    mov    eax,esi
-    pop    edi
-    pop    esi
-    pop    ebp
-    pop    ebx
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x134
-    ret    0x8
-  Branch25:
-    lea    edx,[esp+0x17]
-    lea    ecx,[esp+0x20]
-    push   edx
-    push   R6GameServiceAddresses::s_basic_string
-    call   R6GameServiceAddresses::ConstructPooledByteString
-    push   eax
-    lea    ecx,[esp+0x30]
-    mov    BYTE PTR [esp+0x144],0x2
-    call   R6GameServiceAddresses::ConstructException75c28
-    lea    eax,[esp+0x2c]
-    push   R6GameServiceAddresses::ByteStringLengthErrorThrowInfo
-    push   eax
-    call   R6GameServiceAddresses::_CxxThrowException
+  PooledStringConstructionLocals frame;
+  uint *words = (uint *)owner;
+  words[0] = 0;
+  words[1] = 0;
+  frame.cleanupReceiver = words;
+  words[2] = 0;
+  char *first = source;
+  uint remaining = 0xffffffff;
+  char *scan = first;
+  while (remaining != 0) {
+    --remaining;
+    char character = *scan++;
+    if (character == 0) break;
+  }
+  byte cleanupState = 0;
+  uint last = (uint)first + (~remaining - 1);
+  frame.copyBytes = last - (uint)first;
+  uint allocationBytes = frame.copyBytes + 1;
+  try {
+    if (allocationBytes == 0) {
+      uint *diagnostic = (uint *)ConstructPooledByteString(frame.diagnostic,s_basic_string,&frame.diagnosticTag);
+      cleanupState = 2;
+      ConstructException75c28(frame.exceptionStorage,diagnostic);
+      _CxxThrowException(frame.exceptionStorage,(ThrowInfo *)&ByteStringLengthErrorThrowInfo);
+    }
+    uint block;
+    if (allocationBytes > 128) {
+      block = (uint)AllocateTaggedBytesCdecl(allocationBytes);
+    } else {
+      frame.headOrBlock = R6GameServiceAddresses::GByteStringPoolFreeLists + (((allocationBytes - 1) >> 3) * 4);
+      pooled_string_support_AcquireBufferPoolLock((LONG *)R6GameServiceAddresses::GByteStringPoolLock);
+      uint *head = (uint *)frame.headOrBlock;
+      cleanupState = 1;
+      uint cachedBlock = *head;
+      frame.headOrBlock = cachedBlock;
+      if (cachedBlock != 0) {
+        *head = *(uint *)cachedBlock;
+      } else {
+        frame.headOrBlock = (uint)AllocatePooledByteStringBlock(allocationBytes);
+      }
+      cleanupState = 0;
+      ReleaseBufferPoolLock((LONG *)R6GameServiceAddresses::GByteStringPoolLock);
+      block = frame.headOrBlock;
+    }
+    uint capacityEnd = block + allocationBytes;
+    words[0] = block;
+    words[1] = block;
+    words[2] = capacityEnd;
+    uint end = block;
+    if (last != (uint)first) {
+      uint copiedBytes = frame.copyBytes;
+      end = (uint)memmove((void *)block,first,copiedBytes) + copiedBytes;
+    }
+    words[1] = end;
+    *(byte *)end = 0;
+    return owner;
+  } catch (...) {
+    if (cleanupState == 1) *(uint *)R6GameServiceAddresses::GByteStringPoolLock = 0;
+    if (cleanupState == 2) ReleasePooledBuffer(frame.diagnostic);
+    ReleasePooledBuffer(frame.cleanupReceiver);
+    throw;
   }
 }
 
 // Acquires the supplied lock using atomic exchange, arithmetic spinning and capped exponential Sleep backoff.
-// Saved ECX doubles as spin scratch; cached API pointers/global limits and raw register residues remain native.
+// Native ECX restores the incoming lock on the immediate path or the final spin-work word after contention.
+// Exchange reloads its IAT cell on every attempt; Sleep is cached once, and signed backoff stages wrap.
 // R6GameService.dll @ 10017790 : native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall pooled_string_support_AcquireBufferPoolLock(LONG *lockWord)
+uint __fastcall pooled_string_support_AcquireBufferPoolLock(LONG *lockWord)
 {
-  __asm {
-    push   ecx
-    push   ebx
-    push   ebp
-    push   esi
-    push   edi
-    mov    ebp,ecx
-    push   0x1
-    push   ebp
-    call   DWORD PTR ds:R6GameServiceAddresses::KERNEL32_InterlockedExchangeSlot
-    test   eax,eax
-    je     Branch27
-    mov    edi,DWORD PTR ds:R6GameServiceAddresses::GPooledByteStringBucketCount
-    mov    eax,ds:0x10093bb4
-    xor    esi,esi
-    mov    DWORD PTR [esp+0x10],0x11
-    test   edi,edi
-    jbe    Branch30
-    mov    ebx,eax
-    shr    ebx,1
-  Branch26:
-    cmp    esi,ebx
-    jb     Branch28
-    cmp    DWORD PTR [ebp+0x0],0x0
-    jne    Branch28
-    push   0x1
-    push   ebp
-    call   DWORD PTR ds:R6GameServiceAddresses::KERNEL32_InterlockedExchangeSlot
-    test   eax,eax
-    jne    Branch29
-    mov    DWORD PTR ds:0x10093bb4,esi
-    mov    DWORD PTR ds:R6GameServiceAddresses::GPooledByteStringBucketCount,0x3e8
-  Branch27:
-    pop    edi
-    pop    esi
-    pop    ebp
-    pop    ebx
-    pop    ecx
-    ret
-  Branch28:
-    mov    eax,DWORD PTR [esp+0x10]
-    mov    ecx,DWORD PTR [esp+0x10]
-    imul   eax,ecx
-    mov    DWORD PTR [esp+0x10],eax
-    mov    edx,DWORD PTR [esp+0x10]
-    mov    eax,DWORD PTR [esp+0x10]
-    imul   edx,eax
-    mov    DWORD PTR [esp+0x10],edx
-    mov    ecx,DWORD PTR [esp+0x10]
-    mov    edx,DWORD PTR [esp+0x10]
-    imul   ecx,edx
-    mov    DWORD PTR [esp+0x10],ecx
-    mov    eax,DWORD PTR [esp+0x10]
-    mov    ecx,DWORD PTR [esp+0x10]
-    imul   eax,ecx
-    mov    DWORD PTR [esp+0x10],eax
-  Branch29:
-    inc    esi
-    cmp    esi,edi
-    jb     Branch26
-  Branch30:
-    mov    ebx,DWORD PTR ds:R6GameServiceAddresses::KERNEL32_SleepSlot
-    mov    DWORD PTR ds:R6GameServiceAddresses::GPooledByteStringBucketCount,0x1e
-    mov    edi,0x6
-  Branch31:
-    cmp    edi,0x1b
-    mov    esi,edi
-    jle    Branch32
-    mov    esi,0x1b
-  Branch32:
-    push   0x1
-    push   ebp
-    call   DWORD PTR ds:R6GameServiceAddresses::KERNEL32_InterlockedExchangeSlot
-    test   eax,eax
-    je     Branch27
-    cmp    esi,0x14
-    jg     Branch33
-    push   0x0
-    call   ebx
-    inc    edi
-    jmp    Branch31
-  Branch33:
-    lea    ecx,[esi-0x14]
-    mov    edx,0x1
-    shl    edx,cl
-    push   edx
-    call   ebx
-    inc    edi
-    jmp    Branch31
+  volatile LONG *savedLock = lockWord;
+  using ExchangeABI = LONG (__stdcall *)(volatile LONG *,LONG);
+  if ((*(ExchangeABI *)R6GameServiceAddresses::KERNEL32_InterlockedExchangeSlot)(savedLock,1) == 0) return 0;
+  uint limit = *(uint *)R6GameServiceAddresses::GPooledByteStringBucketCount;
+  uint previousSpins = *(uint *)0x10093bb4;
+  uint iteration = 0;
+  volatile uint spinWork = 17;
+  if (limit != 0) {
+    uint threshold = previousSpins >> 1;
+    do {
+      if (iteration >= threshold && *savedLock == 0) {
+        if ((*(ExchangeABI *)R6GameServiceAddresses::KERNEL32_InterlockedExchangeSlot)(savedLock,1) == 0) {
+          *(uint *)0x10093bb4 = iteration;
+          *(uint *)R6GameServiceAddresses::GPooledByteStringBucketCount = 1000;
+          return 0;
+        }
+      } else {
+        spinWork = spinWork * spinWork;
+        spinWork = spinWork * spinWork;
+        spinWork = spinWork * spinWork;
+        spinWork = spinWork * spinWork;
+      }
+      ++iteration;
+    } while (iteration < limit);
+  }
+  using SleepABI = void (__stdcall *)(uint);
+  SleepABI sleep = *(SleepABI *)R6GameServiceAddresses::KERNEL32_SleepSlot;
+  *(uint *)R6GameServiceAddresses::GPooledByteStringBucketCount = 30;
+  uint stage = 6;
+  for (;;) {
+    int cappedStage = (int)stage <= 27 ? (int)stage : 27;
+    if ((*(ExchangeABI *)R6GameServiceAddresses::KERNEL32_InterlockedExchangeSlot)(savedLock,1) == 0) return 0;
+    uint delay = cappedStage <= 20 ? 0 : 1u << ((cappedStage - 20) & 31);
+    sleep(delay);
+    ++stage;
   }
 }
 
-// Clears the supplied lock word and retains incoming EAX, with no barrier or stack arguments.
+// Clears the supplied lock word without a barrier; inferred void ABI, native EAX remains unchanged.
+// The constructor reloads its buffer afterward; ReturnCachedAllocation forwards its cached old free-list head.
 // R6GameService.dll @ 10017880 : native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall ReleaseBufferPoolLock(LONG *lockWord)
+void __fastcall ReleaseBufferPoolLock(LONG *lockWord)
 {
-  __asm {
-    mov    DWORD PTR [ecx],0x0
-    ret
-  }
+  *lockWord = 0;
 }
 
 // Clears the fixed global pool lock; supplied context and incoming EAX remain unused/unchanged.
@@ -1082,246 +992,149 @@ __declspec(naked) void * __cdecl AllocateSmallByteStringBlock(uint byteCount)
 // Returns the first rounded block, linking remaining arena blocks into the class free list.
 // Preserves partial batches, leftover linking, growth wrapping, failed-allocation scavenging and raw recursive results.
 // R6GameService.dll @ 10017ee0 : native control/access order and raw ABI retained.
-__declspec(naked) void * __cdecl AllocatePooledByteStringBlock(uint requestedByteCount)
+void * __cdecl AllocatePooledByteStringBlock(uint requestedByteCount)
 {
-  __asm {
-    push   ecx
-    mov    eax,DWORD PTR [esp+0x8]
-    push   ebx
-    push   esi
-    push   edi
-    mov    edi,DWORD PTR ds:R6GameServiceAddresses::GByteStringPoolArenaCursor
-    lea    esi,[eax+0x7]
-    mov    eax,ds:0x10093bbc
-    and    esi,0xfffffff8
-    sub    eax,edi
-    mov    ebx,0x14
-    lea    ecx,[esi+esi*4]
-    mov    DWORD PTR [esp+0xc],ebx
-    shl    ecx,0x2
-    cmp    eax,ecx
-    jb     Branch46
-    mov    eax,edi
-    add    edi,ecx
-    mov    DWORD PTR ds:R6GameServiceAddresses::GByteStringPoolArenaCursor,edi
-    jmp    Branch54
-  Branch46:
-    cmp    eax,esi
-    jb     Branch47
-    xor    edx,edx
-    div    esi
-    mov    ebx,eax
-    mov    eax,edi
-    mov    ecx,ebx
-    mov    DWORD PTR [esp+0xc],ebx
-    imul   ecx,esi
-    add    edi,ecx
-    mov    DWORD PTR ds:R6GameServiceAddresses::GByteStringPoolArenaCursor,edi
-    jmp    Branch53
-  Branch47:
-    mov    edx,DWORD PTR ds:0x10093bb8
-    shr    edx,0x4
-    add    edx,0x7
-    and    edx,0xfffffff8
-    test   eax,eax
-    lea    ebx,[edx+ecx*2]
-    jbe    Branch48
-    dec    eax
-    shr    eax,0x3
-    mov    ecx,DWORD PTR [eax*4+R6GameServiceAddresses::GByteStringPoolFreeLists]
-    lea    eax,[eax*4+R6GameServiceAddresses::GByteStringPoolFreeLists]
-    mov    DWORD PTR [edi],ecx
-    mov    edx,DWORD PTR ds:R6GameServiceAddresses::GByteStringPoolArenaCursor
-    mov    DWORD PTR [eax],edx
-  Branch48:
-    push   ebx
-    call   R6GameServiceAddresses::AllocateTaggedBytesCdecl
-    add    esp,0x4
-    mov    ds:R6GameServiceAddresses::GByteStringPoolArenaCursor,eax
-    test   eax,eax
-    jne    Branch51
-    cmp    esi,0x80
-    mov    ecx,esi
-    ja     Branch50
-  Branch49:
-    lea    eax,[ecx-0x1]
-    shr    eax,0x3
-    lea    edx,[eax*4+R6GameServiceAddresses::GByteStringPoolFreeLists]
-    mov    eax,DWORD PTR [eax*4+R6GameServiceAddresses::GByteStringPoolFreeLists]
-    test   eax,eax
-    jne    Branch58
-    add    ecx,0x8
-    cmp    ecx,0x80
-    jbe    Branch49
-  Branch50:
-    push   ebx
-    mov    DWORD PTR ds:0x10093bbc,0x0
-    call   R6GameServiceAddresses::AllocateTaggedBytesCdecl
-    add    esp,0x4
-    mov    ds:R6GameServiceAddresses::GByteStringPoolArenaCursor,eax
-  Branch51:
-    mov    ecx,DWORD PTR ds:0x10093bb8
-    lea    edx,[esp+0xc]
-    add    ecx,ebx
-    add    eax,ebx
-    mov    DWORD PTR ds:0x10093bb8,ecx
-    push   edx
-  Branch52:
-    push   esi
-    mov    ds:0x10093bbc,eax
-    call   R6GameServiceAddresses::AllocatePooledBlocks
-    mov    ebx,DWORD PTR [esp+0x14]
-    add    esp,0x8
-  Branch53:
-    cmp    ebx,0x1
-    je     Branch57
-  Branch54:
-    lea    edx,[esi-0x1]
-    lea    ecx,[eax+esi*1]
-    shr    edx,0x3
-    mov    edi,0x1
-    mov    DWORD PTR [edx*4+R6GameServiceAddresses::GByteStringPoolFreeLists],ecx
-    mov    edx,ecx
-    add    ecx,esi
-    dec    ebx
-    cmp    ebx,edi
-    je     Branch56
-  Branch55:
-    mov    DWORD PTR [edx],ecx
-    mov    ebx,DWORD PTR [esp+0xc]
-    mov    edx,ecx
-    inc    edi
-    add    ecx,esi
-    dec    ebx
-    cmp    ebx,edi
-    jne    Branch55
-  Branch56:
-    mov    DWORD PTR [edx],0x0
-  Branch57:
-    pop    edi
-    pop    esi
-    pop    ebx
-    pop    ecx
-    ret
-  Branch58:
-    mov    edi,DWORD PTR [eax]
-    mov    ds:R6GameServiceAddresses::GByteStringPoolArenaCursor,eax
-    add    eax,ecx
-    lea    ecx,[esp+0xc]
-    mov    DWORD PTR [edx],edi
-    push   ecx
-    jmp    Branch52
+  uint roundedBytes = (requestedByteCount + 7) & 0xfffffff8u;
+  uint &cursor = *(uint *)R6GameServiceAddresses::GByteStringPoolArenaCursor;
+  uint &arenaEnd = *(uint *)0x10093bbc;
+  uint &growthBytes = *(uint *)0x10093bb8;
+  uint heads = R6GameServiceAddresses::GByteStringPoolFreeLists;
+  uint first = cursor;
+  uint availableBytes = arenaEnd - first;
+  uint batchBytes = roundedBytes * 20;
+  uint blockCount = 20;
+  if (availableBytes >= batchBytes) {
+    cursor = first + batchBytes;
+  } else {
+    if (availableBytes >= roundedBytes) {
+      blockCount = availableBytes / roundedBytes;
+      cursor = first + blockCount * roundedBytes;
+    } else {
+      uint allocationBytes = (((growthBytes >> 4) + 7) & 0xfffffff8u) + batchBytes * 2;
+      if (availableBytes != 0) {
+        uint *head = (uint *)(heads + (((availableBytes - 1) >> 3) * 4));
+        uint oldHead = *head;
+        *(uint *)first = oldHead;
+        *head = cursor;
+      }
+      first = (uint)AllocateTaggedBytesCdecl(allocationBytes);
+      cursor = first;
+      bool scavenged = false;
+      if (first == 0) {
+        for (uint size = roundedBytes; size <= 128; size += 8) {
+          uint *head = (uint *)(heads + (((size - 1) >> 3) * 4));
+          first = *head;
+          if (first != 0) {
+            uint next = *(uint *)first;
+            cursor = first;
+            *head = next;
+            arenaEnd = first + size;
+            scavenged = true;
+            break;
+          }
+        }
+        if (!scavenged) {
+          arenaEnd = 0;
+          first = (uint)AllocateTaggedBytesCdecl(allocationBytes);
+          cursor = first;
+        }
+      }
+      if (!scavenged) {
+        growthBytes = growthBytes + allocationBytes;
+        arenaEnd = first + allocationBytes;
+      }
+      first = (uint)AllocatePooledBlocks(roundedBytes,&blockCount);
+    }
+    if (blockCount == 1) return (void *)first;
   }
+  uint next = first + roundedBytes;
+  *(uint *)(heads + (((roundedBytes - 1) >> 3) * 4)) = next;
+  uint current = next;
+  next += roundedBytes;
+  uint index = 1;
+  uint remaining = blockCount - 1;
+  if (remaining != index) {
+    do {
+      *(uint *)current = next;
+      remaining = blockCount;
+      current = next;
+      ++index;
+      next += roundedBytes;
+      --remaining;
+    } while (remaining != index);
+  }
+  *(uint *)current = 0;
+  return (void *)first;
 }
 
 // Consumes an arena batch, reducing the live count for partial space or growing/scavenging arena storage.
 // Count reloads/aliases, unchecked allocations and modulo arithmetic remain native; this helper adds no lock or guard.
 // R6GameService.dll @ 10018310 : native control/access order and raw ABI retained.
-__declspec(naked) void * __cdecl AllocatePooledBlocks(uint blockSize,uint *count)
+void * __cdecl AllocatePooledBlocks(uint blockSize,uint *count)
 {
-  __asm {
-    push   ebx
-    mov    ebx,DWORD PTR [esp+0x8]
-    push   ebp
-    mov    ebp,DWORD PTR [esp+0x10]
-    mov    edx,DWORD PTR ds:0x10093bbc
-    mov    eax,ds:R6GameServiceAddresses::GByteStringPoolArenaCursor
-    mov    ecx,DWORD PTR [ebp+0x0]
-    sub    edx,eax
-    imul   ecx,ebx
-    push   esi
-    cmp    edx,ecx
-    push   edi
-    jae    Branch65
-    mov    esi,DWORD PTR ds:0x10093bb8
-  Branch59:
-    cmp    edx,ebx
-    jae    Branch67
-    shr    esi,0x4
-    add    esi,0x7
-    and    esi,0xfffffff8
-    test   edx,edx
-    lea    edi,[esi+ecx*2]
-    jbe    Branch60
-    dec    edx
-    shr    edx,0x3
-    lea    ecx,[edx*4+R6GameServiceAddresses::GByteStringPoolFreeLists]
-    mov    edx,DWORD PTR [edx*4+R6GameServiceAddresses::GByteStringPoolFreeLists]
-    mov    DWORD PTR [eax],edx
-    mov    eax,ds:R6GameServiceAddresses::GByteStringPoolArenaCursor
-    mov    DWORD PTR [ecx],eax
-  Branch60:
-    push   edi
-    call   R6GameServiceAddresses::AllocateTaggedBytesCdecl
-    add    esp,0x4
-    mov    ds:R6GameServiceAddresses::GByteStringPoolArenaCursor,eax
-    test   eax,eax
-    jne    Branch63
-    cmp    ebx,0x80
-    mov    ecx,ebx
-    ja     Branch62
-  Branch61:
-    lea    edx,[ecx-0x1]
-    shr    edx,0x3
-    mov    eax,DWORD PTR [edx*4+R6GameServiceAddresses::GByteStringPoolFreeLists]
-    lea    edx,[edx*4+R6GameServiceAddresses::GByteStringPoolFreeLists]
-    test   eax,eax
-    jne    Branch66
-    add    ecx,0x8
-    cmp    ecx,0x80
-    jbe    Branch61
-  Branch62:
-    push   edi
-    mov    DWORD PTR ds:0x10093bbc,0x0
-    call   R6GameServiceAddresses::AllocateTaggedBytesCdecl
-    add    esp,0x4
-    mov    ds:R6GameServiceAddresses::GByteStringPoolArenaCursor,eax
-  Branch63:
-    mov    esi,DWORD PTR ds:0x10093bb8
-    lea    edx,[eax+edi*1]
-    add    esi,edi
-    mov    DWORD PTR ds:0x10093bb8,esi
-  Branch64:
-    mov    DWORD PTR ds:0x10093bbc,edx
-    mov    ecx,DWORD PTR [ebp+0x0]
-    imul   ecx,ebx
-    sub    edx,eax
-    cmp    edx,ecx
-    jb     Branch59
-  Branch65:
-    mov    edx,eax
-    add    eax,ecx
-    pop    edi
-    pop    esi
-    mov    ds:R6GameServiceAddresses::GByteStringPoolArenaCursor,eax
-    pop    ebp
-    mov    eax,edx
-    pop    ebx
-    ret
-  Branch66:
-    mov    esi,DWORD PTR [eax]
-    mov    ds:R6GameServiceAddresses::GByteStringPoolArenaCursor,eax
-    mov    DWORD PTR [edx],esi
-    mov    esi,DWORD PTR ds:0x10093bb8
-    lea    edx,[eax+ecx*1]
-    jmp    Branch64
-  Branch67:
-    mov    eax,edx
-    xor    edx,edx
-    div    ebx
-    pop    edi
-    pop    esi
-    mov    DWORD PTR [ebp+0x0],eax
-    mov    ecx,DWORD PTR ds:R6GameServiceAddresses::GByteStringPoolArenaCursor
-    imul   eax,ebx
-    mov    edx,ecx
-    add    ecx,eax
-    pop    ebp
-    mov    DWORD PTR ds:R6GameServiceAddresses::GByteStringPoolArenaCursor,ecx
-    mov    eax,edx
-    pop    ebx
-    ret
+  uint size = blockSize;
+  uint *liveCount = count;
+  uint &cursor = *(uint *)R6GameServiceAddresses::GByteStringPoolArenaCursor;
+  uint &arenaEnd = *(uint *)0x10093bbc;
+  uint &growthBytes = *(uint *)0x10093bb8;
+  uint heads = R6GameServiceAddresses::GByteStringPoolFreeLists;
+  uint end = arenaEnd;
+  uint first = cursor;
+  uint requiredBytes = *liveCount * size;
+  uint availableBytes = end - first;
+  if (availableBytes < requiredBytes) {
+    uint savedGrowth = growthBytes;
+    do {
+      if (availableBytes >= size) {
+        uint partialCount = availableBytes / size;
+        *liveCount = partialCount;
+        first = cursor;
+        cursor = first + partialCount * size;
+        return (void *)first;
+      }
+      uint allocationBytes = (((savedGrowth >> 4) + 7) & 0xfffffff8u) + requiredBytes * 2;
+      if (availableBytes != 0) {
+        uint *head = (uint *)(heads + (((availableBytes - 1) >> 3) * 4));
+        uint oldHead = *head;
+        *(uint *)first = oldHead;
+        *head = cursor;
+      }
+      first = (uint)AllocateTaggedBytesCdecl(allocationBytes);
+      cursor = first;
+      bool scavenged = false;
+      if (first == 0) {
+        for (uint candidateBytes = size; candidateBytes <= 128; candidateBytes += 8) {
+          uint *head = (uint *)(heads + (((candidateBytes - 1) >> 3) * 4));
+          first = *head;
+          if (first != 0) {
+            uint next = *(uint *)first;
+            cursor = first;
+            *head = next;
+            savedGrowth = growthBytes;
+            end = first + candidateBytes;
+            scavenged = true;
+            break;
+          }
+        }
+        if (!scavenged) {
+          arenaEnd = 0;
+          first = (uint)AllocateTaggedBytesCdecl(allocationBytes);
+          cursor = first;
+        }
+      }
+      if (!scavenged) {
+        savedGrowth = growthBytes;
+        end = first + allocationBytes;
+        savedGrowth += allocationBytes;
+        growthBytes = savedGrowth;
+      }
+      arenaEnd = end;
+      requiredBytes = *liveCount * size;
+      availableBytes = end - first;
+    } while (availableBytes < requiredBytes);
   }
+  cursor = first + requiredBytes;
+  return (void *)first;
 }
 
 // Allocates nonzero requested bytes from pool through128 or heap above128 and publishes an empty descriptor.
@@ -1805,53 +1618,25 @@ __declspec(naked) uint __stdcall ReturnBlockToPoolOrAllocator(void *block,uint b
 // Releases the triplet at owner+c through heap or class head, leaving descriptor words dangling.
 // Buffer/extent cache before locking; one-state cleanup only forwards current saved triplet capacity context.
 // R6GameService.dll @ 10025f90 : native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall ReturnCachedAllocation(int descriptor)
+uint __fastcall ReturnCachedAllocation(int descriptor)
 {
-  __asm {
-    push   0xffffffff
-    push   R6GameServiceAddresses::PoolDescriptorReleaseExceptionHandler
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    push   ecx
-    lea    eax,[ecx+0xc]
-    push   esi
-    mov    DWORD PTR [esp+0x4],eax
-    mov    esi,DWORD PTR [eax]
-    mov    eax,DWORD PTR [eax+0x8]
-    sub    eax,esi
-    mov    DWORD PTR [esp+0x10],0x0
-    test   esi,esi
-    je     Branch98
-    cmp    eax,0x80
-    jbe    Branch97
-    push   esi
-    call   R6GameServiceAddresses::FreeThroughGlobalAllocator
-    add    esp,0x4
-    pop    esi
-    mov    ecx,DWORD PTR [esp+0x4]
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x10
-    ret
-  Branch97:
-    dec    eax
-    push   edi
-    shr    eax,0x3
-    mov    ecx,R6GameServiceAddresses::GByteStringPoolLock
-    lea    edi,[eax*4+R6GameServiceAddresses::GByteStringPoolFreeLists]
-    call   R6GameServiceAddresses::pooled_string_support_AcquireBufferPoolLock
-    mov    eax,DWORD PTR [edi]
-    mov    ecx,R6GameServiceAddresses::GByteStringPoolLock
-    mov    DWORD PTR [esi],eax
-    mov    DWORD PTR [edi],esi
-    call   R6GameServiceAddresses::ReleaseBufferPoolLock
-    pop    edi
-  Branch98:
-    mov    ecx,DWORD PTR [esp+0x8]
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x10
-    ret
+  uint *cleanupTriplet = (uint *)((uint)descriptor + 0xc);
+  uint buffer = cleanupTriplet[0];
+  uint allocationBytes = cleanupTriplet[2] - buffer;
+  try {
+    if (buffer == 0) return allocationBytes;
+    if (allocationBytes > 128) return FreeThroughGlobalAllocator((void *)buffer);
+    uint *head = (uint *)(R6GameServiceAddresses::GByteStringPoolFreeLists + (((allocationBytes - 1) >> 3) * 4));
+    pooled_string_support_AcquireBufferPoolLock((LONG *)R6GameServiceAddresses::GByteStringPoolLock);
+    uint previousHead = *head;
+    *(uint *)buffer = previousHead;
+    *head = buffer;
+    ReleaseBufferPoolLock((LONG *)R6GameServiceAddresses::GByteStringPoolLock);
+    return previousHead;
+  } catch (...) {
+    using ContextABI = void (__fastcall *)(void *);
+    ((ContextABI)R6GameServiceAddresses::list_node_support_NoOp)((byte *)cleanupTriplet + 8);
+    throw;
   }
 }
 

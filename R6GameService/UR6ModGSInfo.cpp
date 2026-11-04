@@ -1,6 +1,21 @@
 #include "native_addresses.h"
 #include "native_records.h"
 
+namespace {
+// Inferred guard for the UObject base completed before the mod's no-init string construction.
+struct ModInfoBaseConstructionCleanup {
+  void *object;
+  bool armed;
+  // Destroy only the completed base when a derived construction step fails.
+  ~ModInfoBaseConstructionCleanup() noexcept(false) {
+    if (armed) {
+      using DestroyABI = void (__thiscall *)(void *);
+      (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyUObjectSlot)(object);
+    }
+  }
+};
+}
+
 // R6GameService.dll data @ 1007a8e8 : selected predecessor/action or FuncInfo words.
 const R6GameServiceNative::UnwindEntry UR6ModGSInfo_UR6ModGSInfoUnwindMap[2] = {
   {-1, R6GameServiceAddresses::UR6ModGSInfo_UR6ModGSInfoUnwind1},
@@ -124,32 +139,18 @@ __declspec(naked) void UR6ModGSInfo_UR6ModGSInfoSelectExceptionInfo(void)
   }
 }
 
-// Constructs UObject and the no-init string at +0x40; leaves activation bytes and flag storage untouched.
+// Construct UObject, publish the mod table and construct the +0x40 no-init string, leaving other storage untouched.
 // R6GameService.dll @ 10001640 : complete native control/access order and raw ABI retained.
-__declspec(naked) UR6ModGSInfo * __thiscall UR6ModGSInfo::UR6ModGSInfo(void)
+UR6ModGSInfo::UR6ModGSInfo(void)
 {
-  __asm {
-    push   0xffffffff
-    push   R6GameServiceAddresses::UR6ModGSInfoSharedLifetimeSelectExceptionInfo
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    push   ecx
-    push   esi
-    mov    esi,ecx
-    mov    DWORD PTR [esp+0x4],esi
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructUObjectSlot
-    lea    ecx,[esi+0x40]
-    mov    DWORD PTR [esp+0x10],0x0
-    mov    DWORD PTR [esi],R6GameServiceAddresses::UR6ModGSInfoDispatchTable
-    call   DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringNoInitSlot
-    mov    ecx,DWORD PTR [esp+0x8]
-    mov    eax,esi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x10
-    ret
-  }
+  byte *object = (byte *)this;
+  ModInfoBaseConstructionCleanup cleanup{object, false};
+  using ConstructABI = void (__thiscall *)(void *);
+  (*(ConstructABI *)R6GameServiceAddresses::Core__ConstructUObjectSlot)(object);
+  cleanup.armed = true;
+  *(uint *)object = R6GameServiceAddresses::UR6ModGSInfoDispatchTable;
+  (*(ConstructABI *)R6GameServiceAddresses::Core__ConstructFStringNoInitSlot)(object + 0x40);
+  cleanup.armed = false;
 }
 
 // Copies UObject, four activation words, flag bit0 and the string; arms base cleanup before publishing the flag.
@@ -313,127 +314,160 @@ __declspec(naked) void * __thiscall DeleteUR6ModGSInfo(UR6ModGSInfo *object,uint
   }
 }
 
-// Constructs supplied nonnull memory by tail transfer; null input retains the incoming EAX.
+// Construct a mod-info object in supplied nonnull storage without allocating memory.
 // R6GameService.dll @ 10002090 : complete native control/access order and raw ABI retained.
-__declspec(naked) void __cdecl UR6ModGSInfo::InternalConstructor(void *memory)
+void __cdecl UR6ModGSInfo::InternalConstructor(void *memory)
 {
-  __asm {
-    mov    ecx,DWORD PTR [esp+0x4]
-    test   ecx,ecx
-    je     Branch5
-    jmp    R6GameServiceAddresses::UR6ModGSInfo_UR6ModGSInfo
-  Branch5:
-    ret
+  if (memory != nullptr) {
+    using ConstructABI = void (__thiscall *)(void *);
+    ((ConstructABI)R6GameServiceAddresses::UR6ModGSInfo_UR6ModGSInfo)(memory);
   }
 }
 
-// Consume the optional debug token, initialize the key, select the uppercase mod service name and publish both globals.
-// Keep hidden FString result storage, three alternate lifetimes, raw log header words and the native guard/catch map.
-// R6GameService.dll @ 10005460 : complete native control/access order and raw ABI retained.
-__declspec(naked) void __thiscall UR6ModGSInfo::execNativeInitModInfo(FFrame &frame,void *result)
+// Inferred physical FString/catch slots from EBP-3c through EBP-14; string roles follow the native data flow.
+struct ModInfoInitializationLocals {
+  uint selection[3];
+  uint uppercase[3];
+  uint serviceName[3];
+  uint caught;
+  uint forwarded;
+};
+
+// Retain each constructed local until its destructor is entered; catch state6 owns no local strings.
+struct ModInfoInitializationCleanup {
+  ModInfoInitializationLocals *frame;
+  int state;
+  bool armed;
+  // Unwind the active selection/uppercase/name chain before the native typed or catch-all handler runs.
+  void releaseActive()
+  {
+    using DestroyABI = void (__thiscall *)(void *);
+    while (state >= 0) {
+      if (state >= 3 && state <= 5) {
+        state = 2;
+        (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringSlot)(frame->selection);
+      } else if (state == 2) {
+        state = 1;
+        (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringSlot)(frame->uppercase);
+      } else if (state == 1) {
+        state = 0;
+        (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringSlot)(frame->serviceName);
+      } else state = -1;
+    }
+  }
+  // Normal completion dismisses this logical guard; entered destruction is never retried.
+  ~ModInfoInitializationCleanup() noexcept(false)
+  {
+    if (armed) releaseActive();
+  }
+};
+
+// Consume an optional debug token, initialize the key, choose the mod's uppercase service name and publish globals.
+// Keep hidden FString storage, constructor-return assignment, cached compare/log targets and raw header log arguments.
+// R6GameService.dll @ 10005460 : exported void(FFrame&,void*), thiscall RET8; result argument is unread.
+void __thiscall UR6ModGSInfo::execNativeInitModInfo(FFrame &frame,void *result)
 {
-  __asm {
-    push    ebp
-    mov    ebp,esp
-    push    0xffffffff
-    push    R6GameServiceAddresses::SelectModInfoEH
-    mov    eax,fs:0x0
-    push    eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x30
-    push ebx
-    push esi
-    push edi
-    mov esi,ecx
-    mov DWORD PTR [ebp-0x10],esp
+  ModInfoInitializationLocals locals;
+  ModInfoInitializationCleanup cleanup{&locals,-1,true};
+  UR6ModGSInfo *receiver = this;
+  FFrame *executionStack = &frame;
+  byte **code = (byte **)((byte *)executionStack + 0xc);
+  byte *next = *code + 1;
+  *code = next;
+  bool debugInfo = *next == 0x42;
+  cleanup.state = 0;
+  using LiteralABI = void * (__thiscall *)(void *,const ushort *);
+  using AssignABI = void * (__thiscall *)(void *,const void *);
+  using DataABI = const ushort * (__thiscall *)(const void *);
+  using DestroyABI = void (__thiscall *)(void *);
+  try {
+    if (debugInfo) {
+      UObject *context = *(UObject **)((byte *)executionStack + 8);
+      *code = next + 1;
+      using ScriptABI = void (__thiscall *)(UObject *,FFrame *,void *);
+      ScriptABI *natives = *(ScriptABI **)R6GameServiceAddresses::Core__GNativesSlot;
+      natives[0x42](context,executionStack,nullptr);
+    }
+    receiver->InitMODCDKey();
+    uint *version = (uint *)R6GameServiceAddresses::GServiceString2;
+    (*(LiteralABI *)R6GameServiceAddresses::Core__4FStringSlot2)(
+        version,(const ushort *)R6GameServiceAddresses::WideTextRSPC12);
+    (*(LiteralABI *)R6GameServiceAddresses::Core__ConstructFStringSlot2)(
+        locals.serviceName,(const ushort *)R6GameServiceAddresses::WideTextR6RSCUSTOM);
+    uint managerSlot = *(uint *)R6GameServiceAddresses::Engine__GModMgrSlot;
+    uint manager = *(uint *)managerSlot;
+    uint mod = *(uint *)(manager + 0x34);
+    cleanup.state = 1;
+    using CapsABI = void * (__thiscall *)(void *,void *);
+    (*(CapsABI *)R6GameServiceAddresses::Core_FString_CapsSlot)((void *)(mod + 0x94),locals.uppercase);
+    cleanup.state = 2;
+    const ushort *upperText = (*(DataABI *)R6GameServiceAddresses::Core__DFStringSlot)(locals.uppercase);
+    using CompareABI = int (__cdecl *)(const ushort *,const ushort *);
+    CompareABI compare = *(CompareABI *)R6GameServiceAddresses::Core__appStricmpSlot;
+    uint selectedText = 0;
+    int selectedState = 0;
+    if (compare(upperText,(const ushort *)R6GameServiceAddresses::WideTextATHENASWORD) == 0) {
+      selectedText = R6GameServiceAddresses::WideTextR6RSATHENASWORD;
+      selectedState = 3;
+    } else if (compare((*(DataABI *)R6GameServiceAddresses::Core__DFStringSlot)(locals.uppercase),
+                       (const ushort *)R6GameServiceAddresses::WideTextIRONWRATH) == 0) {
+      selectedText = R6GameServiceAddresses::WideTextR6RSCRIMSONHAMMER;
+      selectedState = 4;
+    } else if (compare((*(DataABI *)R6GameServiceAddresses::Core__DFStringSlot)(locals.uppercase),
+                       (const ushort *)R6GameServiceAddresses::WideTextRAVENSHIELD) == 0) {
+      selectedText = R6GameServiceAddresses::WideTextRAVENSHIELD;
+      selectedState = 5;
+    }
+    if (selectedText != 0) {
+      void *constructed = (*(LiteralABI *)R6GameServiceAddresses::Core__ConstructFStringSlot2)(
+          locals.selection,(const ushort *)selectedText);
+      cleanup.state = selectedState;
+      (*(AssignABI *)R6GameServiceAddresses::Core__4FStringSlot)(locals.serviceName,constructed);
+      cleanup.state = 2;
+      (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringSlot)(locals.selection);
+    }
+    (*(AssignABI *)R6GameServiceAddresses::Core__4FStringSlot)(
+        (void *)R6GameServiceAddresses::GServiceString3,locals.serviceName);
+    (*(AssignABI *)R6GameServiceAddresses::Core__4FStringSlot)(
+        (void *)R6GameServiceAddresses::GServiceString1,locals.serviceName);
+    if (*(uint *)R6GameServiceAddresses::GServiceVerboseLogging != 0) {
+      uint data = version[0];
+      uint count = version[1];
+      using LogABI = void (__cdecl *)(void *,const ushort *,...);
+      LogABI log = *(LogABI *)R6GameServiceAddresses::Core_FOutputDevice_LogfSlot;
+      uint capacity = version[2];
+      uint logSlot = *(uint *)R6GameServiceAddresses::Core__GLogSlot;
+      void *logger = *(void **)logSlot;
+      log(logger,(const ushort *)R6GameServiceAddresses::WideTextInitModInfoUbiClientVersionS,data,count,capacity);
+      uint *game = (uint *)R6GameServiceAddresses::GServiceString1;
+      data = game[0];
+      count = game[1];
+      capacity = game[2];
+      logSlot = *(uint *)R6GameServiceAddresses::Core__GLogSlot;
+      logger = *(void **)logSlot;
+      log(logger,
+          (const ushort *)R6GameServiceAddresses::WideTextInitModInfoMSzGameServiceGameNameS,data,count,capacity);
+    }
+    cleanup.state = 1;
+    (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringSlot)(locals.uppercase);
+    cleanup.state = 0;
+    (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringSlot)(locals.serviceName);
+  } catch (ushort *error) {
+    cleanup.releaseActive();
+    cleanup.state = 6;
+    locals.caught = (uint)error;
+    locals.forwarded = locals.caught;
+    throw (ushort *)locals.forwarded;
+  } catch (...) {
+    cleanup.releaseActive();
+    cleanup.state = 6;
+    using ReportABI = void (__cdecl *)(const ushort *,...);
+    (*(ReportABI *)R6GameServiceAddresses::Core__appUnwindfSlot)(
+        (const ushort *)R6GameServiceAddresses::WideTextTextFormat,
+        (const ushort *)R6GameServiceAddresses::WideTextUR6ModGSInfoExecNativeInitModInfo);
+    throw;
   }
-  // These aliases bind existing native storage; inherited-frame handlers and their offsets remain unchanged.
-  byte* nativeFrame;
-  UR6ModGSInfo* receiver;
-  __asm { mov nativeFrame,ebp }
-  __asm { mov receiver,esi }
-  FFrame* executionStack = *reinterpret_cast<FFrame**>(nativeFrame + 8);
-  byte*& code = *reinterpret_cast<byte**>(reinterpret_cast<byte*>(executionStack) + 0xc);
-  byte* next = code + 1;
-  code = next;
-  const bool debugInfo = *next == 0x42;
-  *reinterpret_cast<int*>(nativeFrame - 4) = 0;
-  if (debugInfo) {
-    UObject* context = *reinterpret_cast<UObject**>(reinterpret_cast<byte*>(executionStack) + 8);
-    code = next + 1;
-    using ScriptNative = void (__thiscall *)(UObject*, FFrame*, void*);
-    ScriptNative* natives = *reinterpret_cast<ScriptNative**>(R6GameServiceAddresses::Core__GNativesSlot);
-    natives[0x42](context, executionStack, nullptr);
-  }
-  // This native has no script arguments or result. Registry/mod-manager objects supply the inputs.
-  receiver->InitMODCDKey();
-  FString* version = reinterpret_cast<FString*>(R6GameServiceAddresses::GServiceString2);
-  *version = reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextRSPC12);
-  FString* serviceName = reinterpret_cast<FString*>(nativeFrame - 0x24);
-  FString::FString(serviceName, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextR6RSCUSTOM));
-  byte* modManager = *reinterpret_cast<byte**>(
-      *reinterpret_cast<uint*>(R6GameServiceAddresses::Engine__GModMgrSlot));
-  byte* currentMod = *reinterpret_cast<byte**>(modManager + 0x34);
-  FString* modName = reinterpret_cast<FString*>(currentMod + 0x94);
-  FString* uppercase = reinterpret_cast<FString*>(nativeFrame - 0x30);
-  *reinterpret_cast<byte*>(nativeFrame - 4) = 1;
-  // Caps writes a hidden FString result; do not create an additional temporary or change its cleanup state.
-  using CapsFunction = void (__thiscall *)(FString*, FString*);
-  (*reinterpret_cast<CapsFunction*>(R6GameServiceAddresses::Core_FString_CapsSlot))(modName, uppercase);
-  *reinterpret_cast<byte*>(nativeFrame - 4) = 2;
-  const TCHAR* upperText = **uppercase;
-  using CompareFunction = int (__cdecl *)(const TCHAR*, const TCHAR*);
-  CompareFunction compare = *reinterpret_cast<CompareFunction*>(R6GameServiceAddresses::Core__appStricmpSlot);
-  uint selectedText = 0;
-  byte selectedState = 0;
-  if (compare(upperText, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextATHENASWORD)) == 0) {
-    selectedText = R6GameServiceAddresses::WideTextR6RSATHENASWORD; selectedState = 3;
-  } else if (compare(**uppercase, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextIRONWRATH)) == 0) {
-    selectedText = R6GameServiceAddresses::WideTextR6RSCRIMSONHAMMER; selectedState = 4;
-  } else if (compare(**uppercase, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextRAVENSHIELD)) == 0) {
-    selectedText = R6GameServiceAddresses::WideTextRAVENSHIELD; selectedState = 5;
-  }
-  if (selectedText) {
-    FString* selection = reinterpret_cast<FString*>(nativeFrame - 0x3c);
-    // Assignment consumes the constructor's actual EAX, while destruction always targets native storage -0x3c.
-    using StringConstructor = FString* (__thiscall *)(FString*, const TCHAR*);
-    FString* constructed = (*reinterpret_cast<StringConstructor*>(
-        R6GameServiceAddresses::Core__ConstructFStringSlot2))(selection, reinterpret_cast<const TCHAR*>(selectedText));
-    *reinterpret_cast<byte*>(nativeFrame - 4) = selectedState;
-    *serviceName = *constructed;
-    *reinterpret_cast<byte*>(nativeFrame - 4) = 2;
-    FString::~FString(selection);
-  }
-  *reinterpret_cast<FString*>(R6GameServiceAddresses::GServiceString3) = *serviceName;
-  *reinterpret_cast<FString*>(R6GameServiceAddresses::GServiceString1) = *serviceName;
-  if (*reinterpret_cast<int*>(R6GameServiceAddresses::GServiceVerboseLogging)) {
-    const uint* versionHeader = reinterpret_cast<const uint*>(version);
-    const uint versionData = versionHeader[0], versionCount = versionHeader[1];
-    using LogFunction = void (__cdecl *)(FOutputDevice*, const TCHAR*, ...);
-    LogFunction log = *reinterpret_cast<LogFunction*>(R6GameServiceAddresses::Core_FOutputDevice_LogfSlot);
-    const uint versionCapacity = versionHeader[2];
-    log(GLog, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextInitModInfoUbiClientVersionS),
-        versionData, versionCount, versionCapacity);
-    // Native varargs pass the three raw header DWORDs, not operator* text; reload all of them after the first log.
-    const uint* gameHeader = reinterpret_cast<const uint*>(R6GameServiceAddresses::GServiceString1);
-    const uint gameData = gameHeader[0], gameCount = gameHeader[1], gameCapacity = gameHeader[2];
-    log(GLog, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextInitModInfoMSzGameServiceGameNameS),
-        gameData, gameCount, gameCapacity);
-  }
-  *reinterpret_cast<byte*>(nativeFrame - 4) = 1;
-  FString::~FString(uppercase);
-  *reinterpret_cast<byte*>(nativeFrame - 4) = 0;
-  FString::~FString(serviceName);
-  __asm {
-    mov ecx,DWORD PTR [ebp-0xc]
-    pop edi
-    pop esi
-    mov DWORD PTR fs:0x0,ecx
-    pop ebx
-    mov esp,ebp
-    pop ebp
-    ret 0x8
-  }
+  cleanup.armed = false;
 }
 
 // Copies the caught unsigned-short pointer through parent scratch, then forwards a typed throw; pointee is untouched.
@@ -470,7 +504,6 @@ const R6GameServiceNative::TryBlock InitMODCDKeyTryMap[1] = {
   {0x0, 0x4, 0x5, 0x2, R6GameServiceAddresses::UR6ModGSInfoGCDKeyHandlers},
 };
 // R6GameService.dll data @ 1007d1ac : selected guard/cleanup records.
-// R6GameService.dll data @ 1007d148 : native storage identity retained.
 const R6GameServiceNative::FuncInfo InitMODCDKeyExceptionInfo = {
   0x19930520,
   0x6,
@@ -481,113 +514,127 @@ const R6GameServiceNative::FuncInfo InitMODCDKeyExceptionInfo = {
   0x0,
 };
 
-// Builds the mod registry path, validates its CD-key value and updates 0x1009344c; failure clears activation bit0.
-// R6GameService.dll @ 1000c7b0 : complete native control/access order and raw ABI retained.
-__declspec(naked) void __thiscall UR6ModGSInfo::InitMODCDKey(UR6ModGSInfo *this)
-{
-  __asm {
-    push   ebp
-    mov    ebp,esp
-    push   0xffffffff
-    push   R6GameServiceAddresses::InitMODCDKeySelectExceptionInfo
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x38
-    push ebx
-    push esi
-    push edi
-    mov esi,ecx
-    mov DWORD PTR [ebp-0x10],esp
-  }
-  // These aliases bind existing native storage; inherited-frame handlers and their offsets remain unchanged.
-  byte* nativeFrame;
-  UR6ModGSInfo* receiver;
-  __asm { mov nativeFrame,ebp }
-  __asm { mov receiver,esi }
-  *reinterpret_cast<int*>(nativeFrame - 4) = 0;
-  FString* key = reinterpret_cast<FString*>(nativeFrame - 0x2c);
-  FString::FString(key);
-  *reinterpret_cast<byte*>(nativeFrame - 4) = 1;
-  FString* registryPath = reinterpret_cast<FString*>(nativeFrame - 0x38);
-  FString::FString(registryPath,
-      reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextSOFTWARERedStormEntertainment));
-  byte* modManager = *reinterpret_cast<byte**>(
-      *reinterpret_cast<uint*>(R6GameServiceAddresses::Engine__GModMgrSlot));
-  byte* mod = *reinterpret_cast<byte**>(modManager + 0x34);
-  *reinterpret_cast<byte*>(nativeFrame - 4) = 2;
-  *registryPath += *reinterpret_cast<FString*>(mod + 0x94);
-  // RegGet owns its two by-value FString arguments; its output aliases key. The status is ignored.
-  __asm {
-    lea eax,[ebp-0x2c]
-    push eax
-    sub esp,0xc
-    mov ecx,esp
-    mov DWORD PTR [ebp-0x18],esp
-    push R6GameServiceAddresses::WideTextCDKey
-    call DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot2
-    sub esp,0xc
-    lea edx,[ebp-0x38]
-    mov ecx,esp
-    mov DWORD PTR [ebp-0x1c],esp
-    push edx
-    mov BYTE PTR [ebp-0x4],0x3
-    call DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot3
-    mov BYTE PTR [ebp-0x4],0x2
-    call DWORD PTR ds:R6GameServiceAddresses::Core__RegGetSlot
-    add esp,0x10
-  }
-  // Validation consumes an outgoing copy. CD-key internals remain outside this initialization trace.
-  uint valid;
-  __asm {
-    lea eax,[ebp-0x2c]
-    mov ecx,esp
-    mov DWORD PTR [ebp-0x1c],esp
-    push eax
-    call DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot3
-    call R6GameServiceAddresses::IsCDKeyValidOnMachine
-    add esp,0xc
-    mov valid,eax
-  }
-  if (valid) {
-    FString* decrypted;
-    __asm {
-      sub esp,0xc
-      lea edx,[ebp-0x2c]
-      mov ecx,esp
-      mov DWORD PTR [ebp-0x1c],esp
-      push edx
-      call DWORD PTR ds:R6GameServiceAddresses::Core__ConstructFStringSlot3
-      lea eax,[ebp-0x44]
-      push eax
-      call R6GameServiceAddresses::DecryptFStringWithUeviLCore
-      add esp,0x10
-      mov decrypted,eax
+// Raw by-value Core FString argument; each receiving native owns its three physical words.
+struct ModFStringArgument12 { uint words[3]; };
+
+// Inferred physical locals from EBP-44 through EBP-14, including current saved outgoing argument pointers.
+struct ModKeyInitializationLocals {
+  uint decrypted[3];
+  uint registryPath[3];
+  uint key[3];
+  uint caught;
+  uint pathArgument;
+  uint keyArgument;
+  uint forwarded;
+};
+
+// Keep key/path/decrypted locals and only the pending registry key-name argument; callees own transferred copies.
+struct ModKeyInitializationCleanup {
+  ModKeyInitializationLocals *frame;
+  int state;
+  bool armed;
+  // Unwind every current local before entering catch state5; the path argument constructor owns partial failure.
+  void releaseActive()
+  {
+    using DestroyABI = void (__thiscall *)(void *);
+    while (state >= 0) {
+      if (state == 4) {
+        state = 2;
+        (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringSlot)(frame->decrypted);
+      } else if (state == 3) {
+        state = 2;
+        (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringSlot)((void *)frame->keyArgument);
+      } else if (state == 2) {
+        state = 1;
+        (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringSlot)(frame->registryPath);
+      } else if (state == 1) {
+        state = 0;
+        (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringSlot)(frame->key);
+      } else state = -1;
     }
-    *reinterpret_cast<byte*>(nativeFrame - 4) = 4;
-    *reinterpret_cast<FString*>(R6GameServiceAddresses::GServiceString5) = *decrypted;
-    *reinterpret_cast<byte*>(nativeFrame - 4) = 2;
-    FString::~FString(reinterpret_cast<FString*>(nativeFrame - 0x44));
-  } else {
-    *reinterpret_cast<FString*>(R6GameServiceAddresses::GServiceString5) =
-        reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::GEmptyWideText);
-    *reinterpret_cast<uint*>(reinterpret_cast<byte*>(receiver) + 0x3c) &= 0xfffffffe;
   }
-  // Success leaves activation bit 0 as it was; failure clears it only after publishing the empty string.
-  *reinterpret_cast<byte*>(nativeFrame - 4) = 1;
-  FString::~FString(registryPath);
-  *reinterpret_cast<byte*>(nativeFrame - 4) = 0;
-  FString::~FString(key);
-  __asm {
-    mov ecx,DWORD PTR [ebp-0xc]
-    pop edi
-    pop esi
-    mov DWORD PTR fs:0x0,ecx
-    pop ebx
-    mov esp,ebp
-    pop ebp
-    ret
+  // Completed normal destructors are retired before their call and are never retried by this logical guard.
+  ~ModKeyInitializationCleanup() noexcept(false)
+  {
+    if (armed) releaseActive();
   }
+};
+
+// Read the current mod registry key, validate/decrypt it and publish cache9344c; failure clears activation bit0.
+// Registry status is ignored. Outgoing FString arguments transfer ownership, and successful validation sets no flag.
+// R6GameService.dll @ 1000c7b0 : exported void(), thiscall RET0; current flags/imported constructor results retained.
+void __thiscall UR6ModGSInfo::InitMODCDKey()
+{
+  ModKeyInitializationLocals locals;
+  ModKeyInitializationCleanup cleanup{&locals,0,true};
+  UR6ModGSInfo *receiver = this;
+  using DefaultABI = void * (__thiscall *)(void *);
+  using LiteralABI = void * (__thiscall *)(void *,const ushort *);
+  using CopyABI = void * (__thiscall *)(void *,const void *);
+  using DestroyABI = void (__thiscall *)(void *);
+  try {
+    (*(DefaultABI *)R6GameServiceAddresses::Core__ConstructFStringSlot)(locals.key);
+    cleanup.state = 1;
+    (*(LiteralABI *)R6GameServiceAddresses::Core__ConstructFStringSlot2)(
+        locals.registryPath,(const ushort *)R6GameServiceAddresses::WideTextSOFTWARERedStormEntertainment);
+    uint managerSlot = *(uint *)R6GameServiceAddresses::Engine__GModMgrSlot;
+    uint manager = *(uint *)managerSlot;
+    uint mod = *(uint *)(manager + 0x34);
+    cleanup.state = 2;
+    (*(CopyABI *)R6GameServiceAddresses::Core__YFStringSlot)(locals.registryPath,(void *)(mod + 0x94));
+    ModFStringArgument12 keyName;
+    locals.keyArgument = (uint)&keyName;
+    (*(LiteralABI *)R6GameServiceAddresses::Core__ConstructFStringSlot2)(
+        &keyName,(const ushort *)R6GameServiceAddresses::WideTextCDKey);
+    ModFStringArgument12 path;
+    locals.pathArgument = (uint)&path;
+    cleanup.state = 3;
+    (*(CopyABI *)R6GameServiceAddresses::Core__ConstructFStringSlot3)(&path,locals.registryPath);
+    cleanup.state = 2;
+    using RegistryABI = int (__cdecl *)(ModFStringArgument12,ModFStringArgument12,void *);
+    (*(RegistryABI *)R6GameServiceAddresses::Core__RegGetSlot)(path,keyName,locals.key);
+    ModFStringArgument12 validationInput;
+    locals.pathArgument = (uint)&validationInput;
+    (*(CopyABI *)R6GameServiceAddresses::Core__ConstructFStringSlot3)(&validationInput,locals.key);
+    using ValidateABI = uint (__cdecl *)(ModFStringArgument12);
+    uint valid = ((ValidateABI)R6GameServiceAddresses::IsCDKeyValidOnMachine)(validationInput);
+    if (valid != 0) {
+      ModFStringArgument12 decryptionInput;
+      locals.pathArgument = (uint)&decryptionInput;
+      (*(CopyABI *)R6GameServiceAddresses::Core__ConstructFStringSlot3)(&decryptionInput,locals.key);
+      using DecryptABI = void * (__cdecl *)(void *,ModFStringArgument12);
+      void *decrypted = ((DecryptABI)R6GameServiceAddresses::DecryptFStringWithUeviLCore)(
+          locals.decrypted,decryptionInput);
+      cleanup.state = 4;
+      (*(CopyABI *)R6GameServiceAddresses::Core__4FStringSlot)(
+          (void *)R6GameServiceAddresses::GServiceString5,decrypted);
+      cleanup.state = 2;
+      (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringSlot)(locals.decrypted);
+    } else {
+      (*(LiteralABI *)R6GameServiceAddresses::Core__4FStringSlot2)(
+          (void *)R6GameServiceAddresses::GServiceString5,(const ushort *)R6GameServiceAddresses::GEmptyWideText);
+      *(uint *)((byte *)receiver + 0x3c) &= 0xfffffffe;
+    }
+    cleanup.state = 1;
+    (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringSlot)(locals.registryPath);
+    cleanup.state = 0;
+    (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringSlot)(locals.key);
+  } catch (ushort *error) {
+    cleanup.releaseActive();
+    cleanup.state = 5;
+    locals.caught = (uint)error;
+    locals.forwarded = locals.caught;
+    throw (ushort *)locals.forwarded;
+  } catch (...) {
+    cleanup.releaseActive();
+    cleanup.state = 5;
+    using ReportABI = void (__cdecl *)(const ushort *,...);
+    (*(ReportABI *)R6GameServiceAddresses::Core__appUnwindfSlot)(
+        (const ushort *)R6GameServiceAddresses::WideTextTextFormat,
+        (const ushort *)R6GameServiceAddresses::WideTextUR6ModGSInfoInitMODCDKey);
+    throw;
+  }
+  cleanup.armed = false;
 }
 
 // Copies the caught unsigned-short pointer at parent EBP-0x20 to-0x14 and throws it by value.
@@ -749,13 +796,13 @@ const R6GameServiceNative::CatchHandler UR6ModGSInfoGModInfoEH[2] = {
 };
 
 // Literal mod-info cleanup/handler/try/FuncInfo words.
-// R6GameService.dll data @ 1007b808 : native storage identity retained.
+// R6GameService.dll data @ 1007b828 : native storage identity retained.
 const R6GameServiceNative::TryBlock execNativeInitModInfoTryMap[1] = {
   {0x0, 0x5, 0x6, 0x2, R6GameServiceAddresses::UR6ModGSInfoGModInfoEH},
 };
 
 // Literal mod-info cleanup/handler/try/FuncInfo words.
-// R6GameService.dll data @ 1007b7d0 : native storage identity retained.
+// R6GameService.dll data @ 1007b83c : native storage identity retained.
 const R6GameServiceNative::FuncInfo execNativeInitModInfoExceptionInfo = {
   0x19930520,
   0x7,

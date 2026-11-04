@@ -34,276 +34,160 @@ __declspec(naked) void * __thiscall ConstructCircularList(void *fifo,uint initia
   }
 }
 
-// Invokes virtual clear first, then resets fifo count+c and returns AL1 with native upper EAX retained.
-// R6GameService.dll @ 1002f190 : native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall ClearBlockQueue(void *fifo)
-{
-  __asm {
-    push   esi
-    mov    esi,ecx
-    mov    eax,DWORD PTR [esi]
-    call   DWORD PTR [eax+0x4]
-    mov    DWORD PTR [esi+0xc],0x0
-    mov    al,0x1
-    pop    esi
-    ret
+namespace {
+// Copy forward in native DWORD/tail order, retaining overlap effects and wrapped PE32 cursor arithmetic.
+inline void CopyFifoBytesForward(uint destination,uint source,uint count) {
+  uint words = count >> 2;
+  while (words != 0) {
+    uint value = *(const uint *)source;
+    *(uint *)destination = value;
+    source += 4;
+    destination += 4;
+    --words;
+  }
+  uint tail = count & 3;
+  while (tail != 0) {
+    byte value = *(const byte *)source;
+    *(byte *)destination = value;
+    ++source;
+    ++destination;
+    --tail;
   }
 }
-
-// Appends through the current tail, allocating unchecked0x800-byte payload blocks and12-byte nodes as needed.
-// Signed count/limit and chunk comparisons, forward copies, late argument/index/count reloads and raw upper EAX survive.
-// R6GameService.dll @ 1002ef40 : native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall AppendBytesToBlockQueue(void *fifo,int source,uint byteCount)
-{
-  __asm {
-    sub    esp,0xc
-    push   ebp
-    mov    ebp,ecx
-    mov    DWORD PTR [esp+0xc],0x0
-    mov    DWORD PTR [esp+0x4],ebp
-    mov    eax,DWORD PTR [ebp+0xc]
-    mov    ecx,DWORD PTR [ebp+0x10]
-    cmp    eax,ecx
-    jle    Branch2
-    xor    al,al
-    pop    ebp
-    add    esp,0xc
-    ret    0x8
-  Branch2:
-    push   ebx
-    mov    ebx,DWORD PTR [esp+0x1c]
-    test   ebx,ebx
-    je     Branch9
-    push   esi
-    push   edi
-    lea    edi,[ebp+0x4]
-  Branch3:
-    mov    eax,DWORD PTR [edi]
-    mov    esi,DWORD PTR [esp+0x24]
-    sub    esi,ebx
-    cmp    DWORD PTR [eax],eax
-    je     Branch5
-    mov    ecx,eax
-    mov    eax,0x800
-    mov    edx,DWORD PTR [ecx+0x4]
-    mov    edx,DWORD PTR [edx+0x8]
-    mov    edi,DWORD PTR [edx+0x808]
-    sub    eax,edi
-    cmp    eax,ebx
-    jle    Branch4
-    mov    eax,ebx
-  Branch4:
-    mov    ebp,DWORD PTR [esp+0x20]
-    mov    ecx,eax
-    add    esi,ebp
-    mov    ebp,ecx
-    lea    edi,[edi+edx*1+0x4]
-    sub    ebx,eax
-    shr    ecx,0x2
-    rep    movs DWORD PTR es:[edi],DWORD PTR ds:[esi]
-    mov    ecx,ebp
-    mov    ebp,DWORD PTR [esp+0x10]
-    and    ecx,0x3
-    rep    movs BYTE PTR es:[edi],BYTE PTR ds:[esi]
-    add    DWORD PTR [edx+0x808],eax
-  Branch5:
-    test   ebx,ebx
-    je     Branch8
-    push   0x80c
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    xor    ecx,ecx
-    cmp    eax,ecx
-    je     Branch6
-    mov    DWORD PTR [eax],0x10076c70
-    mov    DWORD PTR [eax+0x804],ecx
-    mov    DWORD PTR [eax+0x808],ecx
-    jmp    Branch7
-  Branch6:
-    xor    eax,eax
-  Branch7:
-    mov    DWORD PTR [esp+0x14],eax
-    lea    eax,[esp+0x18]
-    lea    edi,[ebp+0x4]
-    push   eax
-    mov    ecx,edi
-    call   R6GameServiceAddresses::CopyListHeadSlot
-    lea    ecx,[esp+0x14]
-    push   ecx
-    mov    ecx,edi
-    call   R6GameServiceAddresses::AllocateListPayloadNode
-    mov    esi,DWORD PTR [esp+0x18]
-    mov    edx,DWORD PTR [esi+0x4]
-    lea    ecx,[esi+0x4]
-    mov    DWORD PTR [eax],esi
-    mov    DWORD PTR [eax+0x4],edx
-    mov    DWORD PTR [edx],eax
-    mov    DWORD PTR [ecx],eax
-    jmp    Branch3
-  Branch8:
-    mov    ebx,DWORD PTR [esp+0x24]
-    pop    edi
-    pop    esi
-  Branch9:
-    mov    eax,DWORD PTR [ebp+0xc]
-    add    eax,ebx
-    pop    ebx
-    mov    DWORD PTR [ebp+0xc],eax
-    mov    al,0x1
-    pop    ebp
-    add    esp,0xc
-    ret    0x8
-  }
 }
 
-// Copies/consumes up to the requested bytes and virtually erases exhausted first nodes.
-// Signed count gate; an early empty list still succeeds. Count adjusts by consumed bytes; status replaces AL only.
-// R6GameService.dll @ 1002f040 : native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall ConsumeBlockQueueBytes(void *fifo,uint byteCount,int destination)
+// Clear through the current virtual slot, then reset the byte count and replace only the callback result's low byte.
+// R6GameService.dll @ 1002f190 : callback exceptions leave the old count intact.
+uint __fastcall ClearBlockQueue(void *fifo)
 {
-  __asm {
-    sub    esp,0x8
-    push   ebx
-    push   ebp
-    push   esi
-    mov    esi,ecx
-    push   edi
-    mov    edi,DWORD PTR [esp+0x1c]
-    mov    eax,DWORD PTR [esi+0xc]
-    mov    DWORD PTR [esp+0x10],esi
-    cmp    edi,eax
-    jg     Branch14
-    test   edi,edi
-    mov    ebx,edi
-    je     Branch13
-  Branch10:
-    mov    eax,DWORD PTR [esi+0x4]
-    cmp    DWORD PTR [eax],eax
-    je     Branch13
-    mov    ecx,DWORD PTR [eax]
-    sub    edi,ebx
-    mov    edx,DWORD PTR [ecx+0x8]
-    mov    esi,DWORD PTR [edx+0x804]
-    mov    eax,DWORD PTR [edx+0x808]
-    sub    eax,esi
-    cmp    eax,ebx
-    jle    Branch11
-    mov    eax,ebx
-  Branch11:
-    mov    ebp,DWORD PTR [esp+0x20]
-    mov    ecx,eax
-    add    edi,ebp
-    mov    ebp,ecx
-    lea    esi,[esi+edx*1+0x4]
-    sub    ebx,eax
-    shr    ecx,0x2
-    rep    movs DWORD PTR es:[edi],DWORD PTR ds:[esi]
-    mov    ecx,ebp
-    and    ecx,0x3
-    rep    movs BYTE PTR es:[edi],BYTE PTR ds:[esi]
-    mov    ebp,DWORD PTR [edx+0x804]
-    mov    esi,DWORD PTR [esp+0x10]
-    add    ebp,eax
-    mov    DWORD PTR [edx+0x804],ebp
-    mov    ecx,DWORD PTR [esi+0x4]
-    mov    edx,DWORD PTR [ecx]
-    mov    eax,DWORD PTR [edx+0x8]
-    mov    edx,DWORD PTR [eax+0x804]
-    mov    edi,DWORD PTR [eax+0x808]
-    cmp    edx,edi
-    jne    Branch12
-    push   ecx
-    mov    ecx,DWORD PTR [ecx]
-    mov    eax,esp
-    mov    DWORD PTR [eax],ecx
-    mov    edx,DWORD PTR [esi]
-    lea    eax,[esp+0x18]
-    mov    ecx,esi
-    push   eax
-    call   DWORD PTR [edx+0x14]
-  Branch12:
-    mov    edi,DWORD PTR [esp+0x1c]
-    test   ebx,ebx
-    jne    Branch10
-  Branch13:
-    mov    eax,DWORD PTR [esi+0xc]
-    sub    ebx,edi
-    add    eax,ebx
-    mov    DWORD PTR [esi+0xc],eax
-    mov    al,0x1
-    pop    edi
-    pop    esi
-    pop    ebp
-    pop    ebx
-    add    esp,0x8
-    ret    0x8
-  Branch14:
-    pop    edi
-    pop    esi
-    pop    ebp
-    xor    al,al
-    pop    ebx
-    add    esp,0x8
-    ret    0x8
-  }
+  using ClearABI = uint (__thiscall *)(void *);
+  byte *table = *(byte **)fifo;
+  uint result = (*(ClearABI *)(table + 4))(fifo);
+  *(uint *)((byte *)fifo + 0xc) = 0;
+  return (result & 0xffffff00) | 1;
 }
 
-// Copies the available prefix without consuming it; returns clean EAX1 only when all requested bytes were copied.
-// Forward DWORD/tail copies retain late original arguments, next-link and current-head reloads.
-// R6GameService.dll @ 1002f120 : native control/access order and raw ABI retained.
-__declspec(naked) bool __thiscall CopyBlockQueuePrefix(void *fifo,uint byteCount,int destination)
+// Fill the current tail and append borrowed-payload nodes as needed; preserve signed limits and late argument reloads.
+// R6GameService.dll @ 1002ef40 : inferred block indices +0x804/+0x808; count publication follows all copies.
+uint __thiscall AppendBytesToBlockQueue(void *fifo,int source,uint byteCount)
 {
-  __asm {
-    push   ecx
-    mov    eax,DWORD PTR [ecx+0x4]
-    push   ebx
-    mov    ebx,DWORD PTR [esp+0xc]
-    push   ebp
-    mov    edx,DWORD PTR [eax]
-    push   esi
-    cmp    edx,eax
-    push   edi
-    mov    DWORD PTR [esp+0x10],ecx
-    je     Branch17
-  Branch15:
-    test   ebx,ebx
-    je     Branch17
-    mov    esi,DWORD PTR [edx+0x8]
-    mov    edi,DWORD PTR [esp+0x18]
-    sub    edi,ebx
-    mov    ebp,DWORD PTR [esi+0x804]
-    mov    eax,DWORD PTR [esi+0x808]
-    sub    eax,ebp
-    cmp    eax,ebx
-    jle    Branch16
-    mov    eax,ebx
-  Branch16:
-    lea    esi,[esi+ebp*1+0x4]
-    mov    ebp,DWORD PTR [esp+0x1c]
-    mov    ecx,eax
-    add    edi,ebp
-    mov    ebp,ecx
-    sub    ebx,eax
-    shr    ecx,0x2
-    rep    movs DWORD PTR es:[edi],DWORD PTR ds:[esi]
-    mov    eax,DWORD PTR [esp+0x10]
-    mov    ecx,ebp
-    and    ecx,0x3
-    rep    movs BYTE PTR es:[edi],BYTE PTR ds:[esi]
-    mov    edx,DWORD PTR [edx]
-    mov    ecx,DWORD PTR [eax+0x4]
-    cmp    edx,ecx
-    jne    Branch15
-  Branch17:
-    xor    eax,eax
-    pop    edi
-    test   ebx,ebx
-    pop    esi
-    pop    ebp
-    sete   al
-    pop    ebx
-    pop    ecx
-    ret    0x8
+  uint count = *(uint *)((byte *)fifo + 0xc);
+  uint limit = *(uint *)((byte *)fifo + 0x10);
+  if ((int)count > (int)limit) return count & 0xffffff00;
+  uint remaining = byteCount;
+  if (remaining != 0) {
+    for (;;) {
+      uint head = *(uint *)((byte *)fifo + 4);
+      uint offset = byteCount - remaining;
+      if (*(uint *)head != head) {
+        uint last = *(uint *)(head + 4);
+        uint block = *(uint *)(last + 8);
+        uint writeIndex = *(uint *)(block + 0x808);
+        uint chunk = 0x800 - writeIndex;
+        if ((int)chunk > (int)remaining) chunk = remaining;
+        uint first = (uint)source + offset;
+        uint destination = block + writeIndex + 4;
+        remaining -= chunk;
+        CopyFifoBytesForward(destination,first,chunk);
+        *(uint *)(block + 0x808) += chunk;
+      }
+      if (remaining == 0) {
+        remaining = byteCount;
+        break;
+      }
+      uint block = (uint)AllocateGameServiceBytes(0x80c);
+      if (block != 0) {
+        *(uint *)block = 0x10076c70;
+        *(uint *)(block + 0x804) = 0;
+        *(uint *)(block + 0x808) = 0;
+      }
+      using HeadABI = uint * (__thiscall *)(void *,uint *);
+      using AllocateNodeABI = void * (__stdcall *)(uint *);
+      void *headSlot = (byte *)fifo + 4;
+      uint position;
+      ((HeadABI)R6GameServiceAddresses::CopyListHeadSlot)(headSlot,&position);
+      uint node = (uint)((AllocateNodeABI)R6GameServiceAddresses::AllocateListPayloadNode)(&block);
+      uint next = position;
+      uint previous = *(uint *)(next + 4);
+      *(uint *)node = next;
+      *(uint *)(node + 4) = previous;
+      *(uint *)previous = node;
+      *(uint *)(next + 4) = node;
+    }
   }
+  uint updated = *(uint *)((byte *)fifo + 0xc) + remaining;
+  *(uint *)((byte *)fifo + 0xc) = updated;
+  return (updated & 0xffffff00) | 1;
+}
+
+// Copy and consume available blocks, virtually erase exhausted nodes and subtract only the bytes physically consumed.
+// R6GameService.dll @ 1002f040 : signed admission gate; an unexpectedly empty list still returns low-byte success.
+uint __thiscall ConsumeBlockQueueBytes(void *fifo,uint byteCount,int destination)
+{
+  uint requested = byteCount;
+  uint count = *(uint *)((byte *)fifo + 0xc);
+  if ((int)requested > (int)count) return count & 0xffffff00;
+  uint remaining = requested;
+  if (remaining != 0) {
+    for (;;) {
+      uint head = *(uint *)((byte *)fifo + 4);
+      if (*(uint *)head == head) break;
+      uint firstNode = *(uint *)head;
+      uint offset = requested - remaining;
+      uint block = *(uint *)(firstNode + 8);
+      uint readIndex = *(uint *)(block + 0x804);
+      uint chunk = *(uint *)(block + 0x808) - readIndex;
+      if ((int)chunk > (int)remaining) chunk = remaining;
+      uint target = (uint)destination + offset;
+      uint first = block + readIndex + 4;
+      remaining -= chunk;
+      CopyFifoBytesForward(target,first,chunk);
+      uint newReadIndex = *(uint *)(block + 0x804) + chunk;
+      *(uint *)(block + 0x804) = newReadIndex;
+      head = *(uint *)((byte *)fifo + 4);
+      firstNode = *(uint *)head;
+      block = *(uint *)(firstNode + 8);
+      readIndex = *(uint *)(block + 0x804);
+      uint writeIndex = *(uint *)(block + 0x808);
+      if (readIndex == writeIndex) {
+        uint node = *(uint *)head;
+        byte *table = *(byte **)fifo;
+        uint next;
+        using EraseABI = uint * (__thiscall *)(void *,uint *,uint);
+        (*(EraseABI *)(table + 0x14))(fifo,&next,node);
+      }
+      requested = byteCount;
+      if (remaining == 0) break;
+    }
+  }
+  uint countBeforeUpdate = *(uint *)((byte *)fifo + 0xc);
+  uint adjustment = remaining - requested;
+  uint updated = countBeforeUpdate + adjustment;
+  *(uint *)((byte *)fifo + 0xc) = updated;
+  return (updated & 0xffffff00) | 1;
+}
+
+// Copy the available prefix without consuming it; the return is true only if every requested byte was copied.
+// R6GameService.dll @ 1002f120 : forward DWORD/tail copies, signed chunk selection and live next/head reloads.
+bool __thiscall CopyBlockQueuePrefix(void *fifo,uint byteCount,int destination)
+{
+  uint head = *(uint *)((byte *)fifo + 4);
+  uint remaining = byteCount;
+  uint node = *(uint *)head;
+  while (node != head && remaining != 0) {
+    uint block = *(uint *)(node + 8);
+    uint offset = byteCount - remaining;
+    uint readIndex = *(uint *)(block + 0x804);
+    uint chunk = *(uint *)(block + 0x808) - readIndex;
+    if ((int)chunk > (int)remaining) chunk = remaining;
+    uint first = block + readIndex + 4;
+    uint target = (uint)destination + offset;
+    remaining -= chunk;
+    CopyFifoBytesForward(target,first,chunk);
+    node = *(uint *)node;
+    head = *(uint *)((byte *)fifo + 4);
+  }
+  return remaining == 0;
 }
 
 // Native virtual-table prefix: clFifoVTable

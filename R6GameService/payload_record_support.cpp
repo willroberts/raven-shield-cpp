@@ -134,19 +134,16 @@ __declspec(naked) void * __thiscall CopyConstructQueuedPayloadRecord(
   }
 }
 
-// Invokes the child deleting slot with flags1 when +8 is nonnull, retaining the pointer and raw child EAX.
-// R6GameService.dll @ 1005c750 : native frame/word accesses, calling convention and raw registers retained.
-__declspec(naked) uint __thiscall DeleteOwnedObjectAtOffset8(void *owner)
+// Invoke the initially loaded child's deleting slot with flags1 when +8 is nonnull, without clearing that slot.
+// Native empty-path/child EAX residue is dead at every selected-image caller, which immediately frees the owner.
+// R6GameService.dll @ 1005c750 : inferred void cleanup ABI; ECX receiver, RET0, no local guard.
+void __thiscall DeleteOwnedObjectAtOffset8(void *owner)
 {
-  __asm {
-    mov    ecx,DWORD PTR [ecx+0x8]
-    test   ecx,ecx
-    je Branch7
-    mov    eax,DWORD PTR [ecx]
-    push   0x1
-    call   DWORD PTR [eax]
-  Branch7:
-    ret
+  void *child = *(void **)((uint)owner + 8);
+  if (child != nullptr) {
+    uint table = *(uint *)child;
+    using DeleteABI = void (__thiscall *)(void *,uint);
+    (*(DeleteABI *)table)(child,1);
   }
 }
 

@@ -1,30 +1,22 @@
 #include "native_addresses.h"
+#include "native_import_bindings.h"
+#include <intrin.h>
 #include "native_records.h"
 
 // MSVC compiler startup/check glue from the selected game-service DLL; OS/CRT delivery remains external.
 
-// Build native SEH scope, invoke compiler-error handler(1,0) in state0, then disarm and call ExitProcess(3).
-// Scope filter/continuation have separate canonical bodies; returning ExitProcess reaches genuine INT3, no epilog.
-// R6GameService.dll @ 10062250 : complete native control/access order and raw ABI retained.
-__declspec(naked) void __cdecl ReportStackCookieFailure(void)
+// Reports a cookie mismatch in an SEH scope, then exits with code3; a returned ExitProcess reaches INT3.
+// R6GameService.dll @ 10062250 : inferred C++ scope view of compiler glue; filter/continuation remain separate entries.
+[[noreturn]] void __cdecl ReportStackCookieFailure(void)
 {
-  __asm {
-    push    0x8
-    push    R6GameServiceAddresses::GCompilerCookieScope
-    call    R6GameServiceAddresses::__SEH_prolog
-    and    DWORD PTR [ebp-0x4],0x0
-    push    0x0
-    push    0x1
-    call    R6GameServiceAddresses::__security_error_handler
-    pop    ecx
-    pop    ecx
-    jmp    Branch1
-  Branch1:
-    or    DWORD PTR [ebp-0x4],0xffffffff
-    push    0x3
-    call    DWORD PTR ds:R6GameServiceAddresses::KERNEL32_ExitProcessSlot
-    int    3
+  __try {
+    R6GameServiceImports::__security_error_handler(1,0);
+  } __except(1) {
   }
+  using ExitABI = void (__stdcall *)(uint);
+  (*(ExitABI *)R6GameServiceAddresses::KERNEL32_ExitProcessSlot)(3);
+  __debugbreak();
+  __assume(0);
 }
 
 // Return constant1 to the compiler-error SEH scope; do not inspect or modify the parent frame.
@@ -47,18 +39,12 @@ __declspec(naked) void __cdecl ResumeCompilerCookieFailure(void)
   }
 }
 
-// Compare full incoming ECX with current module cookie; equal returns unchanged EAX, mismatch tails compiler failure
-// path.
-// R6GameService.dll @ 10062281 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall __security_check_cookie(uint cookieWord)
+// Checks ECX against the module cookie and transfers mismatches to the nonreturning failure reporter.
+// The compiler ABI preserves the enclosing function's pending EAX result on a match; it produces no return value.
+// R6GameService.dll @ 10062281 : inferred void fastcall view of the compiler helper; complete 32-bit comparison.
+void __fastcall __security_check_cookie(uint cookieWord)
 {
-  __asm {
-    cmp    ecx,DWORD PTR ds:R6GameServiceAddresses::GSecurityCookie
-    jne    Branch2
-    ret
-  Branch2:
-    jmp    R6GameServiceAddresses::ReportStackCookieFailure
-  }
+  if (cookieWord != *(uint *)R6GameServiceAddresses::GSecurityCookie) ReportStackCookieFailure();
 }
 
 // Keep a nonzero/nondefault cookie; otherwise combine native time/ID/tick/counter DWORDs and substitute default only

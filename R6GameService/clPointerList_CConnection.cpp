@@ -7,35 +7,26 @@
 // Read CURRENT previous/next AFTER payload cleanup, unlink before node free; output successor only AFTER free.
 // Reload output argument after allocator, write through it and return it in EAX/RET8. No head guard for node unlink.
 // R6GameService.dll @ 1004cc20 : complete native control/access order and raw ABI retained.
-__declspec(naked) void *__thiscall EraseConnectionPointerListNode(void *owner,void *successorOut,uint node)
+void *__thiscall EraseConnectionPointerListNode(void *owner,void *successorOut,uint node)
 {
-  __asm {
-    mov    eax,DWORD PTR [ecx+0x4]
-    push   esi
-    push   edi
-    mov    edi,DWORD PTR [esp+0x10]
-    cmp    edi,eax
-    je     Branch1
-    mov    esi,DWORD PTR [edi+0x8]
-    test   esi,esi
-    je     Branch1
-    mov    ecx,esi
-    call   R6GameServiceAddresses::CConnectionDestroyProvider
-    push   esi
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch1:
-    mov    eax,DWORD PTR [edi+0x4]
-    mov    esi,DWORD PTR [edi]
-    push   edi
-    mov    DWORD PTR [eax],esi
-    mov    DWORD PTR [esi+0x4],eax
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    eax,DWORD PTR [esp+0xc]
-    pop    edi
-    mov    DWORD PTR [eax],esi
-    pop    esi
-    ret    0x8
+  uint head = *(uint *)((uint)owner + 4);
+  uint savedNode = node;
+  if (savedNode != head) {
+    void *payload = *(void **)(savedNode + 8);
+    if (payload != 0) {
+      using DestroyABI = void (__fastcall *)(void *);
+      ((DestroyABI)R6GameServiceAddresses::CConnectionDestroyProvider)(payload);
+      TailFreeThroughGlobalAllocator(payload);
+    }
   }
+  uint previous = *(uint *)(savedNode + 4);
+  uint next = *(uint *)savedNode;
+  *(uint *)previous = next;
+  *(uint *)(next + 4) = previous;
+  TailFreeThroughGlobalAllocator((void *)savedNode);
+  void *result = successorOut;
+  *(uint *)result = next;
+  return result;
 }
 
 // Pop the last connection: destroy/free initially captured tail payload, then reread CURRENT head/tail to unlink/free.
@@ -145,61 +136,37 @@ __declspec(naked) uint __fastcall DestroyConnectionPointerList(void *owner)
 // Cache end, reread current owner head during payload pass, copy CURRENT first argument for node pass.
 // Final output pointer is reloaded after all frees; store cached end and return that pointer/RET12. No own guard.
 // R6GameService.dll @ 1004cc60 : complete native control/access order and raw ABI retained.
-__declspec(naked) void *__thiscall EraseConnectionPointerRange(void *owner,void *endOut,uint first,uint end)
+void *__thiscall EraseConnectionPointerRange(void *owner,void *endOut,uint first,uint end)
 {
-  __asm {
-    push   ebx
-    push   ebp
-    push   esi
-    mov    esi,DWORD PTR [esp+0x14]
-    push   edi
-    mov    edi,DWORD PTR [esp+0x1c]
-    cmp    esi,edi
-    mov    ebp,ecx
-    je     Branch8
-  Branch6:
-    cmp    esi,DWORD PTR [ebp+0x4]
-    je     Branch8
-    mov    ebx,DWORD PTR [esi+0x8]
-    test   ebx,ebx
-    je     Branch7
-    mov    ecx,ebx
-    call   R6GameServiceAddresses::CConnectionDestroyProvider
-    push   ebx
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch7:
-    mov    esi,DWORD PTR [esi]
-    cmp    esi,edi
-    jne    Branch6
-  Branch8:
-    lea    eax,[esp+0x18]
-    lea    ecx,[esp+0x1c]
-    push   eax
-    call   R6GameServiceAddresses::CopyFirstWord
-    mov    eax,DWORD PTR [esp+0x1c]
-    cmp    eax,edi
-    je     Branch10
-  Branch9:
-    mov    ecx,DWORD PTR [eax]
-    push   eax
-    mov    DWORD PTR [esp+0x20],ecx
-    mov    edx,DWORD PTR [eax+0x4]
-    mov    ecx,DWORD PTR [eax]
-    mov    DWORD PTR [edx],ecx
-    mov    DWORD PTR [ecx+0x4],edx
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    eax,DWORD PTR [esp+0x1c]
-    cmp    eax,edi
-    jne    Branch9
-  Branch10:
-    mov    eax,DWORD PTR [esp+0x14]
-    mov    DWORD PTR [eax],edi
-    pop    edi
-    pop    esi
-    pop    ebp
-    pop    ebx
-    ret    0xc
+  uint visited = first;
+  uint stop = end;
+  while (visited != stop) {
+    uint head = *(uint *)((uint)owner + 4);
+    if (visited == head) break;
+    void *payload = *(void **)(visited + 8);
+    if (payload != 0) {
+      using DestroyABI = void (__fastcall *)(void *);
+      ((DestroyABI)R6GameServiceAddresses::CConnectionDestroyProvider)(payload);
+      TailFreeThroughGlobalAllocator(payload);
+    }
+    visited = *(uint *)visited;
   }
+  using CopyABI = void * (__thiscall *)(void *,const void *);
+  ((CopyABI)R6GameServiceAddresses::CopyFirstWord)(&end,&first);
+  uint current = end;
+  while (current != stop) {
+    uint next = *(uint *)current;
+    end = next;
+    uint previous = *(uint *)(current + 4);
+    uint currentNext = *(uint *)current;
+    *(uint *)previous = currentNext;
+    *(uint *)(currentNext + 4) = previous;
+    TailFreeThroughGlobalAllocator((void *)current);
+    current = end;
+  }
+  void *output = endOut;
+  *(uint *)output = stop;
+  return output;
 }
 
 // Destroy the typed list, then test CURRENT deleting flag lowBYTE/bit0; optionally free original owner.

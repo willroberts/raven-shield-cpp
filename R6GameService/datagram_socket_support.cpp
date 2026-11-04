@@ -44,33 +44,35 @@ __declspec(naked) void * __thiscall ConstructDatagramSocketOwner(
   }
 }
 
+namespace {
+// Inferred saved owner and state0 cleanup for the embedded socket's genuine empty destructor.
+struct DatagramOwnerDestructionCleanup {
+  uint savedOwner;
+  bool armed;
+  // Forward the current saved context without retrying socket closure.
+  ~DatagramOwnerDestructionCleanup() noexcept(false) {
+    if (armed) {
+      using EmptyABI = void (__thiscall *)(void *);
+      ((EmptyABI)R6GameServiceAddresses::list_node_support_NoOp)((void *)(savedOwner + 0xc));
+    }
+  }
+};
+}
+
 // Closes socket+c, lowers lifetime state, then invokes genuine empty cleanup; raw close EAX survives.
 // Exceptional cleanup forwards current saved owner+c to empty target without retrying close.
 // R6GameService.dll @ 1002eba0 : native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall DestroyDatagramSocketOwner(int owner)
+uint __fastcall DestroyDatagramSocketOwner(int owner)
 {
-  __asm {
-    push   0xffffffff
-    push   R6GameServiceAddresses::DestroyDatagramSocketOwnerSelectExceptionInfo
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    push   ecx
-    push   esi
-    mov    DWORD PTR [esp+0x4],ecx
-    lea    esi,[ecx+0xc]
-    mov    DWORD PTR [esp+0x10],0x0
-    mov    ecx,esi
-    call   R6GameServiceAddresses::CloseSocketAndReset
-    mov    ecx,esi
-    mov    DWORD PTR [esp+0x10],0xffffffff
-    call   R6GameServiceAddresses::list_node_support_NoOp
-    mov    ecx,DWORD PTR [esp+0x8]
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x10
-    ret
-  }
+  DatagramOwnerDestructionCleanup cleanup{(uint)owner, false};
+  void *socket = (void *)((uint)owner + 0xc);
+  cleanup.armed = true;
+  using CloseABI = uint (__thiscall *)(void *);
+  uint result = ((CloseABI)R6GameServiceAddresses::CloseSocketAndReset)(socket);
+  cleanup.armed = false;
+  using EmptyABI = void (__thiscall *)(void *);
+  ((EmptyABI)R6GameServiceAddresses::list_node_support_NoOp)(socket);
+  return result;
 }
 
 // Creates/configures/binds a datagram socket, ignoring all pre-bind status results.
@@ -143,16 +145,13 @@ __declspec(naked) uint __thiscall OpenDatagramSocket(
   }
 }
 
-// Closes socket+c then forces AL1, preserving close upper EAX and leaving owner error untouched.
-// R6GameService.dll @ 1002ec90 : native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall CloseDatagramSocket(int owner)
+// Close the embedded socket and force low-byte success while preserving the close result above that byte.
+// R6GameService.dll @ 1002ec90 : inferred owner socket at +0xc; explicit raw full-word result view.
+uint __fastcall CloseDatagramSocket(int owner)
 {
-  __asm {
-    add    ecx,0xc
-    call   R6GameServiceAddresses::CloseSocketAndReset
-    mov    al,0x1
-    ret
-  }
+  using CloseABI = uint (__fastcall *)(void *);
+  uint result = ((CloseABI)R6GameServiceAddresses::CloseSocketAndReset)((void *)((uint)owner + 0xc));
+  return (result & 0xffffff00) | 1;
 }
 
 // Sends through socket+c and compares full result to cached requested count; only AL changes to equality status.
@@ -179,28 +178,18 @@ __declspec(naked) bool __thiscall SendDatagramToResolvedIPv4(
   }
 }
 
-// Sends through socket+c and compares full result to cached requested count; only AL changes to equality status.
-// R6GameService.dll @ 1002ecd0 : native control/access order and raw ABI retained.
-__declspec(naked) bool __thiscall SendDatagramToIPv4(
-    void *owner,void *bytes,int byteCount,uint address,uint port)
+// Send through the embedded socket; retain the full count above the low-byte equality status.
+// R6GameService.dll @ 1002ecd0 : inferred owner socket at +0xc; explicit raw full-word result view.
+uint __thiscall SendDatagramToIPv4(void *owner,void *bytes,int byteCount,uint address,uint port)
 {
-  __asm {
-    mov    eax,DWORD PTR [esp+0x10]
-    mov    edx,DWORD PTR [esp+0xc]
-    push   esi
-    mov    esi,DWORD PTR [esp+0xc]
-    push   eax
-    mov    eax,DWORD PTR [esp+0xc]
-    push   edx
-    push   esi
-    push   eax
-    add    ecx,0xc
-    call   R6GameServiceAddresses::SendSocketBytesToIPv4
-    cmp    eax,esi
-    pop    esi
-    sete   al
-    ret    0x10
-  }
+  using SendABI = int (__thiscall *)(void *,uint,uint,uint,uint);
+  uint portWord = port;
+  uint addressWord = address;
+  int requested = byteCount;
+  void *data = bytes;
+  int result = ((SendABI)R6GameServiceAddresses::SendSocketBytesToIPv4)(
+      (byte *)owner + 0xc,(uint)data,(uint)requested,addressWord,portWord);
+  return ((uint)result & 0xffffff00) | (result == requested ? 1 : 0);
 }
 
 // Receives into an initial1024-byte growable temporary, publishes count/error, then copies positive current count to new storage.

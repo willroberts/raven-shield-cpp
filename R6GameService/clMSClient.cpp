@@ -110,36 +110,32 @@ const R6GameServiceNative::FuncInfo clMSClient_clMSClientExceptionInfo = {
 // Destroy the extended client, then conditionally free its saved receiver through the current allocator tail.
 // One full physical flag word/RET4; BYTE bit0 reloads after destruction; returns original receiver/no own guard.
 // R6GameService.dll @ 10032ad0 : complete native control/access order and raw ABI retained.
-__declspec(naked) void * __thiscall DeleteExtendedServiceClient(void *client,uint deleteFlags)
+void *__thiscall DeleteExtendedServiceClient(void *client,uint deleteFlags)
 {
-  __asm {
-    push   esi
-    mov    esi,ecx
-    call   R6GameServiceAddresses::DestroyExtendedServiceClient
-    test   BYTE PTR [esp+0x8],0x1
-    je     Branch3
-    push   esi
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch3:
-    mov    eax,esi
-    pop    esi
-    ret    0x4
+  void *savedClient = client;
+  using DestroyABI = void (__thiscall *)(void *);
+  ((DestroyABI)R6GameServiceAddresses::DestroyExtendedServiceClient)(savedClient);
+  byte flags = *(byte *)&deleteFlags;
+  if ((flags & 1) != 0) {
+    using FreeABI = uint (__stdcall *)(void *);
+    ((FreeABI)R6GameServiceAddresses::TailFreeThroughGlobalAllocator)(savedClient);
   }
+  return savedClient;
 }
 
 // Restore derived callback tables and tail-enter the shared class destructor on the same receiver.
-// Raw uint view preserves tail result/exception behavior; no additional guard, fields or virtual-base cleanup.
+// Inferred void cleanup: the deleting wrapper returns its saved receiver; no additional guard or cleanup.
 // R6GameService.dll @ 10032af0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall DestroyExtendedServiceClient(void *client)
+void __thiscall DestroyExtendedServiceClient(void *client)
 {
-  __asm {
-    mov    DWORD PTR [ecx],R6GameServiceAddresses::clMSClientVTable
-    mov    DWORD PTR [ecx+0x4],R6GameServiceAddresses::clMSClientVTableAdjusted4
-    mov    DWORD PTR [ecx+0x8],R6GameServiceAddresses::clMSClientVTableAdjusted8
-    mov    DWORD PTR [ecx+0xc],R6GameServiceAddresses::clMSClientVTableAdjusted12
-    mov    DWORD PTR [ecx+0x10],R6GameServiceAddresses::clMSClientVTableAdjusted16
-    jmp    R6GameServiceAddresses::DestroyServiceClient
-  }
+  uint base = (uint)client;
+  *(uint *)base = R6GameServiceAddresses::clMSClientVTable;
+  *(uint *)(base + 4) = R6GameServiceAddresses::clMSClientVTableAdjusted4;
+  *(uint *)(base + 8) = R6GameServiceAddresses::clMSClientVTableAdjusted8;
+  *(uint *)(base + 0xc) = R6GameServiceAddresses::clMSClientVTableAdjusted12;
+  *(uint *)(base + 0x10) = R6GameServiceAddresses::clMSClientVTableAdjusted16;
+  using DestroyABI = void (__thiscall *)(void *);
+  ((DestroyABI)R6GameServiceAddresses::DestroyServiceClient)(client);
 }
 
 // Tail-forward19 physical words through callback+11c, or return EAX0/RET76 when absent.

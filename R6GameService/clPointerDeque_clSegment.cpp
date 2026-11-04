@@ -248,299 +248,185 @@ const R6GameServiceNative::FuncInfo DestroyClSegmentPointerDequeExceptionInfo = 
 // Shift shorter surviving side, release discarded blocks, publish adjusted boundary and return begin+original prefix.
 // Whole-range clear retains first block/map, resets finish to current begin and returns that cursor. No local EH; RET36.
 // R6GameService.dll @ 10060ab0 : complete native control/access order and raw ABI retained.
-__declspec(naked) SegmentedWordCursor * __thiscall EraseSegmentedObjectRange(
-    void *owner,SegmentedWordCursor *result,SegmentedWordCursor first,
-    SegmentedWordCursor last)
+SegmentedWordCursor *__thiscall EraseSegmentedObjectRange(
+    void *owner,SegmentedWordCursor *result,SegmentedWordCursor first,SegmentedWordCursor last)
 {
-  __asm {
-    sub    esp,0x64
-    mov    eax,DWORD PTR [esp+0x70]
-    push    ebx
-    mov    ebx,DWORD PTR [esp+0x78]
-    push    ebp
-    mov    ebp,DWORD PTR [esp+0x84]
-    push    esi
-    mov    esi,DWORD PTR [esp+0x78]
-    push    edi
-    mov    edi,DWORD PTR [esp+0x88]
-    cmp    esi,ebp
-    mov    DWORD PTR [esp+0x10],ecx
-    mov    DWORD PTR [esp+0x58],eax
-    je    Branch14
-  Branch11:
-    mov    ecx,DWORD PTR [esp+0x10]
-    lea    eax,[ecx+0x14]
-    mov    edx,eax
-    mov    eax,DWORD PTR [edx]
-    cmp    esi,eax
-    mov    ecx,DWORD PTR [edx+0x4]
-    mov    DWORD PTR [esp+0x38],ecx
-    mov    ecx,DWORD PTR [edx+0x8]
-    mov    DWORD PTR [esp+0x3c],ecx
-    mov    edx,DWORD PTR [edx+0xc]
-    mov    DWORD PTR [esp+0x40],edx
-    je    Branch14
-    mov    ecx,DWORD PTR [esi]
-    test    ecx,ecx
-    je    Branch12
-    mov    eax,DWORD PTR [ecx]
-    push    0x1
-    call    DWORD PTR [eax]
-  Branch12:
-    add    esi,0x4
-    cmp    esi,ebx
-    jne    Branch13
-    mov    esi,DWORD PTR [edi+0x4]
-    add    edi,0x4
-    lea    ebx,[esi+0x80]
-  Branch13:
-    cmp    esi,ebp
-    jne    Branch11
-  Branch14:
-    mov    ecx,DWORD PTR [esp+0x90]
-    mov    edx,DWORD PTR [esp+0x94]
-    mov    eax,DWORD PTR [esp+0x98]
-    mov    DWORD PTR [esp+0x18],ecx
-    lea    ecx,[esp+0x7c]
-    mov    DWORD PTR [esp+0x14],ebp
-    push    ecx
-    lea    ecx,[esp+0x28]
-    mov    DWORD PTR [esp+0x20],edx
-    mov    DWORD PTR [esp+0x24],eax
-    call    R6GameServiceAddresses::CopySegmentedCursor
-    mov    edx,DWORD PTR [esp+0x10]
-    mov    eax,DWORD PTR [esp+0x24]
-    mov    ecx,DWORD PTR [edx+0x4]
-    lea    esi,[edx+0x4]
-    cmp    eax,ecx
-    jne    Branch18
-    cmp    ebp,DWORD PTR [esi+0x10]
-    jne    Branch18
-    mov    edi,DWORD PTR [esi+0xc]
-    mov    eax,DWORD PTR [esi+0x1c]
-    add    edi,0x4
-    cmp    edi,eax
-    jae    Branch16
-    lea    ebx,[esi+0x24]
-  Branch15:
-    mov    ecx,DWORD PTR [edi]
-    push    0x20
-    push    ecx
-    mov    ecx,ebx
-    call    R6GameServiceAddresses::ReleaseMemoryIgnoringSize
-    mov    eax,DWORD PTR [esi+0x1c]
-    add    edi,0x4
-    cmp    edi,eax
-    jb    Branch15
-  Branch16:
-    mov    edx,DWORD PTR [esi+0xc]
-    mov    eax,DWORD PTR [esi+0x1c]
-    cmp    edx,eax
-    je    Branch17
-    mov    eax,DWORD PTR [esi+0x14]
-    push    0x20
-    push    eax
-    lea    ecx,[esi+0x24]
-    call    R6GameServiceAddresses::ReleaseMemoryIgnoringSize
-  Branch17:
-    mov    ecx,esi
-    mov    edx,DWORD PTR [ecx]
-    mov    DWORD PTR [esi+0x10],edx
-    mov    eax,DWORD PTR [ecx+0x4]
-    mov    DWORD PTR [esi+0x14],eax
-    mov    edx,DWORD PTR [ecx+0x8]
-    mov    DWORD PTR [esi+0x18],edx
-    mov    edx,DWORD PTR [esi]
-    mov    eax,DWORD PTR [ecx+0xc]
-    mov    DWORD PTR [esi+0x1c],eax
-    mov    eax,DWORD PTR [esp+0x78]
-    mov    ecx,eax
-    mov    DWORD PTR [ecx],edx
-    mov    edx,DWORD PTR [esi+0x4]
-    mov    DWORD PTR [ecx+0x4],edx
-    mov    edx,DWORD PTR [esi+0x8]
-    mov    DWORD PTR [ecx+0x8],edx
-    mov    edx,DWORD PTR [esi+0xc]
-    mov    DWORD PTR [ecx+0xc],edx
-    pop    edi
-    pop    esi
-    pop    ebp
-    pop    ebx
-    add    esp,0x64
-    ret    0x24
-  Branch18:
-    lea    eax,[esp+0x24]
-    lea    ecx,[esp+0x14]
-    push    eax
-    call    R6GameServiceAddresses::MeasureSegmentedDwordCursorDistance
-    push    esi
-    lea    ecx,[esp+0x28]
-    mov    ebx,eax
-    call    R6GameServiceAddresses::MeasureSegmentedDwordCursorDistance
-    lea    edi,[esi+0x10]
-    mov    ebp,eax
-    push    esi
-    mov    ecx,edi
-    mov    DWORD PTR [esp+0x90],ebp
-    call    R6GameServiceAddresses::MeasureSegmentedDwordCursorDistance
-    sub    eax,ebx
-    cdq
-    sub    eax,edx
-    sar    eax,1
-    cmp    ebp,eax
-    jge    Branch19
-    mov    ecx,DWORD PTR [esp+0x14]
-    mov    edx,DWORD PTR [esp+0x18]
-    mov    eax,DWORD PTR [esp+0x1c]
-    mov    DWORD PTR [esp+0x34],ecx
-    mov    ecx,DWORD PTR [esp+0x20]
-    mov    DWORD PTR [esp+0x38],edx
-    lea    edx,[esp+0x24]
-    mov    DWORD PTR [esp+0x40],ecx
-    push    edx
-    lea    ecx,[esp+0x48]
-    mov    DWORD PTR [esp+0x40],eax
-    call    R6GameServiceAddresses::CopySegmentedCursor
-    push    esi
-    lea    ecx,[esp+0x58]
-    call    R6GameServiceAddresses::CopySegmentedCursor
-    mov    al,BYTE PTR [esp+0x78]
-    lea    ecx,[esp+0x7c]
-    push    ecx
-    lea    edx,[esp+0x38]
-    sub    esp,0x10
-    mov    BYTE PTR [esp+0x90],al
-    mov    ecx,esp
-    push    edx
-    call    R6GameServiceAddresses::CopySegmentedCursor
-    sub    esp,0x10
-    lea    eax,[esp+0x68]
-    mov    ecx,esp
-    push    eax
-    call    R6GameServiceAddresses::CopySegmentedCursor
-    sub    esp,0x10
-    lea    edx,[esp+0x88]
-    mov    ecx,esp
-    push    edx
-    call    R6GameServiceAddresses::CopySegmentedCursor
-    lea    eax,[esp+0x98]
-    push    eax
-    call    R6GameServiceAddresses::MoveSegmentedDwordRangeBackward
-    mov    ecx,esi
-    push    ebx
-    mov    edx,DWORD PTR [ecx]
-    mov    DWORD PTR [esp+0x80],edx
-    mov    eax,DWORD PTR [ecx+0x4]
-    mov    DWORD PTR [esp+0x84],eax
-    mov    edx,DWORD PTR [ecx+0x8]
-    mov    DWORD PTR [esp+0x88],edx
-    mov    eax,DWORD PTR [ecx+0xc]
-    lea    ecx,[esp+0x80]
-    mov    DWORD PTR [esp+0x8c],eax
-    call    R6GameServiceAddresses::AdvanceSegmentedDwordCursor
-    mov    ebx,DWORD PTR [esp+0x7c]
-    mov    ebp,DWORD PTR [esp+0x80]
-    mov    ecx,DWORD PTR [esp+0x84]
-    sub    esp,0x10
-    mov    edi,DWORD PTR [esp+0x98]
-    mov    eax,esp
-    sub    esp,0x10
-    mov    DWORD PTR [eax],ebx
-    mov    DWORD PTR [eax+0x4],ebp
-    mov    DWORD PTR [eax+0x8],ecx
-    mov    ecx,esp
-    push    esi
-    mov    DWORD PTR [eax+0xc],edi
-    call    R6GameServiceAddresses::CopySegmentedCursor
-    call    R6GameServiceAddresses::CopyByValueCursorArgumentsToScratch
-    mov    edx,DWORD PTR [esi+0xc]
-    push    edi
-    push    edx
-    mov    ecx,esi
-    call    R6GameServiceAddresses::ReleaseSegmentedPointerSlots
-    mov    ecx,DWORD PTR [esp+0x84]
-    mov    eax,esi
-    mov    DWORD PTR [eax],ebx
-    mov    DWORD PTR [eax+0x4],ebp
-    mov    ebp,DWORD PTR [esp+0x8c]
-    mov    DWORD PTR [eax+0x8],ecx
-    mov    DWORD PTR [eax+0xc],edi
-    jmp    Branch20
-  Branch19:
-    mov    edx,DWORD PTR [esp+0x24]
-    sub    esp,0x10
-    mov    eax,esp
-    sub    esp,0x10
-    mov    DWORD PTR [eax],edx
-    mov    ecx,DWORD PTR [esp+0x48]
-    mov    DWORD PTR [eax+0x4],ecx
-    mov    edx,DWORD PTR [esp+0x4c]
-    mov    DWORD PTR [eax+0x8],edx
-    mov    ecx,DWORD PTR [esp+0x50]
-    mov    DWORD PTR [eax+0xc],ecx
-    mov    ecx,esp
-    push    edi
-    call    R6GameServiceAddresses::CopySegmentedCursor
-    sub    esp,0x10
-    lea    edx,[esp+0x44]
-    mov    ecx,esp
-    push    edx
-    call    R6GameServiceAddresses::CopySegmentedCursor
-    lea    eax,[esp+0xbc]
-    push    eax
-    call    R6GameServiceAddresses::CopySegmentedDwordRange
-    lea    ecx,[esp+0x7c]
-    push    ebx
-    push    ecx
-    mov    ecx,edi
-    call    R6GameServiceAddresses::SubtractSegmentedDwordCursorOffset
-    sub    esp,0x10
-    mov    edx,edi
-    mov    eax,esp
-    sub    esp,0x10
-    mov    ecx,DWORD PTR [edx]
-    mov    DWORD PTR [eax],ecx
-    mov    ecx,DWORD PTR [edx+0x4]
-    mov    DWORD PTR [eax+0x4],ecx
-    mov    ecx,DWORD PTR [edx+0x8]
-    mov    DWORD PTR [eax+0x8],ecx
-    mov    ecx,esp
-    mov    edx,DWORD PTR [edx+0xc]
-    mov    DWORD PTR [eax+0xc],edx
-    lea    eax,[esp+0x9c]
-    push    eax
-    call    R6GameServiceAddresses::CopySegmentedCursor
-    call    R6GameServiceAddresses::CopyByValueCursorArgumentsToScratch
-    mov    ecx,DWORD PTR [esi+0x1c]
-    mov    edx,DWORD PTR [esp+0x88]
-    add    ecx,0x4
-    add    edx,0x4
-    push    ecx
-    push    edx
-    mov    ecx,esi
-    call    R6GameServiceAddresses::ReleaseSegmentedPointerSlots
-    mov    eax,DWORD PTR [esp+0x7c]
-    mov    ecx,DWORD PTR [esp+0x80]
-    mov    edx,DWORD PTR [esp+0x84]
-    mov    DWORD PTR [edi],eax
-    mov    eax,DWORD PTR [esp+0x88]
-    mov    DWORD PTR [edi+0x4],ecx
-    mov    DWORD PTR [edi+0x8],edx
-    mov    DWORD PTR [edi+0xc],eax
-  Branch20:
-    mov    edi,DWORD PTR [esp+0x78]
-    push    ebp
-    push    edi
-    mov    ecx,esi
-    call    R6GameServiceAddresses::AddSegmentedDwordCursorOffset
-    mov    eax,edi
-    pop    edi
-    pop    esi
-    pop    ebp
-    pop    ebx
-    add    esp,0x64
-    ret    0x24
+  uint base = (uint)owner;
+  uint *firstWords = (uint *)&first;
+  uint *lastWords = (uint *)&last;
+  uint initialBlock = firstWords[1];
+  uint blockEnd = firstWords[2];
+  uint terminal = lastWords[0];
+  uint current = firstWords[0];
+  uint node = firstWords[3];
+  while (current != terminal) {
+    uint finishCurrent = *(uint *)(base + 0x14);
+    uint finishBlock = *(uint *)(base + 0x18);
+    uint finishEnd = *(uint *)(base + 0x1c);
+    uint finishNode = *(uint *)(base + 0x20);
+    if (current == finishCurrent) break;
+    void *object = *(void **)current;
+    if (object != 0) {
+      using DeleteABI = void *(__thiscall *)(void *,uint);
+      uint table = *(uint *)object;
+      (*(DeleteABI *)table)(object,1);
+    }
+    current += 4;
+    if (current == blockEnd) {
+      current = *(uint *)(node + 4);
+      node += 4;
+      blockEnd = current + 0x80;
+    }
   }
+  SegmentedWordCursor lastSnapshot,firstSnapshot;
+  uint *lastView = (uint *)&lastSnapshot;
+  uint lastBlock = lastWords[1];
+  uint lastEnd = lastWords[2];
+  uint lastNode = lastWords[3];
+  lastView[1] = lastBlock;
+  lastView[0] = terminal;
+  lastView[2] = lastEnd;
+  lastView[3] = lastNode;
+  using CopyABI = void *(__thiscall *)(void *,const uint *);
+  ((CopyABI)R6GameServiceAddresses::CopySegmentedCursor)(&firstSnapshot,firstWords);
+  uint *firstView = (uint *)&firstSnapshot;
+  uint descriptor = base + 4;
+  if (firstView[0] == *(uint *)descriptor && terminal == *(uint *)(descriptor + 0x10)) {
+    uint slot = *(uint *)(descriptor + 0xc) + 4;
+    uint finishNode = *(uint *)(descriptor + 0x1c);
+    using FreeABI = uint (__stdcall *)(void *,uint);
+    if (slot < finishNode) {
+      do {
+        void *block = *(void **)slot;
+        ((FreeABI)R6GameServiceAddresses::ReleaseMemoryIgnoringSize)(block,0x20);
+        finishNode = *(uint *)(descriptor + 0x1c);
+        slot += 4;
+      } while (slot < finishNode);
+    }
+    uint beginNode = *(uint *)(descriptor + 0xc);
+    finishNode = *(uint *)(descriptor + 0x1c);
+    if (beginNode != finishNode) {
+      void *block = *(void **)(descriptor + 0x14);
+      ((FreeABI)R6GameServiceAddresses::ReleaseMemoryIgnoringSize)(block,0x20);
+    }
+    uint value = *(uint *)descriptor;
+    *(uint *)(descriptor + 0x10) = value;
+    value = *(uint *)(descriptor + 4);
+    *(uint *)(descriptor + 0x14) = value;
+    value = *(uint *)(descriptor + 8);
+    *(uint *)(descriptor + 0x18) = value;
+    uint returnCurrent = *(uint *)descriptor;
+    value = *(uint *)(descriptor + 0xc);
+    *(uint *)(descriptor + 0x1c) = value;
+    SegmentedWordCursor *savedResult = result;
+    uint *out = (uint *)savedResult;
+    out[0] = returnCurrent;
+    value = *(uint *)(descriptor + 4);
+    out[1] = value;
+    value = *(uint *)(descriptor + 8);
+    out[2] = value;
+    value = *(uint *)(descriptor + 0xc);
+    out[3] = value;
+    return savedResult;
+  }
+  using DistanceABI = int (__thiscall *)(const uint *,const uint *);
+  uint erased = (uint)((DistanceABI)R6GameServiceAddresses::MeasureSegmentedDwordCursorDistance)(lastView,firstView);
+  uint prefix = (uint)((DistanceABI)R6GameServiceAddresses::MeasureSegmentedDwordCursorDistance)(
+      firstView,(const uint *)descriptor);
+  uint finishDescriptor = descriptor + 0x10;
+  lastWords[0] = prefix;
+  uint total = (uint)((DistanceABI)R6GameServiceAddresses::MeasureSegmentedDwordCursorDistance)(
+      (const uint *)finishDescriptor,(const uint *)descriptor);
+  int half = (int)(total - erased) / 2;
+  using AdvanceABI = uint (__thiscall *)(uint *,int);
+  using ScratchABI = uint (__stdcall *)(SegmentedWordCursor,SegmentedWordCursor);
+  using ReleaseABI = void (__stdcall *)(uint *,uint *);
+  if ((int)prefix < half) {
+    SegmentedWordCursor rangeEnd,prefixLast,prefixBegin;
+    uint *endView = (uint *)&rangeEnd;
+    endView[0] = lastView[0];
+    endView[1] = lastView[1];
+    endView[3] = lastView[3];
+    endView[2] = lastView[2];
+    ((CopyABI)R6GameServiceAddresses::CopySegmentedCursor)(&prefixLast,firstView);
+    ((CopyABI)R6GameServiceAddresses::CopySegmentedCursor)(&prefixBegin,(const uint *)descriptor);
+    byte tag = *(byte *)&result;
+    *(byte *)&first = tag;
+    SegmentedWordCursor moveDestination,moveLast,moveFirst,ignored;
+    ((CopyABI)R6GameServiceAddresses::CopySegmentedCursor)(&moveDestination,(const uint *)&rangeEnd);
+    ((CopyABI)R6GameServiceAddresses::CopySegmentedCursor)(&moveLast,(const uint *)&prefixLast);
+    ((CopyABI)R6GameServiceAddresses::CopySegmentedCursor)(&moveFirst,(const uint *)&prefixBegin);
+    using BackwardABI = SegmentedWordCursor *(__stdcall *)(
+        SegmentedWordCursor *,SegmentedWordCursor,SegmentedWordCursor,SegmentedWordCursor,uint);
+    ((BackwardABI)R6GameServiceAddresses::MoveSegmentedDwordRangeBackward)(
+        &ignored,moveFirst,moveLast,moveDestination,(uint)&first);
+    firstWords[0] = *(uint *)descriptor;
+    firstWords[1] = *(uint *)(descriptor + 4);
+    firstWords[2] = *(uint *)(descriptor + 8);
+    firstWords[3] = *(uint *)(descriptor + 0xc);
+    ((AdvanceABI)R6GameServiceAddresses::AdvanceSegmentedDwordCursor)(firstWords,(int)erased);
+    uint newCurrent = firstWords[0];
+    uint newBlock = firstWords[1];
+    uint newEnd = firstWords[2];
+    uint newNode = firstWords[3];
+    SegmentedWordCursor scratchLast,scratchFirst;
+    uint *scratchView = (uint *)&scratchLast;
+    scratchView[0] = newCurrent;
+    scratchView[1] = newBlock;
+    scratchView[2] = newEnd;
+    scratchView[3] = newNode;
+    ((CopyABI)R6GameServiceAddresses::CopySegmentedCursor)(&scratchFirst,(const uint *)descriptor);
+    ((ScratchABI)R6GameServiceAddresses::CopyByValueCursorArgumentsToScratch)(scratchFirst,scratchLast);
+    uint oldNode = *(uint *)(descriptor + 0xc);
+    ((ReleaseABI)R6GameServiceAddresses::ReleaseSegmentedPointerSlots)((uint *)oldNode,(uint *)newNode);
+    newEnd = firstWords[2];
+    *(uint *)descriptor = newCurrent;
+    *(uint *)(descriptor + 4) = newBlock;
+    prefix = lastWords[0];
+    *(uint *)(descriptor + 8) = newEnd;
+    *(uint *)(descriptor + 0xc) = newNode;
+  } else {
+    SegmentedWordCursor moveDestination,moveLast,moveFirst;
+    uint *moveView = (uint *)&moveDestination;
+    moveView[0] = firstView[0];
+    moveView[1] = firstView[1];
+    moveView[2] = firstView[2];
+    moveView[3] = firstView[3];
+    ((CopyABI)R6GameServiceAddresses::CopySegmentedCursor)(&moveLast,(const uint *)finishDescriptor);
+    ((CopyABI)R6GameServiceAddresses::CopySegmentedCursor)(&moveFirst,lastView);
+    using ForwardABI = SegmentedWordCursor *(__stdcall *)(
+        SegmentedWordCursor *,SegmentedWordCursor,SegmentedWordCursor,SegmentedWordCursor);
+    ((ForwardABI)R6GameServiceAddresses::CopySegmentedDwordRange)(&last,moveFirst,moveLast,moveDestination);
+    using SubtractABI = SegmentedWordCursor *(__thiscall *)(const uint *,SegmentedWordCursor *,int);
+    ((SubtractABI)R6GameServiceAddresses::SubtractSegmentedDwordCursorOffset)(
+        (const uint *)finishDescriptor,&first,(int)erased);
+    SegmentedWordCursor scratchLast,scratchFirst;
+    uint *scratchView = (uint *)&scratchLast;
+    scratchView[0] = *(uint *)finishDescriptor;
+    scratchView[1] = *(uint *)(finishDescriptor + 4);
+    scratchView[2] = *(uint *)(finishDescriptor + 8);
+    scratchView[3] = *(uint *)(finishDescriptor + 0xc);
+    ((CopyABI)R6GameServiceAddresses::CopySegmentedCursor)(&scratchFirst,firstWords);
+    ((ScratchABI)R6GameServiceAddresses::CopyByValueCursorArgumentsToScratch)(scratchFirst,scratchLast);
+    uint stopNode = *(uint *)(descriptor + 0x1c);
+    uint firstNode = firstWords[3];
+    stopNode += 4;
+    firstNode += 4;
+    ((ReleaseABI)R6GameServiceAddresses::ReleaseSegmentedPointerSlots)((uint *)firstNode,(uint *)stopNode);
+    uint newCurrent = firstWords[0];
+    uint newBlock = firstWords[1];
+    uint newEnd = firstWords[2];
+    *(uint *)finishDescriptor = newCurrent;
+    uint newNode = firstWords[3];
+    *(uint *)(finishDescriptor + 4) = newBlock;
+    *(uint *)(finishDescriptor + 8) = newEnd;
+    *(uint *)(finishDescriptor + 0xc) = newNode;
+  }
+  SegmentedWordCursor *savedResult = result;
+  using AddABI = SegmentedWordCursor *(__thiscall *)(const uint *,SegmentedWordCursor *,int);
+  ((AddABI)R6GameServiceAddresses::AddSegmentedDwordCursorOffset)(
+      (const uint *)descriptor,savedResult,(int)prefix);
+  return savedResult;
 }
 
 // Native virtual-table prefix: clPointerDeque_PAVclSegmentVTable

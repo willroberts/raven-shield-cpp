@@ -6,24 +6,13 @@
 // clSegment scalar deleting destructor: cache buffer10 before installing base vptr782d8; always free cached buffer.
 // Test CURRENT original lowBYTE delete flag bit0 after buffer release, optionally free cached receiver, return receiver/RET4.
 // R6GameService.dll @ 1005df90 : complete native control/access order and raw ABI retained.
-__declspec(naked) void * __thiscall DeleteClSegment(void *segment,uint deleteWord)
+void *__thiscall DeleteClSegment(void *segment,uint deleteWord)
 {
-  __asm {
-    push    esi
-    mov    esi,ecx
-    mov    eax,DWORD PTR [esi+0x10]
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clSegmentVTable
-    push    eax
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    test    BYTE PTR [esp+0x8],0x1
-    je    Branch1
-    push    esi
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch1:
-    mov    eax,esi
-    pop    esi
-    ret    0x4
-  }
+  void *buffer = *(void **)((uint)segment + 0x10);
+  *(uint *)segment = R6GameServiceAddresses::clSegmentVTable;
+  TailFreeThroughGlobalAllocator(buffer);
+  if ((*(byte *)&deleteWord & 1) != 0) TailFreeThroughGlobalAllocator(segment);
+  return segment;
 }
 
 // Second physical word gates optional offset782f8 at4; FIRST word supplies stored size14 and malloc request.

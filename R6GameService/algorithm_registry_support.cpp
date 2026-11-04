@@ -331,65 +331,47 @@ __declspec(naked) void * __stdcall CreateRegisteredPRNGAlgorithmThunk(
   __asm { jmp R6GameServiceAddresses::CreateRegisteredPRNGAlgorithm }
 }
 
-// Removes one owned PRNG value, then destroys and clears an empty registry; preserves raw EAX on every branch.
-// R6GameService.dll @ 10037db0 : one stdcall key word, RET4; count reload precedes the native null test.
-__declspec(naked) uint __stdcall ReleaseRegisteredPRNGAlgorithm(uint key)
+// Removes one value, reloads registry/count, then deletes an empty map. Count read precedes the late null test.
+// R6GameService.dll @ 10037db0 : one stdcall key word, RET4; void inferred from all retail callers.
+void __stdcall ReleaseRegisteredPRNGAlgorithm(uint key)
 {
-  __asm {
-    mov    ecx,dword ptr [GPRNGAlgorithmRegistry]
-    test   ecx,ecx
-    jz     release_done
-    mov    edx,dword ptr [esp+4]
-    mov    eax,dword ptr [ecx]
-    push   edx
-    call   dword ptr [eax+8]
-    mov    ecx,dword ptr [GPRNGAlgorithmRegistry]
-    mov    eax,dword ptr [ecx+8]
-    test   eax,eax
-    jnz    release_done
-    test   ecx,ecx
-    jz     clear_registry
-    mov    eax,dword ptr [ecx]
-    push   1
-    call   dword ptr [eax]
-  clear_registry:
-    mov    dword ptr [GPRNGAlgorithmRegistry],0
-  release_done:
-    ret    4
+  uint *registry = GPRNGAlgorithmRegistry;
+  if (registry == 0) return;
+  using RemoveABI = void (__thiscall *)(void *,uint);
+  uint table = registry[0];
+  (*(RemoveABI *)(table + 8))(registry,key);
+  registry = GPRNGAlgorithmRegistry;
+  uint count = registry[2];
+  if (count != 0) return;
+  if (registry != 0) {
+    using DeleteABI = void *(__thiscall *)(void *,uint);
+    table = registry[0];
+    (*(DeleteABI *)table)(registry,1);
   }
+  GPRNGAlgorithmRegistry = 0;
 }
 
-// Deletes all registry-owned PRNG objects and clears the slot; an absent registry leaves incoming EAX intact.
-// R6GameService.dll @ 10037df0 : no stack arguments, plain RET; otherwise forwards deleting-destructor EAX.
-__declspec(naked) uint __cdecl ClearPRNGAlgorithmRegistry(void)
+// Deletes all registry-owned values, then clears the global slot even if deletion replaced it.
+// R6GameService.dll @ 10037df0 : no stack arguments, plain RET; void inferred from all retail callers.
+void __cdecl ClearPRNGAlgorithmRegistry(void)
 {
-  __asm {
-    mov    ecx,dword ptr [GPRNGAlgorithmRegistry]
-    test   ecx,ecx
-    jz     clear_done
-    mov    eax,dword ptr [ecx]
-    push   1
-    call   dword ptr [eax]
-    mov    dword ptr [GPRNGAlgorithmRegistry],0
-  clear_done:
-    ret
-  }
+  uint *registry = GPRNGAlgorithmRegistry;
+  if (registry == 0) return;
+  using DeleteABI = void *(__thiscall *)(void *,uint);
+  uint table = registry[0];
+  (*(DeleteABI *)table)(registry,1);
+  GPRNGAlgorithmRegistry = 0;
 }
 
-// Clears all PRNG objects for a zero word, or tail-forwards a nonzero key to the individual release path.
-// R6GameService.dll @ 100373b0 : one stdcall word, RET4 or JMP10037db0; raw EAX forwarded.
-__declspec(naked) uint __stdcall ReleasePRNGAlgorithmOrRegistry(uint key)
+// Clears the registry for key zero, otherwise releases one registered value.
+// R6GameService.dll @ 100373b0 : one stdcall key word, RET4 or tail release; void inferred from all retail callers.
+void __stdcall ReleasePRNGAlgorithmOrRegistry(uint key)
 {
-  __asm {
-    mov    eax,dword ptr [esp+4]
-    test   eax,eax
-    jnz    release_key
-    call   R6GameServiceAddresses::ClearPRNGAlgorithmRegistry
-    ret    4
-  release_key:
-    mov    dword ptr [esp+4],eax
-    jmp    R6GameServiceAddresses::ReleaseRegisteredPRNGAlgorithm
+  if (key == 0) {
+    ClearPRNGAlgorithmRegistry();
+    return;
   }
+  ReleaseRegisteredPRNGAlgorithm(key);
 }
 
 // Releases the raw PRNG allocation when its constructor throws in factory state0.
@@ -528,65 +510,47 @@ __declspec(naked) void * __stdcall CreateRegisteredCryptoAlgorithmThunk(
   __asm { jmp R6GameServiceAddresses::CreateRegisteredCryptoAlgorithm }
 }
 
-// Removes one owned crypto value, then destroys and clears an empty registry; preserves raw EAX on every branch.
-// R6GameService.dll @ 10037fd0 : one stdcall key word, RET4; count reload precedes the native null test.
-__declspec(naked) uint __stdcall ReleaseRegisteredCryptoAlgorithm(uint key)
+// Removes one value, reloads registry/count, then deletes an empty map. Count read precedes the late null test.
+// R6GameService.dll @ 10037fd0 : one stdcall key word, RET4; void inferred from all retail callers.
+void __stdcall ReleaseRegisteredCryptoAlgorithm(uint key)
 {
-  __asm {
-    mov    ecx,dword ptr [GCryptoAlgorithmRegistry]
-    test   ecx,ecx
-    jz     release_done
-    mov    edx,dword ptr [esp+4]
-    mov    eax,dword ptr [ecx]
-    push   edx
-    call   dword ptr [eax+8]
-    mov    ecx,dword ptr [GCryptoAlgorithmRegistry]
-    mov    eax,dword ptr [ecx+8]
-    test   eax,eax
-    jnz    release_done
-    test   ecx,ecx
-    jz     clear_registry
-    mov    eax,dword ptr [ecx]
-    push   1
-    call   dword ptr [eax]
-  clear_registry:
-    mov    dword ptr [GCryptoAlgorithmRegistry],0
-  release_done:
-    ret    4
+  uint *registry = GCryptoAlgorithmRegistry;
+  if (registry == 0) return;
+  using RemoveABI = void (__thiscall *)(void *,uint);
+  uint table = registry[0];
+  (*(RemoveABI *)(table + 8))(registry,key);
+  registry = GCryptoAlgorithmRegistry;
+  uint count = registry[2];
+  if (count != 0) return;
+  if (registry != 0) {
+    using DeleteABI = void *(__thiscall *)(void *,uint);
+    table = registry[0];
+    (*(DeleteABI *)table)(registry,1);
   }
+  GCryptoAlgorithmRegistry = 0;
 }
 
-// Deletes all registry-owned crypto objects and clears the slot; an absent registry leaves incoming EAX intact.
-// R6GameService.dll @ 10038010 : no stack arguments, plain RET; otherwise forwards deleting-destructor EAX.
-__declspec(naked) uint __cdecl ClearCryptoAlgorithmRegistry(void)
+// Deletes all registry-owned values, then clears the global slot even if deletion replaced it.
+// R6GameService.dll @ 10038010 : no stack arguments, plain RET; void inferred from all retail callers.
+void __cdecl ClearCryptoAlgorithmRegistry(void)
 {
-  __asm {
-    mov    ecx,dword ptr [GCryptoAlgorithmRegistry]
-    test   ecx,ecx
-    jz     clear_done
-    mov    eax,dword ptr [ecx]
-    push   1
-    call   dword ptr [eax]
-    mov    dword ptr [GCryptoAlgorithmRegistry],0
-  clear_done:
-    ret
-  }
+  uint *registry = GCryptoAlgorithmRegistry;
+  if (registry == 0) return;
+  using DeleteABI = void *(__thiscall *)(void *,uint);
+  uint table = registry[0];
+  (*(DeleteABI *)table)(registry,1);
+  GCryptoAlgorithmRegistry = 0;
 }
 
-// Clears all crypto objects for a zero word, or tail-forwards a nonzero key to the individual release path.
-// R6GameService.dll @ 100373f0 : one stdcall word, RET4 or JMP10037fd0; raw EAX forwarded.
-__declspec(naked) uint __stdcall ReleaseCryptoAlgorithmOrRegistry(uint key)
+// Clears the registry for key zero, otherwise releases one registered value.
+// R6GameService.dll @ 100373f0 : one stdcall key word, RET4 or tail release; void inferred from all retail callers.
+void __stdcall ReleaseCryptoAlgorithmOrRegistry(uint key)
 {
-  __asm {
-    mov    eax,dword ptr [esp+4]
-    test   eax,eax
-    jnz    release_key
-    call   R6GameServiceAddresses::ClearCryptoAlgorithmRegistry
-    ret    4
-  release_key:
-    mov    dword ptr [esp+4],eax
-    jmp    R6GameServiceAddresses::ReleaseRegisteredCryptoAlgorithm
+  if (key == 0) {
+    ClearCryptoAlgorithmRegistry();
+    return;
   }
+  ReleaseRegisteredCryptoAlgorithm(key);
 }
 
 // Releases selector1's raw object allocation if its constructor throws in state1.
@@ -735,65 +699,47 @@ __declspec(naked) void * __stdcall CreateRegisteredPKCAlgorithmThunk(uint select
   __asm { jmp R6GameServiceAddresses::CreateRegisteredPKCAlgorithm }
 }
 
-// Removes one owned PKC value, then destroys and clears an empty registry; preserves raw EAX on every branch.
-// R6GameService.dll @ 100381e0 : one stdcall key word, RET4; count reload precedes the native null test.
-__declspec(naked) uint __stdcall ReleaseRegisteredPKCAlgorithm(uint key)
+// Removes one value, reloads registry/count, then deletes an empty map. Count read precedes the late null test.
+// R6GameService.dll @ 100381e0 : one stdcall key word, RET4; void inferred from all retail callers.
+void __stdcall ReleaseRegisteredPKCAlgorithm(uint key)
 {
-  __asm {
-    mov    ecx,dword ptr [GPKCAlgorithmRegistry]
-    test   ecx,ecx
-    jz     release_done
-    mov    edx,dword ptr [esp+4]
-    mov    eax,dword ptr [ecx]
-    push   edx
-    call   dword ptr [eax+8]
-    mov    ecx,dword ptr [GPKCAlgorithmRegistry]
-    mov    eax,dword ptr [ecx+8]
-    test   eax,eax
-    jnz    release_done
-    test   ecx,ecx
-    jz     clear_registry
-    mov    eax,dword ptr [ecx]
-    push   1
-    call   dword ptr [eax]
-  clear_registry:
-    mov    dword ptr [GPKCAlgorithmRegistry],0
-  release_done:
-    ret    4
+  uint *registry = GPKCAlgorithmRegistry;
+  if (registry == 0) return;
+  using RemoveABI = void (__thiscall *)(void *,uint);
+  uint table = registry[0];
+  (*(RemoveABI *)(table + 8))(registry,key);
+  registry = GPKCAlgorithmRegistry;
+  uint count = registry[2];
+  if (count != 0) return;
+  if (registry != 0) {
+    using DeleteABI = void *(__thiscall *)(void *,uint);
+    table = registry[0];
+    (*(DeleteABI *)table)(registry,1);
   }
+  GPKCAlgorithmRegistry = 0;
 }
 
-// Deletes all registry-owned PKC objects and clears the slot; an absent registry leaves incoming EAX intact.
-// R6GameService.dll @ 10038220 : no stack arguments, plain RET; otherwise forwards deleting-destructor EAX.
-__declspec(naked) uint __cdecl ClearPKCAlgorithmRegistry(void)
+// Deletes all registry-owned values, then clears the global slot even if deletion replaced it.
+// R6GameService.dll @ 10038220 : no stack arguments, plain RET; void inferred from all retail callers.
+void __cdecl ClearPKCAlgorithmRegistry(void)
 {
-  __asm {
-    mov    ecx,dword ptr [GPKCAlgorithmRegistry]
-    test   ecx,ecx
-    jz     clear_done
-    mov    eax,dword ptr [ecx]
-    push   1
-    call   dword ptr [eax]
-    mov    dword ptr [GPKCAlgorithmRegistry],0
-  clear_done:
-    ret
-  }
+  uint *registry = GPKCAlgorithmRegistry;
+  if (registry == 0) return;
+  using DeleteABI = void *(__thiscall *)(void *,uint);
+  uint table = registry[0];
+  (*(DeleteABI *)table)(registry,1);
+  GPKCAlgorithmRegistry = 0;
 }
 
-// Clears all PKC objects for a zero word, or tail-forwards a nonzero key to the individual release path.
-// R6GameService.dll @ 10037440 : one stdcall word, RET4 or JMP100381e0; raw EAX forwarded.
-__declspec(naked) uint __stdcall ReleasePKCAlgorithmOrRegistry(uint key)
+// Clears the registry for key zero, otherwise releases one registered value.
+// R6GameService.dll @ 10037440 : one stdcall key word, RET4 or tail release; void inferred from all retail callers.
+void __stdcall ReleasePKCAlgorithmOrRegistry(uint key)
 {
-  __asm {
-    mov    eax,dword ptr [esp+4]
-    test   eax,eax
-    jnz    release_key
-    call   R6GameServiceAddresses::ClearPKCAlgorithmRegistry
-    ret    4
-  release_key:
-    mov    dword ptr [esp+4],eax
-    jmp    R6GameServiceAddresses::ReleaseRegisteredPKCAlgorithm
+  if (key == 0) {
+    ClearPKCAlgorithmRegistry();
+    return;
   }
+  ReleaseRegisteredPKCAlgorithm(key);
 }
 
 // Releases the raw PKC object allocation when its constructor throws in state0.

@@ -122,51 +122,33 @@ __declspec(naked) void *__thiscall ConstructSharedCryptoContext(void *owner,uint
 }
 
 // Decrement shared count modulo32 BEFORE cleanup; free current buffer, clear8/c, release current handle4 without nulling.
-// Recheck live count for global table/crypto/PKC/PRNG shutdown; handles stay populated, no local guard/rollback. Raw EAX.
-// R6GameService.dll @ 1005c2c0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall DestroySharedCryptoContext(void *owner)
+// Recheck live count for global table/crypto/PKC/PRNG shutdown; handles stay populated, no local guard/rollback.
+// R6GameService.dll @ 1005c2c0 : void inferred from its sole retail caller, which discards EAX.
+void __fastcall DestroySharedCryptoContext(void *owner)
 {
-  __asm {
-    mov    edx,DWORD PTR ds:0x10094598
-    push    esi
-    mov    esi,ecx
-    dec    edx
-    mov    DWORD PTR ds:0x10094598,edx
-    mov    eax,DWORD PTR [esi+0x8]
-    test    eax,eax
-    je    Branch4
-    push    eax
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch4:
-    mov    eax,DWORD PTR [esi+0x4]
-    mov    DWORD PTR [esi+0x8],0x0
-    test    eax,eax
-    mov    DWORD PTR [esi+0xc],0x0
-    je    Branch5
-    push    eax
-    call    R6GameServiceAddresses::ReleaseCryptoAlgorithmOrRegistry
-  Branch5:
-    mov    eax,ds:0x10094598
-    test    eax,eax
-    jne    Branch6
-    push    R6GameServiceAddresses::TextGlobalUninitialization
-    call    R6GameServiceAddresses::list_node_support_NoOp
-    add    esp,0x4
-    mov    ecx,esi
-    call    R6GameServiceAddresses::FreeSharedContextBuffers
-    mov    eax,ds:0x10094594
-    push    eax
-    call    R6GameServiceAddresses::ReleaseCryptoAlgorithmOrRegistry
-    mov    ecx,DWORD PTR ds:0x1009458c
-    push    ecx
-    call    R6GameServiceAddresses::ReleasePKCAlgorithmOrRegistry
-    mov    edx,DWORD PTR ds:0x10094590
-    push    edx
-    call    R6GameServiceAddresses::ReleasePRNGAlgorithmOrRegistry
-  Branch6:
-    pop    esi
-    ret
-  }
+  uint count = *(uint *)0x10094598 - 1;
+  uint base = (uint)owner;
+  *(uint *)0x10094598 = count;
+  void *buffer = *(void **)(base + 8);
+  if (buffer != 0) TailFreeThroughGlobalAllocator(buffer);
+  uint handle = *(uint *)(base + 4);
+  *(uint *)(base + 8) = 0;
+  *(uint *)(base + 0xc) = 0;
+  using ReleaseABI = void (__stdcall *)(uint);
+  if (handle != 0) ((ReleaseABI)R6GameServiceAddresses::ReleaseCryptoAlgorithmOrRegistry)(handle);
+  uint result = *(uint *)0x10094598;
+  if (result != 0) return;
+  using EmptyABI = void (__cdecl *)(const char *);
+  ((EmptyABI)R6GameServiceAddresses::list_node_support_NoOp)(
+      (const char *)R6GameServiceAddresses::TextGlobalUninitialization);
+  using TablesABI = uint (__cdecl *)(void);
+  ((TablesABI)R6GameServiceAddresses::FreeSharedContextBuffers)();
+  uint crypto = *(uint *)0x10094594;
+  ((ReleaseABI)R6GameServiceAddresses::ReleaseCryptoAlgorithmOrRegistry)(crypto);
+  uint pkc = *(uint *)0x1009458c;
+  ((ReleaseABI)R6GameServiceAddresses::ReleasePKCAlgorithmOrRegistry)(pkc);
+  uint prng = *(uint *)0x10094590;
+  ((ReleaseABI)R6GameServiceAddresses::ReleasePRNGAlgorithmOrRegistry)(prng);
 }
 
 // Free prior tables, publish all four allocations28/104/2c4/8 without early NULL exit, then test live pointers and return AL.
@@ -210,42 +192,21 @@ __declspec(naked) uint __cdecl InitializeSharedServiceTables(void)
 // Reload/free each CURRENT shared table in order, then clear all four slots only after every release returns.
 // A failed release leaves earlier slots dangling; never retry or invent per-slot early nulling. Raw final EAX.
 // R6GameService.dll @ 1005c570 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __cdecl FreeSharedContextBuffers(void)
+uint __cdecl FreeSharedContextBuffers(void)
 {
-  __asm {
-    mov    eax,ds:R6GameServiceAddresses::GCryptoHeaderTable
-    push    esi
-    xor    esi,esi
-    cmp    eax,esi
-    je    Branch8
-    push    eax
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch8:
-    mov    eax,ds:R6GameServiceAddresses::GCryptoKeyBuffer
-    cmp    eax,esi
-    je    Branch9
-    push    eax
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch9:
-    mov    eax,ds:R6GameServiceAddresses::GCryptoSecondaryKeyBuffer
-    cmp    eax,esi
-    je    Branch10
-    push    eax
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch10:
-    mov    eax,ds:R6GameServiceAddresses::GCryptoMetadata
-    cmp    eax,esi
-    je    Branch11
-    push    eax
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch11:
-    mov    DWORD PTR ds:R6GameServiceAddresses::GCryptoHeaderTable,esi
-    mov    DWORD PTR ds:R6GameServiceAddresses::GCryptoKeyBuffer,esi
-    mov    DWORD PTR ds:R6GameServiceAddresses::GCryptoSecondaryKeyBuffer,esi
-    mov    DWORD PTR ds:R6GameServiceAddresses::GCryptoMetadata,esi
-    pop    esi
-    ret
-  }
+  void *header = *(void **)R6GameServiceAddresses::GCryptoHeaderTable;
+  if (header != 0) TailFreeThroughGlobalAllocator(header);
+  void *key = *(void **)R6GameServiceAddresses::GCryptoKeyBuffer;
+  if (key != 0) TailFreeThroughGlobalAllocator(key);
+  void *secondary = *(void **)R6GameServiceAddresses::GCryptoSecondaryKeyBuffer;
+  if (secondary != 0) TailFreeThroughGlobalAllocator(secondary);
+  uint result = *(uint *)R6GameServiceAddresses::GCryptoMetadata;
+  if (result != 0) result = TailFreeThroughGlobalAllocator((void *)result);
+  *(uint *)R6GameServiceAddresses::GCryptoHeaderTable = 0;
+  *(uint *)R6GameServiceAddresses::GCryptoKeyBuffer = 0;
+  *(uint *)R6GameServiceAddresses::GCryptoSecondaryKeyBuffer = 0;
+  *(uint *)R6GameServiceAddresses::GCryptoMetadata = 0;
+  return result;
 }
 
 // Time first; unsigned sizes below16 return timer EAX with AL0. Else free old, allocate/publish requested buffer/size,
@@ -417,7 +378,7 @@ const R6GameServiceNative::UnwindEntry ConstructSharedCryptoContextUnwindMap[1] 
 };
 
 // Literal native empty-base map/FuncInfo does not own published crypto/table/buffer resources.
-// R6GameService.dll data @ 100844cc : native storage identity retained.
+// R6GameService.dll data @ 100844d4 : native storage identity retained.
 const R6GameServiceNative::FuncInfo ConstructSharedCryptoContextExceptionInfo = {
   0x19930520,
   0x1,
@@ -537,93 +498,61 @@ __declspec(naked) uint __thiscall ReplaceSharedByteBuffer(void *helper,const Buf
 // Selector2 tries instance+4; other nonzero selectors try shared94594; zero/null falls back to mode945ac==1 instance.
 // Rewrite original five stack words to handle/word0/word1/word2/word3, then tail-dispatch slot+0c. No local EH.
 // R6GameService.dll @ 1005c3b0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall DispatchThroughSelectedSlot0C(
+uint __thiscall DispatchThroughSelectedSlot0C(
     void *selectorState,uint word0,uint word1,uint word2,uint word3,uint selector)
 {
-  __asm {
-    mov    eax,DWORD PTR [esp+0x14]
-    mov    edx,DWORD PTR ds:0x10094594
-    sub    eax,0x0
-    je    Branch21
-    dec    eax
-    je    Branch19
-    dec    eax
-    jne    Branch19
-    mov    eax,DWORD PTR [ecx+0x4]
-    jmp    Branch20
-  Branch19:
-    mov    eax,edx
-  Branch20:
-    test    eax,eax
-    jne    Branch23
-  Branch21:
-    mov    eax,ds:0x100945ac
-    sub    eax,0x0
-    je    Branch22
-    dec    eax
-    jne    Branch22
-    mov    eax,DWORD PTR [ecx+0x4]
-    jmp    Branch23
-  Branch22:
-    mov    eax,edx
-  Branch23:
-    mov    ecx,DWORD PTR [esp+0x10]
-    mov    edx,DWORD PTR [esp+0xc]
-    mov    DWORD PTR [esp+0x14],ecx
-    mov    ecx,DWORD PTR [esp+0x8]
-    mov    DWORD PTR [esp+0x10],edx
-    mov    edx,DWORD PTR [esp+0x4]
-    mov    DWORD PTR [esp+0xc],ecx
-    mov    DWORD PTR [esp+0x8],edx
-    mov    DWORD PTR [esp+0x4],eax
-    jmp    R6GameServiceAddresses::EncodeCryptoBufferThunk
+  uint requested = selector;
+  uint shared = *(uint *)0x10094594;
+  uint selected = 0;
+  if (requested != 0) {
+    selected = requested == 2 ? *(uint *)((uint)selectorState + 4) : shared;
   }
+  if (selected == 0) {
+    uint mode = *(uint *)0x100945ac;
+    selected = mode == 1 ? *(uint *)((uint)selectorState + 4) : shared;
+  }
+  uint last = word3;
+  uint third = word2;
+  selector = last;
+  uint second = word1;
+  word3 = third;
+  uint first = word0;
+  word2 = second;
+  word1 = first;
+  word0 = selected;
+  using DispatchABI = uint (__stdcall *)(void *,const byte *,uint,byte *,uint *);
+  return ((DispatchABI)R6GameServiceAddresses::EncodeCryptoBufferThunk)(
+      (void *)word0,(const byte *)word1,word2,(byte *)word3,(uint *)selector);
 }
 
 // Selector2 tries instance+4; other nonzero selectors try shared94594; zero/null falls back to mode945ac==1 instance.
 // Rewrite original five stack words to handle/word0/word1/word2/word3, then tail-dispatch slot+10. No local EH.
 // R6GameService.dll @ 1005c410 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall DispatchThroughSelectedSlot10(
+uint __thiscall DispatchThroughSelectedSlot10(
     void *selectorState,uint word0,uint word1,uint word2,uint word3,uint selector)
 {
-  __asm {
-    mov    eax,DWORD PTR [esp+0x14]
-    mov    edx,DWORD PTR ds:0x10094594
-    sub    eax,0x0
-    je    Branch26
-    dec    eax
-    je    Branch24
-    dec    eax
-    jne    Branch24
-    mov    eax,DWORD PTR [ecx+0x4]
-    jmp    Branch25
-  Branch24:
-    mov    eax,edx
-  Branch25:
-    test    eax,eax
-    jne    Branch28
-  Branch26:
-    mov    eax,ds:0x100945ac
-    sub    eax,0x0
-    je    Branch27
-    dec    eax
-    jne    Branch27
-    mov    eax,DWORD PTR [ecx+0x4]
-    jmp    Branch28
-  Branch27:
-    mov    eax,edx
-  Branch28:
-    mov    ecx,DWORD PTR [esp+0x10]
-    mov    edx,DWORD PTR [esp+0xc]
-    mov    DWORD PTR [esp+0x14],ecx
-    mov    ecx,DWORD PTR [esp+0x8]
-    mov    DWORD PTR [esp+0x10],edx
-    mov    edx,DWORD PTR [esp+0x4]
-    mov    DWORD PTR [esp+0xc],ecx
-    mov    DWORD PTR [esp+0x8],edx
-    mov    DWORD PTR [esp+0x4],eax
-    jmp    R6GameServiceAddresses::DecodeCryptoBufferThunk
+  uint requested = selector;
+  uint shared = *(uint *)0x10094594;
+  uint selected = 0;
+  if (requested != 0) {
+    selected = requested == 2 ? *(uint *)((uint)selectorState + 4) : shared;
   }
+  if (selected == 0) {
+    uint mode = *(uint *)0x100945ac;
+    selected = mode == 1 ? *(uint *)((uint)selectorState + 4) : shared;
+  }
+  uint last = word3;
+  uint third = word2;
+  selector = last;
+  uint second = word1;
+  word3 = third;
+  uint first = word0;
+  word2 = second;
+  word1 = first;
+  word0 = selected;
+  using DispatchABI = uint (__stdcall *)(void *,const byte *,uint,byte *,uint *);
+  return ((DispatchABI)R6GameServiceAddresses::DecodeCryptoBufferThunk)(
+      (void *)word0,(const byte *)word1,word2,(byte *)word3,(uint *)selector);
 }
 
 // Copy65 DWORDs forward from the shared table945a0; source is captured once, overlapping ranges retain REP order.

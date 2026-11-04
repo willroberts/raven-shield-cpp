@@ -1,125 +1,204 @@
 #include "native_addresses.h"
 #include "native_records.h"
 
+// Physical six-word descriptor argument; this C++ interface name is descriptive.
+struct NativeDescriptorArgument24 { undefined4 words[6]; };
+
+// Inferred seven-state guard; each completed action exposes the next current owner/cleanup slot.
+struct LobbyConnectionDestructionCleanup {
+  void *savedOwner;
+  void *savedSlot;
+  int state;
+  // Retry the active tree/header or drain the remaining list storage, then destroy the current saved base.
+  ~LobbyConnectionDestructionCleanup() noexcept(false)
+  {
+    using MethodABI = uint (__fastcall *)(void *);
+    while (state >= 0) {
+      switch (state) {
+      case 0:
+        state = -1;
+        ((MethodABI)R6GameServiceAddresses::CConnectionListDestroy)(savedOwner);
+        break;
+      case 1:
+        state = 0;
+        ((MethodABI)R6GameServiceAddresses::ReleaseNodesAndSentinelThunk)((void *)((uint)savedOwner + 0x9c));
+        break;
+      case 2:
+        state = 1;
+        ((MethodABI)R6GameServiceAddresses::ReleaseNodesAndSentinelThunk)((void *)((uint)savedOwner + 0xa4));
+        break;
+      case 3:
+        state = 2;
+        ((MethodABI)R6GameServiceAddresses::thunk_ReleaseIndexedTree)((void *)((uint)savedOwner + 0xac));
+        break;
+      case 4:
+        state = 2;
+        ((MethodABI)R6GameServiceAddresses::ReleaseFirstWordBuffer)(savedSlot);
+        break;
+      case 5:
+      case 6: {
+        state = state == 5 ? 1 : 0;
+        using EmptyABI = void (__fastcall *)(void *);
+        ((EmptyABI)R6GameServiceAddresses::list_node_support_NoOp)(savedSlot);
+        break;
+      }
+      }
+    }
+  }
+};
+
 // CLobbySrvConnectionList: primary78064 -> COL7a0ec(offset0) -> type90354, .?AVCLobbySrvConnectionList@@.
 // Constructor52d60 and typed allocation43de0 -> cached receiver+10 -> caller53090 -> producer54900 agree.
+
+// Inferred constructor locals: construction bitsS-18, saved ownerS-14 and current memberS-10.
+struct LobbyConnectionConstructionLocals {
+  uint bits;
+  void *savedOwner;
+  void *savedMember;
+};
+
+// Releases completed members and the base according to the active construction stage, using current saved slots.
+struct LobbyConnectionConstructionCleanup {
+  LobbyConnectionConstructionLocals *frame;
+  uint *contextWord;
+  int state;
+  bool armed;
+  // Preserve the partial-construction gaps: only states4/7 own full lists, and state10 owns the tree header.
+  ~LobbyConnectionConstructionCleanup() noexcept(false)
+  {
+    if (!armed) return;
+    using EmptyABI = void (__fastcall *)(void *);
+    using ReleaseABI = uint (__fastcall *)(void *);
+    while (state >= 0) {
+      switch (state) {
+        case 0:
+          state = -1;
+          if ((frame->bits & 1) != 0)
+            ((EmptyABI)R6GameServiceAddresses::list_node_support_NoOp)((void *)((uint)frame->savedOwner + 0x1dc));
+          break;
+        case 1:
+          state = 0;
+          CConnectionListDestroy(frame->savedOwner);
+          break;
+        case 2:
+          state = 1;
+          if ((frame->bits & 2) != 0)
+            ((EmptyABI)R6GameServiceAddresses::list_node_support_NoOp)((void *)((uint)frame->savedMember + 8));
+          break;
+        case 3:
+          state = 2;
+          ((EmptyABI)R6GameServiceAddresses::list_node_support_NoOp)(contextWord);
+          break;
+        case 4:
+          state = 1;
+          ((ReleaseABI)R6GameServiceAddresses::ReleaseNodesAndSentinelThunk)(
+              (void *)((uint)frame->savedOwner + 0x9c));
+          break;
+        case 5:
+          state = 4;
+          if ((frame->bits & 4) != 0)
+            ((EmptyABI)R6GameServiceAddresses::list_node_support_NoOp)((void *)((uint)frame->savedMember + 8));
+          break;
+        case 6:
+          state = 5;
+          ((EmptyABI)R6GameServiceAddresses::list_node_support_NoOp)(contextWord);
+          break;
+        case 7:
+          state = 4;
+          ((ReleaseABI)R6GameServiceAddresses::ReleaseNodesAndSentinelThunk)(
+              (void *)((uint)frame->savedOwner + 0xa4));
+          break;
+        case 8:
+          state = 7;
+          if ((frame->bits & 8) != 0)
+            ((EmptyABI)R6GameServiceAddresses::list_node_support_NoOp)((void *)((uint)frame->savedMember + 0x10));
+          break;
+        case 9:
+          state = 8;
+          ((EmptyABI)R6GameServiceAddresses::list_node_support_NoOp)(contextWord);
+          break;
+        case 10:
+          state = 9;
+          ReleaseFirstWordBuffer(frame->savedMember);
+          break;
+      }
+    }
+  }
+};
 
 // Construct base with flag0, two empty12-byte lists and an168-byte indexed-tree header, then initialize owner fields.
 // ENTRY ESP S: construction bitsS-18/savedownerS-14/currentmemberS-10/stateS-4. Initial full flag controls table+8;
 // late current flag lowBYTE becomes tree+8, and late context DWORD becomes owner+1d0. RET8/owner EAX.
 // Preserve untouched header/padding bytes, two129-byte zero buffers, eleven-state cleanup and no NULL repair.
 // R6GameService.dll @ 10052d60 : complete native control/access order and raw ABI retained.
-__declspec(naked) void *__thiscall CLobbySrvConnectionListConstruct(void *owner,uint context,uint initializeVirtualBase)
+void * __thiscall CLobbySrvConnectionListConstruct(void *owner,uint context,uint initializeVirtualBase)
 {
-  __asm {
-    push   0xffffffff
-    push   R6GameServiceAddresses::SelectLobbyConnectionListCtorEH
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0xc
-    push   ebx
-    xor    ebx,ebx
-    mov    DWORD PTR [esp+0x4],ebx
-    mov    eax,DWORD PTR [esp+0x24]
-    push   esi
-    mov    esi,ecx
-    cmp    eax,ebx
-    push   edi
-    mov    DWORD PTR [esp+0x10],esi
-    je     Branch1
-    mov    DWORD PTR [esi+0x8],0x1007808c
-    mov    DWORD PTR [esp+0xc],0x1
-    mov    DWORD PTR [esp+0x20],ebx
-  Branch1:
-    push   ebx
-    mov    ecx,esi
-    call   R6GameServiceAddresses::CConnectionListConstruct
-    mov    eax,DWORD PTR [esp+0xc]
-    lea    edi,[esi+0x9c]
-    or     al,0x2
-    mov    DWORD PTR [esp+0x14],edi
-    mov    DWORD PTR [edi+0x4],0x10078084
-    mov    DWORD PTR [esp+0xc],eax
-    lea    eax,[esp+0x2c]
-    push   ebx
-    push   eax
-    mov    ecx,edi
-    mov    DWORD PTR [esp+0x28],0x3
-    call   R6GameServiceAddresses::StoreFirstWordIgnoringContext
-    push   0xc
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    DWORD PTR [eax],eax
-    mov    DWORD PTR [eax+0x4],eax
-    mov    DWORD PTR [edi],eax
-    mov    ecx,DWORD PTR [esp+0xc]
-    lea    edi,[esi+0xa4]
-    or     ecx,0x4
-    mov    DWORD PTR [esp+0x14],edi
-    mov    DWORD PTR [edi+0x4],0x10078084
-    mov    DWORD PTR [esp+0xc],ecx
-    lea    ecx,[esp+0x2c]
-    push   ebx
-    push   ecx
-    mov    ecx,edi
-    mov    DWORD PTR [esp+0x28],0x6
-    call   R6GameServiceAddresses::StoreFirstWordIgnoringContext
-    push   0xc
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    DWORD PTR [eax],eax
-    mov    DWORD PTR [eax+0x4],eax
-    mov    DWORD PTR [edi],eax
-    mov    eax,DWORD PTR [esp+0xc]
-    lea    edi,[esi+0xac]
-    or     al,0x8
-    mov    DWORD PTR [esp+0x14],edi
-    mov    DWORD PTR [edi+0xc],0x1007807c
-    mov    DWORD PTR [esp+0xc],eax
-    lea    edx,[esp+0x2c]
-    push   ebx
-    push   edx
-    mov    ecx,edi
-    mov    DWORD PTR [esp+0x28],0x9
-    call   R6GameServiceAddresses::StoreFirstWordIgnoringContext
-    push   0xa8
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    DWORD PTR [edi],eax
-    mov    al,BYTE PTR [esp+0x2c]
-    mov    ecx,edi
-    mov    BYTE PTR [esp+0x20],0xa
-    mov    DWORD PTR [edi+0x4],ebx
-    mov    BYTE PTR [edi+0x8],al
-    call   R6GameServiceAddresses::InitializeServiceTreeHeader
-    mov    ecx,DWORD PTR [esp+0x28]
-    lea    eax,[esi+0xbc]
-    xor    edx,edx
-    mov    DWORD PTR [esi],R6GameServiceAddresses::CLobbySrvConnectionListVTable
-    mov    DWORD PTR [esi+0x1d0],ecx
-    mov    BYTE PTR [esi+0x1d8],bl
-    mov    DWORD PTR [eax],edx
-    mov    ecx,0x20
-    lea    edi,[esi+0xcc]
-    mov    DWORD PTR [eax+0x4],edx
-    mov    DWORD PTR [eax+0x8],edx
-    mov    DWORD PTR [eax+0xc],edx
-    xor    eax,eax
-    rep    stos DWORD PTR es:[edi],eax
-    stos   BYTE PTR es:[edi],al
-    mov    ecx,0x20
-    xor    eax,eax
-    lea    edi,[esi+0x14d]
-    rep    stos DWORD PTR es:[edi],eax
-    mov    ecx,DWORD PTR [esp+0x18]
-    stos   BYTE PTR es:[edi],al
-    mov    DWORD PTR [esi+0x1d4],ebx
-    mov    eax,esi
-    pop    edi
-    pop    esi
-    pop    ebx
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x18
-    ret    0x8
+  LobbyConnectionConstructionLocals frame;
+  LobbyConnectionConstructionCleanup cleanup{&frame,&initializeVirtualBase,-1,true};
+  frame.bits = 0;
+  uint initialize = initializeVirtualBase;
+  uint base = (uint)owner;
+  frame.savedOwner = owner;
+  if (initialize != 0) {
+    *(uint *)(base + 8) = 0x1007808c;
+    frame.bits = 1;
+    cleanup.state = 0;
   }
+  CConnectionListConstruct(owner,0);
+  uint bits = frame.bits;
+  uint member = base + 0x9c;
+  bits |= 2;
+  frame.savedMember = (void *)member;
+  *(uint *)(member + 4) = 0x10078084;
+  frame.bits = bits;
+  cleanup.state = 3;
+  StoreFirstWordIgnoringContext((void *)member,(uint)&initializeVirtualBase,0);
+  uint head = (uint)AllocateGameServiceBytes(12);
+  *(uint *)head = head;
+  *(uint *)(head + 4) = head;
+  *(uint *)member = head;
+  bits = frame.bits;
+  member = base + 0xa4;
+  bits |= 4;
+  frame.savedMember = (void *)member;
+  *(uint *)(member + 4) = 0x10078084;
+  frame.bits = bits;
+  cleanup.state = 6;
+  StoreFirstWordIgnoringContext((void *)member,(uint)&initializeVirtualBase,0);
+  head = (uint)AllocateGameServiceBytes(12);
+  *(uint *)head = head;
+  *(uint *)(head + 4) = head;
+  *(uint *)member = head;
+  bits = frame.bits;
+  member = base + 0xac;
+  bits |= 8;
+  frame.savedMember = (void *)member;
+  *(uint *)(member + 0xc) = 0x1007807c;
+  frame.bits = bits;
+  cleanup.state = 9;
+  StoreFirstWordIgnoringContext((void *)member,(uint)&initializeVirtualBase,0);
+  head = (uint)AllocateGameServiceBytes(168);
+  *(uint *)member = head;
+  byte treeFlag = (byte)initializeVirtualBase;
+  cleanup.state = 10;
+  *(uint *)(member + 4) = 0;
+  *(byte *)(member + 8) = treeFlag;
+  InitializeServiceTreeHeader((void *)member);
+  uint currentContext = context;
+  *(uint *)base = R6GameServiceAddresses::CLobbySrvConnectionListVTable;
+  *(uint *)(base + 0x1d0) = currentContext;
+  *(byte *)(base + 0x1d8) = 0;
+  *(uint *)(base + 0xbc) = 0;
+  *(uint *)(base + 0xc0) = 0;
+  *(uint *)(base + 0xc4) = 0;
+  *(uint *)(base + 0xc8) = 0;
+  for (uint index = 0; index != 32; ++index) *(uint *)(base + 0xcc + index * 4) = 0;
+  *(byte *)(base + 0x14c) = 0;
+  for (uint index = 0; index != 32; ++index) *(uint *)(base + 0x14d + index * 4) = 0;
+  *(byte *)(base + 0x1cd) = 0;
+  *(uint *)(base + 0x1d4) = 0;
+  cleanup.armed = false;
+  return owner;
 }
 
 // If construction bit0 is set, tail the saved owner+1dc context to the genuine empty helper.
@@ -287,8 +366,7 @@ const R6GameServiceNative::UnwindEntry CLobbySrvConnectionListConstructUnwindMap
   {0x9, R6GameServiceAddresses::CLobbySrvConnectionListConstructUnwind11},
 };
 
-// R6GameService.dll data @ 10083760: exact constructor unwind map or FuncInfo.
-// R6GameService.dll data @ 10083708 : native storage identity retained.
+// R6GameService.dll data @ 10083760 : exact constructor FuncInfo.
 const R6GameServiceNative::FuncInfo CLobbySrvConnectionListConstructExceptionInfo = {
   0x19930520,
   0xb,
@@ -301,21 +379,14 @@ const R6GameServiceNative::FuncInfo CLobbySrvConnectionListConstructExceptionInf
 
 // Destroy the class, then test CURRENT deleting flag lowBYTE/bit0; optionally free receiver and return it. RET4.
 // R6GameService.dll @ 10052ee0 : complete native control/access order and raw ABI retained.
-__declspec(naked) void *__thiscall CLobbySrvConnectionListDelete(void *owner,uint deletingFlags)
+void *__thiscall CLobbySrvConnectionListDelete(void *owner,uint deletingFlags)
 {
-  __asm {
-    push   esi
-    mov    esi,ecx
-    call   R6GameServiceAddresses::CLobbySrvConnectionListDestroy
-    test   BYTE PTR [esp+0x8],0x1
-    je     Branch6
-    push   esi
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch6:
-    mov    eax,esi
-    pop    esi
-    ret    0x4
-  }
+  void *savedOwner = owner;
+  using DestroyABI = uint (__fastcall *)(void *);
+  ((DestroyABI)R6GameServiceAddresses::CLobbySrvConnectionListDestroy)(savedOwner);
+  byte flags = *(byte *)&deletingFlags;
+  if ((flags & 1) != 0) TailFreeThroughGlobalAllocator(savedOwner);
+  return savedOwner;
 }
 
 // Restore the class table, clear owned lists and base range, then release indexed tree and list headers before base.
@@ -323,176 +394,114 @@ __declspec(naked) void *__thiscall CLobbySrvConnectionListDelete(void *owner,uin
 // State4 may retry current tree header; states5/6 forward empty context without retrying the respective list.
 // Preserve physical three-word virtual range call, current head reloads, dangling slots and final base raw EAX.
 // R6GameService.dll @ 10052f00 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall CLobbySrvConnectionListDestroy(void *owner)
+uint __fastcall CLobbySrvConnectionListDestroy(void *owner)
 {
-  __asm {
-    push   0xffffffff
-    push   R6GameServiceAddresses::SelectLobbyConnectionListDestroyEH
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0xc
-    push   ebx
-    push   esi
-    mov    esi,ecx
-    push   edi
-    mov    DWORD PTR [esp+0xc],esi
-    mov    DWORD PTR [esi],R6GameServiceAddresses::CLobbySrvConnectionListVTable
-    mov    DWORD PTR [esp+0x20],0x3
-    call   R6GameServiceAddresses::ClearOwnedList9c
-    mov    ecx,esi
-    call   R6GameServiceAddresses::ClearOwnedLista4
-    mov    edx,DWORD PTR [esi+0x4]
-    push   ecx
-    lea    ecx,[esi+0x4]
-    mov    eax,esp
-    push   ecx
-    push   esp
-    mov    DWORD PTR [eax],edx
-    mov    edi,DWORD PTR [esi]
-    call   R6GameServiceAddresses::ReadListFirstNodeFromHeadSlot
-    lea    eax,[esp+0x18]
-    mov    ecx,esi
-    push   eax
-    call   DWORD PTR [edi+0x10]
-    lea    edi,[esi+0xac]
-    mov    DWORD PTR [esp+0x14],edi
-    mov    ecx,edi
-    mov    BYTE PTR [esp+0x20],0x4
-    call   R6GameServiceAddresses::ClearIndexedTree
-    mov    edi,DWORD PTR [edi]
-    push   edi
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    lea    edi,[esi+0xa4]
-    mov    DWORD PTR [esp+0x14],edi
-    mov    ecx,edi
-    mov    BYTE PTR [esp+0x20],0x5
-    call   R6GameServiceAddresses::ReleaseListNodesRetainHeader
-    mov    edi,DWORD PTR [edi]
-    push   edi
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    lea    ebx,[esi+0x9c]
-    mov    DWORD PTR [esp+0x14],ebx
-    mov    eax,DWORD PTR [ebx]
-    mov    BYTE PTR [esp+0x20],0x6
-    mov    edi,DWORD PTR [eax]
-    cmp    edi,eax
-    je     Branch8
-  Branch7:
-    mov    eax,edi
-    mov    edi,DWORD PTR [edi]
-    push   0x1
-    push   eax
-    mov    ecx,ebx
-    call   R6GameServiceAddresses::ReleaseMemoryIgnoringSize
-    cmp    edi,DWORD PTR [ebx]
-    jne    Branch7
-  Branch8:
-    mov    eax,DWORD PTR [ebx]
-    mov    DWORD PTR [eax],eax
-    mov    eax,DWORD PTR [ebx]
-    mov    DWORD PTR [eax+0x4],eax
-    mov    ebx,DWORD PTR [ebx]
-    push   ebx
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    ecx,esi
-    mov    DWORD PTR [esp+0x20],0xffffffff
-    call   R6GameServiceAddresses::CConnectionListDestroy
-    mov    ecx,DWORD PTR [esp+0x18]
-    pop    edi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    add    esp,0x18
-    ret
+  LobbyConnectionDestructionCleanup cleanup{owner, 0, -1};
+  uint base = (uint)owner;
+  *(uint *)base = R6GameServiceAddresses::CLobbySrvConnectionListVTable;
+  cleanup.state = 3;
+  using MethodABI = uint (__fastcall *)(void *);
+  ((MethodABI)R6GameServiceAddresses::ClearOwnedList9c)(owner);
+  ((MethodABI)R6GameServiceAddresses::ClearOwnedLista4)(owner);
+  uint connectionEnd = *(uint *)(base + 4);
+  void *connectionSlot = (void *)(base + 4);
+  uint connectionBegin = connectionEnd;
+  uint table = *(uint *)base;
+  using FirstABI = uint * (__thiscall *)(void *,uint *);
+  ((FirstABI)R6GameServiceAddresses::ReadListFirstNodeFromHeadSlot)(connectionSlot,&connectionBegin);
+  uint rangeResult;
+  using RangeABI = uint * (__thiscall *)(void *,uint *,uint,uint);
+  ((RangeABI)*(uint *)(table + 0x10))(owner,&rangeResult,connectionBegin,connectionEnd);
+  void *treeSlot = (void *)(base + 0xac);
+  cleanup.savedSlot = treeSlot;
+  cleanup.state = 4;
+  ((MethodABI)R6GameServiceAddresses::ClearIndexedTree)(treeSlot);
+  void *treeHead = *(void **)treeSlot;
+  TailFreeThroughGlobalAllocator(treeHead);
+  void *listA4Slot = (void *)(base + 0xa4);
+  cleanup.savedSlot = listA4Slot;
+  cleanup.state = 5;
+  ((MethodABI)R6GameServiceAddresses::ReleaseListNodesRetainHeader)(listA4Slot);
+  void *listA4Head = *(void **)listA4Slot;
+  TailFreeThroughGlobalAllocator(listA4Head);
+  void *list9cSlot = (void *)(base + 0x9c);
+  cleanup.savedSlot = list9cSlot;
+  uint head = *(uint *)list9cSlot;
+  cleanup.state = 6;
+  uint node = *(uint *)head;
+  using ReleaseABI = uint (__thiscall *)(void *,void *,uint);
+  if (node != head) {
+    do {
+      uint detached = node;
+      node = *(uint *)node;
+      ((ReleaseABI)R6GameServiceAddresses::ReleaseMemoryIgnoringSize)(list9cSlot,(void *)detached,1);
+    } while (node != *(uint *)list9cSlot);
   }
+  head = *(uint *)list9cSlot;
+  *(uint *)head = head;
+  head = *(uint *)list9cSlot;
+  *(uint *)(head + 4) = head;
+  void *list9cHead = *(void **)list9cSlot;
+  TailFreeThroughGlobalAllocator(list9cHead);
+  cleanup.state = -1;
+  return ((MethodABI)R6GameServiceAddresses::CConnectionListDestroy)(owner);
 }
 
 // Clear owner+9c: delete optional payload+10 object, free current payload, unlink node and free it; retain head.
 // Read payload and links again after callbacks; no rollback or own exception guard.
 // R6GameService.dll @ 10053b80 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall ClearOwnedList9c(void *owner)
+uint __fastcall ClearOwnedList9c(void *owner)
 {
-  __asm {
-    push   ebx
-    mov    ebx,ecx
-    push   esi
-    mov    eax,DWORD PTR [ebx+0x9c]
-    mov    esi,DWORD PTR [eax]
-    cmp    esi,eax
-    je     Branch11
-    push   edi
-  Branch9:
-    mov    eax,DWORD PTR [esi+0x8]
-    mov    ecx,DWORD PTR [eax+0x10]
-    test   ecx,ecx
-    je     Branch10
-    mov    edx,DWORD PTR [ecx]
-    push   0x1
-    call   DWORD PTR [edx]
-  Branch10:
-    mov    eax,DWORD PTR [esi+0x8]
-    push   eax
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    eax,DWORD PTR [esi+0x4]
-    mov    edi,DWORD PTR [esi]
-    push   esi
-    mov    DWORD PTR [eax],edi
-    mov    DWORD PTR [edi+0x4],eax
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    eax,DWORD PTR [ebx+0x9c]
-    mov    esi,edi
-    cmp    edi,eax
-    jne    Branch9
-    pop    edi
-  Branch11:
-    pop    esi
-    pop    ebx
-    ret
+  uint *headSlot = (uint *)((uint)owner + 0x9c);
+  uint head = *headSlot;
+  uint node = *(uint *)head;
+  while (node != head) {
+    uint payload = *(uint *)(node + 8);
+    void *object = *(void **)(payload + 0x10);
+    if (object != 0) {
+      uint table = *(uint *)object;
+      using DeleteABI = void * (__thiscall *)(void *,uint);
+      ((DeleteABI)*(uint *)table)(object,1);
+    }
+    void *currentPayload = *(void **)(node + 8);
+    TailFreeThroughGlobalAllocator(currentPayload);
+    uint previous = *(uint *)(node + 4);
+    uint next = *(uint *)node;
+    *(uint *)previous = next;
+    *(uint *)(next + 4) = previous;
+    TailFreeThroughGlobalAllocator((void *)node);
+    head = *headSlot;
+    node = next;
   }
+  return head;
 }
 
 // Clear owner+a4 using the same live payload/deleting-call/unlink/free order; retain head and borrowed fields.
 // R6GameService.dll @ 10053bd0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall ClearOwnedLista4(void *owner)
+uint __fastcall ClearOwnedLista4(void *owner)
 {
-  __asm {
-    push   ebx
-    mov    ebx,ecx
-    push   esi
-    mov    eax,DWORD PTR [ebx+0xa4]
-    mov    esi,DWORD PTR [eax]
-    cmp    esi,eax
-    je     Branch14
-    push   edi
-  Branch12:
-    mov    eax,DWORD PTR [esi+0x8]
-    mov    ecx,DWORD PTR [eax+0x10]
-    test   ecx,ecx
-    je     Branch13
-    mov    edx,DWORD PTR [ecx]
-    push   0x1
-    call   DWORD PTR [edx]
-  Branch13:
-    mov    eax,DWORD PTR [esi+0x8]
-    push   eax
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    eax,DWORD PTR [esi+0x4]
-    mov    edi,DWORD PTR [esi]
-    push   esi
-    mov    DWORD PTR [eax],edi
-    mov    DWORD PTR [edi+0x4],eax
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    eax,DWORD PTR [ebx+0xa4]
-    mov    esi,edi
-    cmp    edi,eax
-    jne    Branch12
-    pop    edi
-  Branch14:
-    pop    esi
-    pop    ebx
-    ret
+  uint *headSlot = (uint *)((uint)owner + 0xa4);
+  uint head = *headSlot;
+  uint node = *(uint *)head;
+  while (node != head) {
+    uint payload = *(uint *)(node + 8);
+    void *object = *(void **)(payload + 0x10);
+    if (object != 0) {
+      uint table = *(uint *)object;
+      using DeleteABI = void * (__thiscall *)(void *,uint);
+      ((DeleteABI)*(uint *)table)(object,1);
+    }
+    void *currentPayload = *(void **)(node + 8);
+    TailFreeThroughGlobalAllocator(currentPayload);
+    uint previous = *(uint *)(node + 4);
+    uint next = *(uint *)node;
+    *(uint *)previous = next;
+    *(uint *)(next + 4) = previous;
+    TailFreeThroughGlobalAllocator((void *)node);
+    head = *headSlot;
+    node = next;
   }
+  return head;
 }
 
 // Destroy the base through CURRENT saved owner from inherited original ENTRY ESP.
@@ -981,45 +990,27 @@ __declspec(naked) uint __thiscall RemoveValueFromKeyList(void *owner,uint record
   }
 }
 
-// Search signed keys using captured head/key, then compare candidate with CURRENT head and replace AL only. RET4.
-// R6GameService.dll @ 10053c20 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall ContainsIndexedKey(void *owner,int key)
+// Finds a signed key using a captured header, then checks the current header and preserves its upper return bits.
+// R6GameService.dll @ 10053c20 : ECX owner, signed key word, RET4; field/iterator names are inferred.
+uint __thiscall ContainsIndexedKey(void *owner,int key)
 {
-  __asm {
-    mov    edx,DWORD PTR [ecx+0xac]
-    push   esi
-    push   edi
-    mov    edi,DWORD PTR [esp+0xc]
-    mov    eax,DWORD PTR [edx+0x4]
-    mov    esi,edx
-    test   eax,eax
-    je     Branch31
-  Branch28:
-    cmp    DWORD PTR [eax+0x10],edi
-    jl     Branch29
-    mov    esi,eax
-    mov    eax,DWORD PTR [eax+0x8]
-    jmp    Branch30
-  Branch29:
-    mov    eax,DWORD PTR [eax+0xc]
-  Branch30:
-    test   eax,eax
-    jne    Branch28
-  Branch31:
-    cmp    esi,edx
-    je     Branch32
-    cmp    edi,DWORD PTR [esi+0x10]
-    jge    Branch33
-  Branch32:
-    mov    esi,edx
-  Branch33:
-    mov    eax,DWORD PTR [ecx+0xac]
-    pop    edi
-    cmp    esi,eax
-    pop    esi
-    setne  al
-    ret    0x4
+  uint base = (uint)owner;
+  uint capturedHead = *(uint *)(base + 0xac);
+  int wanted = key;
+  uint node = *(uint *)(capturedHead + 4);
+  uint candidate = capturedHead;
+  while (node != 0) {
+    if (*(int *)(node + 0x10) < wanted) {
+      node = *(uint *)(node + 0xc);
+    } else {
+      candidate = node;
+      node = *(uint *)(node + 8);
+    }
   }
+  if (candidate == capturedHead || wanted < *(int *)(candidate + 0x10)) candidate = capturedHead;
+  uint currentHead = *(uint *)(base + 0xac);
+  bool found = candidate != currentHead;
+  return (currentHead & 0xffffff00u) | (found ? 1u : 0u);
 }
 
 // Service pending connections until none or notification AL0; capture now, then apply idle/global and per-key timers.
@@ -1187,35 +1178,18 @@ __declspec(naked) uint __fastcall ServicePendingRecordsAndExpireIdleKeys(void *o
 // Find signed key, clear selected record stateBYTE98/timestampDWORDa4, then call base key removal with live key.
 // Miss clears only lookup AL; found returns base raw EAX. Field resets precede base failure; RET4.
 // R6GameService.dll @ 10053b40 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall ResetIndexedRecordState(void *owner,int key)
+uint __thiscall ResetIndexedRecordState(void *owner,int key)
 {
-  __asm {
-    push   esi
-    mov    esi,ecx
-    push   edi
-    lea    eax,[esp+0xc]
-    lea    edi,[esi+0xac]
-    push   eax
-    mov    ecx,edi
-    call   R6GameServiceAddresses::FindIndexedTreeKey
-    cmp    eax,DWORD PTR [edi]
-    jne    Branch48
-    pop    edi
-    xor    al,al
-    pop    esi
-    ret    0x4
-  Branch48:
-    xor    ecx,ecx
-    mov    BYTE PTR [eax+0x98],cl
-    mov    DWORD PTR [eax+0xa4],ecx
-    mov    ecx,DWORD PTR [esp+0xc]
-    push   ecx
-    mov    ecx,esi
-    call   R6GameServiceAddresses::CConnectionListQueryKey
-    pop    edi
-    pop    esi
-    ret    0x4
-  }
+  void *tree = (void *)((uint)owner + 0xac);
+  using FindABI = uint (__thiscall *)(void *,int *);
+  uint record = ((FindABI)R6GameServiceAddresses::FindIndexedTreeKey)(tree,&key);
+  uint head = *(uint *)tree;
+  if (record == head) return record & 0xffffff00;
+  *(byte *)(record + 0x98) = 0;
+  *(uint *)(record + 0xa4) = 0;
+  int currentKey = key;
+  using RemoveABI = uint (__thiscall *)(void *,int);
+  return ((RemoveABI)R6GameServiceAddresses::CConnectionListQueryKey)(owner,currentKey);
 }
 
 // Scan current +9c records for cached key; send each match, delete its CURRENT child and free CURRENT record.
@@ -1710,297 +1684,173 @@ const R6GameServiceNative::FuncInfo BuildRecordFromQueueHeadOrFallbackExceptionI
   0x0,
 };
 
-// Queue 0x37 per current linked value, free those links, optionally queue0x12/reset state2, then erase the record.
-// Empty post-erase index queues0x2b with the CURRENT key. Notification packets are full words 2/value/key/d1/0,
-// plus a24-byte copied descriptor; final empty notification has value/key0 but retains key inside nested payload.
-// ENTRY ESP S: iterator S-4c, scratch S-48, descriptors S-24/S-3c, registration S-c, state S-4. RET4/raw EAX.
-// Cache found node; reload current list heads/next/key around calls. No rollback after queue/free/reset/erase failure.
-// R6GameService.dll @ 10053d50 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall RemoveIndexedRecordAndQueueNotifications(void *owner,uint key)
-{
-  __asm {
-    push   0xffffffff
-    push   R6GameServiceAddresses::SelectLobbyRemovalEH
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x40
-    push   ebp
-    push   esi
-    push   edi
-    mov    edi,ecx
-    mov    ebp,R6GameServiceAddresses::ClDataListBaseOffsets
-    mov    esi,R6GameServiceAddresses::ClDataListInnerBaseOffsets
-    push   0x0
-    mov    DWORD PTR [esp+0x10],0x0
-    push   0x3
-    lea    ecx,[esp+0x3c]
-    mov    DWORD PTR [esp+0x40],ebp
-    mov    DWORD PTR [esp+0x50],esi
-    call   R6GameServiceAddresses::InitializeClDataFields
-    push   0x0
-    lea    ecx,[esp+0x44]
-    mov    DWORD PTR [esp+0x58],0x0
-    call   R6GameServiceAddresses::ConstructClDataPointerList
-    mov    DWORD PTR [esp+0x34],R6GameServiceAddresses::clDataListPTR_FUN
-    mov    DWORD PTR [esp+0x40],R6GameServiceAddresses::clDataListPTR_LAB
-    push   0x0
-    push   0x3
-    lea    ecx,[esp+0x24]
-    mov    DWORD PTR [esp+0x5c],0x1
-    mov    DWORD PTR [esp+0x28],ebp
-    mov    DWORD PTR [esp+0x38],esi
-    call   R6GameServiceAddresses::InitializeClDataFields
-    push   0x0
-    lea    ecx,[esp+0x2c]
-    mov    BYTE PTR [esp+0x58],0x2
-    call   R6GameServiceAddresses::ConstructClDataPointerList
-    mov    DWORD PTR [esp+0x1c],R6GameServiceAddresses::clDataListPTR_FUN
-    mov    DWORD PTR [esp+0x28],R6GameServiceAddresses::clDataListPTR_LAB
-    lea    ebp,[edi+0xac]
-    lea    eax,[esp+0x5c]
-    push   eax
-    mov    ecx,ebp
-    mov    BYTE PTR [esp+0x58],0x3
-    call   R6GameServiceAddresses::FindIndexedTreeKey
-    mov    esi,eax
-    mov    eax,DWORD PTR [ebp+0x0]
-    cmp    esi,eax
-    jne    Branch62
-    lea    ecx,[esp+0x1c]
-    mov    BYTE PTR [esp+0x54],0x1
-    call   R6GameServiceAddresses::DestroyClDataList
-    lea    ecx,[esp+0x34]
-    mov    DWORD PTR [esp+0x54],0xffffffff
-    call   R6GameServiceAddresses::DestroyClDataList
-    xor    al,al
-    mov    ecx,DWORD PTR [esp+0x4c]
-    mov    DWORD PTR fs:0x0,ecx
-    pop    edi
-    pop    esi
-    pop    ebp
-    add    esp,0x4c
-    ret    0x4
-  Branch62:
-    mov    ecx,DWORD PTR [esi+0x9c]
-    mov    eax,DWORD PTR [ecx]
-    mov    DWORD PTR [esp+0xc],eax
-    mov    ecx,DWORD PTR [esi+0x9c]
-    cmp    eax,ecx
-    je    Branch64
-  Branch63:
-    add    eax,0x8
-    lea    ecx,[esp+0x34]
-    push   eax
-    call   R6GameServiceAddresses::AppendClDataListSignedDecimal
-    lea    edx,[esp+0x5c]
-    lea    ecx,[esp+0x34]
-    push   edx
-    call   R6GameServiceAddresses::AppendClDataListSignedDecimal
-    lea    eax,[esp+0x10]
-    lea    ecx,[esp+0x1c]
-    push   eax
-    mov    DWORD PTR [esp+0x14],0x37
-    call   R6GameServiceAddresses::AppendClDataListSignedDecimal
-    lea    ecx,[esp+0x34]
-    push   ecx
-    lea    ecx,[esp+0x20]
-    call   R6GameServiceAddresses::AppendClDataListCopy
-    sub    esp,0x18
-    lea    edx,[esp+0x34]
-    mov    ecx,esp
-    mov    DWORD PTR [esp+0x28],esp
-    push   0x1
-    push   edx
-    call   R6GameServiceAddresses::CopyConstructClDataList
-    lea    ecx,[esp+0x24]
-    mov    BYTE PTR [esp+0x6c],0x3
-    call   R6GameServiceAddresses::GetReferencedStoragePlus8
-    mov    ecx,DWORD PTR [esp+0x74]
-    mov    edx,DWORD PTR [eax]
-    push   0x0
-    push   0xd1
-    push   ecx
-    push   edx
-    push   0x2
-    mov    ecx,edi
-    call   R6GameServiceAddresses::QueueTaggedRecord
-    push   ecx
-    mov    ecx,DWORD PTR [esp+0x48]
-    mov    eax,esp
-    push   ecx
-    push   esp
-    mov    DWORD PTR [eax],ecx
-    mov    edx,DWORD PTR [esp+0x4c]
-    lea    ecx,[esp+0x50]
-    lea    ebp,[edx+0x10]
-    call   R6GameServiceAddresses::ReadListFirstNodeFromHeadSlot
-    lea    eax,[esp+0x1c]
-    lea    ecx,[esp+0x48]
-    push   eax
-    call   DWORD PTR [ebp+0x0]
-    push   ecx
-    mov    ecx,DWORD PTR [esp+0x30]
-    mov    eax,esp
-    push   ecx
-    push   esp
-    mov    DWORD PTR [eax],ecx
-    mov    edx,DWORD PTR [esp+0x34]
-    lea    ecx,[esp+0x38]
-    lea    ebp,[edx+0x10]
-    call   R6GameServiceAddresses::ReadListFirstNodeFromHeadSlot
-    lea    eax,[esp+0x20]
-    lea    ecx,[esp+0x30]
-    push   eax
-    call   DWORD PTR [ebp+0x0]
-    mov    ecx,DWORD PTR [esp+0xc]
-    mov    eax,DWORD PTR [ecx]
-    mov    DWORD PTR [esp+0xc],eax
-    mov    ecx,DWORD PTR [esi+0x9c]
-    cmp    eax,ecx
-    jne    Branch63
-  Branch64:
-    mov    eax,DWORD PTR [esi+0x9c]
-    mov    ebp,DWORD PTR [eax]
-    cmp    ebp,eax
-    je    Branch66
-  Branch65:
-    mov    eax,ebp
-    mov    ebp,DWORD PTR [ebp+0x0]
-    push   eax
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    cmp    ebp,DWORD PTR [esi+0x9c]
-    jne    Branch65
-  Branch66:
-    mov    eax,DWORD PTR [esi+0x9c]
-    mov    ecx,edi
-    mov    DWORD PTR [eax],eax
-    mov    eax,DWORD PTR [esi+0x9c]
-    mov    DWORD PTR [eax+0x4],eax
-    mov    edx,DWORD PTR [esp+0x5c]
-    push   edx
-    call   R6GameServiceAddresses::IndexedRecordHasState2
-    test   al,al
-    je    Branch67
-    lea    eax,[esp+0x5c]
-    lea    ecx,[esp+0x34]
-    push   eax
-    call   R6GameServiceAddresses::AppendClDataListSignedDecimal
-    lea    ecx,[esp+0x10]
-    mov    DWORD PTR [esp+0x10],0x12
-    push   ecx
-    lea    ecx,[esp+0x20]
-    call   R6GameServiceAddresses::AppendClDataListSignedDecimal
-    lea    edx,[esp+0x34]
-    lea    ecx,[esp+0x1c]
-    push   edx
-    call   R6GameServiceAddresses::AppendClDataListCopy
-    sub    esp,0x18
-    lea    eax,[esp+0x34]
-    mov    ecx,esp
-    mov    DWORD PTR [esp+0x30],esp
-    push   0x1
-    push   eax
-    call   R6GameServiceAddresses::CopyConstructClDataList
-    mov    ecx,DWORD PTR [esp+0x74]
-    push   0x0
-    push   0xd1
-    push   ecx
-    push   0x0
-    push   0x2
-    mov    ecx,edi
-    call   R6GameServiceAddresses::QueueTaggedRecord
-    mov    edx,DWORD PTR [esp+0x5c]
-    mov    ecx,edi
-    push   edx
-    call   R6GameServiceAddresses::ResetIndexedRecordState
-  Branch67:
-    push   ecx
-    mov    ecx,DWORD PTR [esp+0x48]
-    mov    eax,esp
-    push   ecx
-    push   esp
-    mov    DWORD PTR [eax],ecx
-    mov    edx,DWORD PTR [esp+0x4c]
-    lea    ecx,[esp+0x50]
-    lea    ebp,[edx+0x10]
-    call   R6GameServiceAddresses::ReadListFirstNodeFromHeadSlot
-    lea    eax,[esp+0x20]
-    lea    ecx,[esp+0x48]
-    push   eax
-    call   DWORD PTR [ebp+0x0]
-    push   ecx
-    mov    ecx,DWORD PTR [esp+0x30]
-    mov    eax,esp
-    push   ecx
-    push   esp
-    mov    DWORD PTR [eax],ecx
-    mov    edx,DWORD PTR [esp+0x34]
-    lea    ecx,[esp+0x38]
-    lea    ebp,[edx+0x10]
-    call   R6GameServiceAddresses::ReadListFirstNodeFromHeadSlot
-    lea    eax,[esp+0x20]
-    lea    ecx,[esp+0x30]
-    push   eax
-    call   DWORD PTR [ebp+0x0]
-    push   ecx
-    lea    ecx,[edi+0xac]
-    mov    eax,esp
-    mov    DWORD PTR [eax],esi
-    call   R6GameServiceAddresses::EraseIndexedNode
-    mov    eax,DWORD PTR [edi+0xb0]
-    test   eax,eax
-    jne    Branch68
-    lea    ecx,[esp+0x5c]
-    push   ecx
-    lea    ecx,[esp+0x38]
-    call   R6GameServiceAddresses::AppendClDataListSignedDecimal
-    lea    edx,[esp+0x10]
-    lea    ecx,[esp+0x1c]
-    push   edx
-    mov    DWORD PTR [esp+0x14],0x2b
-    call   R6GameServiceAddresses::AppendClDataListSignedDecimal
-    lea    eax,[esp+0x34]
-    lea    ecx,[esp+0x1c]
-    push   eax
-    call   R6GameServiceAddresses::AppendClDataListCopy
-    sub    esp,0x18
-    lea    edx,[esp+0x34]
-    mov    ecx,esp
-    mov    DWORD PTR [esp+0x30],esp
-    push   0x1
-    push   edx
-    call   R6GameServiceAddresses::CopyConstructClDataList
-    push   0x0
-    push   0xd1
-    push   0x0
-    push   0x0
-    push   0x2
-    mov    ecx,edi
-    call   R6GameServiceAddresses::QueueTaggedRecord
-  Branch68:
-    mov    edi,R6GameServiceAddresses::clDataListPTR_FUN
-    mov    esi,R6GameServiceAddresses::clDataListPTR_LAB
-    mov    DWORD PTR [esp+0x1c],edi
-    mov    DWORD PTR [esp+0x28],esi
-    lea    ecx,[esp+0x28]
-    mov    BYTE PTR [esp+0x54],0x5
-    call   R6GameServiceAddresses::DestroyClDataPointerList
-    mov    DWORD PTR [esp+0x1c],R6GameServiceAddresses::PTR_LAB
-    mov    DWORD PTR [esp+0x34],edi
-    mov    DWORD PTR [esp+0x40],esi
-    lea    ecx,[esp+0x40]
-    mov    DWORD PTR [esp+0x54],0x6
-    call   R6GameServiceAddresses::DestroyClDataPointerList
-    mov    ecx,DWORD PTR [esp+0x4c]
-    pop    edi
-    pop    esi
-    mov    al,0x1
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebp
-    add    esp,0x4c
-    ret    0x4
+// Inferred physical slots at entry ESP-0x4c/-0x48/-0x44/-0x40, followed by envelope/fields at -0x3c/-0x24.
+struct IndexedRemovalLocals {
+  uint iterator;
+  uint scratch;
+  uint rangeOutput;
+  uint cloneScratch;
+  uint envelope[6];
+  uint fields[6];
+};
+
+// Retain partial descriptor construction and base-only states after entered destruction; queued packets stay committed.
+struct IndexedRemovalCleanup {
+  IndexedRemovalLocals *frame;
+  int state;
+  bool armed;
+  // State4's latent saved-pointer action uses current scratch; normal main-body cloning stays at state3.
+  ~IndexedRemovalCleanup() noexcept(false)
+  {
+    if (!armed) return;
+    while (state >= 0) {
+      switch (state) {
+      case 0: case 6:
+        state = -1;
+        ResetClDataVtable(frame->fields);
+        break;
+      case 1:
+        state = -1;
+        DestroyClDataListAlias(frame->fields);
+        break;
+      case 2: case 5:
+        state = 1;
+        ResetClDataVtable(frame->envelope);
+        break;
+      case 3:
+        state = 1;
+        DestroyClDataListAlias(frame->envelope);
+        break;
+      case 4:
+        state = 3;
+        DestroyClDataListAlias((void *)frame->scratch);
+        break;
+      }
+    }
   }
+};
+
+// Notify linked values with selector37, release their links, optionally notify/reset state2, then erase the record.
+// An empty remaining index queues selector2b with the current key inside its payload; outgoing clones are callee-owned.
+// R6GameService.dll @ 10053d50 : complete native control/access order and raw ABI retained.
+uint __thiscall RemoveIndexedRecordAndQueueNotifications(void *owner,uint key)
+{
+  IndexedRemovalLocals frame;
+  IndexedRemovalCleanup cleanup{&frame,-1,true};
+  uint base = (uint)owner;
+  frame.iterator = 0;
+  frame.fields[1] = R6GameServiceAddresses::ClDataListBaseOffsets;
+  frame.fields[5] = R6GameServiceAddresses::ClDataListInnerBaseOffsets;
+  InitializeClDataFields(frame.fields,3,0);
+  cleanup.state = 0;
+  ConstructClDataPointerList(frame.fields + 3,0);
+  frame.fields[0] = R6GameServiceAddresses::clDataListPTR_FUN;
+  frame.fields[3] = R6GameServiceAddresses::clDataListPTR_LAB;
+  cleanup.state = 1;
+  frame.envelope[1] = R6GameServiceAddresses::ClDataListBaseOffsets;
+  frame.envelope[5] = R6GameServiceAddresses::ClDataListInnerBaseOffsets;
+  InitializeClDataFields(frame.envelope,3,0);
+  cleanup.state = 2;
+  ConstructClDataPointerList(frame.envelope + 3,0);
+  frame.envelope[0] = R6GameServiceAddresses::clDataListPTR_FUN;
+  frame.envelope[3] = R6GameServiceAddresses::clDataListPTR_LAB;
+  void *tree = (void *)(base + 0xac);
+  cleanup.state = 3;
+  uint record = FindIndexedTreeKey(tree,(int *)&key);
+  uint indexHead = *(uint *)tree;
+  if (record == indexHead) {
+    cleanup.state = 1;
+    DestroyClDataList(frame.envelope);
+    cleanup.state = -1;
+    uint result = DestroyClDataList(frame.fields);
+    cleanup.armed = false;
+    return result & 0xffffff00;
+  }
+  // Native inlined range clearing caches end/virtual slot before obtaining first, then loads the target late.
+  auto clearRange = [](uint *descriptor,uint *output) {
+    uint end = descriptor[4];
+    uint first = end;
+    uint slot = descriptor[3] + 0x10;
+    ReadListFirstNodeFromHeadSlot(descriptor + 4,&first);
+    using RangeABI = uint * (__thiscall *)(void *,uint *,uint,uint);
+    ((RangeABI)*(uint *)slot)(descriptor + 3,output,first,end);
+  };
+  uint head = *(uint *)(record + 0x9c);
+  uint cursor = *(uint *)head;
+  frame.iterator = cursor;
+  uint currentHead = *(uint *)(record + 0x9c);
+  if (cursor != currentHead) {
+    do {
+      AppendClDataListSignedDecimal(frame.fields,(void *)(cursor + 8));
+      AppendClDataListSignedDecimal(frame.fields,&key);
+      frame.scratch = 0x37;
+      AppendClDataListSignedDecimal(frame.envelope,&frame.scratch);
+      AppendClDataListCopy(frame.envelope,frame.fields);
+      NativeDescriptorArgument24 outgoing;
+      frame.scratch = (uint)&outgoing;
+      CopyConstructClDataList(&outgoing,frame.envelope,1);
+      cleanup.state = 3;
+      uint valueStorage = GetReferencedStoragePlus8(&frame.iterator);
+      uint currentKey = key;
+      uint currentValue = *(uint *)valueStorage;
+      QueueTaggedRecord((void *)base,2,currentValue,currentKey,0xd1,0,outgoing);
+      clearRange(frame.fields,&frame.rangeOutput);
+      clearRange(frame.envelope,&frame.cloneScratch);
+      uint current = frame.iterator;
+      cursor = *(uint *)current;
+      frame.iterator = cursor;
+      currentHead = *(uint *)(record + 0x9c);
+    } while (cursor != currentHead);
+  }
+  head = *(uint *)(record + 0x9c);
+  cursor = *(uint *)head;
+  if (cursor != head) {
+    do {
+      uint doomed = cursor;
+      cursor = *(uint *)cursor;
+      TailFreeThroughGlobalAllocator((void *)doomed);
+    } while (cursor != *(uint *)(record + 0x9c));
+  }
+  head = *(uint *)(record + 0x9c);
+  *(uint *)head = head;
+  head = *(uint *)(record + 0x9c);
+  *(uint *)(head + 4) = head;
+  if ((byte)IndexedRecordHasState2((void *)base,key) != 0) {
+    AppendClDataListSignedDecimal(frame.fields,&key);
+    frame.scratch = 0x12;
+    AppendClDataListSignedDecimal(frame.envelope,&frame.scratch);
+    AppendClDataListCopy(frame.envelope,frame.fields);
+    NativeDescriptorArgument24 outgoing;
+    frame.cloneScratch = (uint)&outgoing;
+    CopyConstructClDataList(&outgoing,frame.envelope,1);
+    uint currentKey = key;
+    QueueTaggedRecord((void *)base,2,0,currentKey,0xd1,0,outgoing);
+    ResetIndexedRecordState((void *)base,key);
+  }
+  clearRange(frame.fields,&frame.cloneScratch);
+  clearRange(frame.envelope,&frame.cloneScratch);
+  EraseIndexedNode((void *)(base + 0xac),(char *)record);
+  if (*(uint *)(base + 0xb0) == 0) {
+    AppendClDataListSignedDecimal(frame.fields,&key);
+    frame.scratch = 0x2b;
+    AppendClDataListSignedDecimal(frame.envelope,&frame.scratch);
+    AppendClDataListCopy(frame.envelope,frame.fields);
+    NativeDescriptorArgument24 outgoing;
+    frame.cloneScratch = (uint)&outgoing;
+    CopyConstructClDataList(&outgoing,frame.envelope,1);
+    QueueTaggedRecord((void *)base,2,0,0,0xd1,0,outgoing);
+  }
+  frame.envelope[0] = R6GameServiceAddresses::clDataListPTR_FUN;
+  frame.envelope[3] = R6GameServiceAddresses::clDataListPTR_LAB;
+  cleanup.state = 5;
+  DestroyClDataPointerList(frame.envelope + 3);
+  frame.envelope[0] = R6GameServiceAddresses::PTR_LAB;
+  frame.fields[0] = R6GameServiceAddresses::clDataListPTR_FUN;
+  frame.fields[3] = R6GameServiceAddresses::clDataListPTR_LAB;
+  cleanup.state = 6;
+  uint result = DestroyClDataPointerList(frame.fields + 3);
+  cleanup.armed = false;
+  return (result & 0xffffff00) | 1;
 }
 
 // Clean the descriptor selected by inherited original ENTRY ESP; base-only states do not retry list cleanup.
@@ -2096,7 +1946,7 @@ const R6GameServiceNative::UnwindEntry RemoveIndexedRecordAndQueueNotificationsU
 };
 
 // Literal native FuncInfo; preserve states reached during partial construction and cleanup.
-// R6GameService.dll data @ 1008393c : native storage identity retained.
+// R6GameService.dll data @ 10083974 : native storage identity retained.
 const R6GameServiceNative::FuncInfo RemoveIndexedRecordAndQueueNotificationsExceptionInfo = {
   0x19930520,
   0x7,
@@ -2107,262 +1957,169 @@ const R6GameServiceNative::FuncInfo RemoveIndexedRecordAndQueueNotificationsExce
   0x0,
 };
 
-// Physical six-word descriptor argument; this C++ interface name is descriptive.
-struct NativeDescriptorArgument24 { undefined4 words[6]; };
+// Inferred physical local slots from entry ESP-0x64 through ESP-0x10; descriptor roles describe their contents.
+struct IndexedKeyUpdateLocals {
+  byte padding[3];
+  byte countTag;
+  uint scratch;
+  uint endOrClone;
+  uint first;
+  uint request[6];
+  uint fields[6];
+  uint command[6];
+};
 
-// Queue an unmatched-key notification, queue a matched inactive record, or send through its active record.
-// Keep incoming descriptor ownership, three local lists, live argument reads, raw send AL and eight-state cleanup.
-// R6GameService.dll @ 100542a0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall ApplyIndexedKeyUpdate(void *owner,uint value,uint key,uint code,
-                                               uint modeWord,NativeDescriptorArgument24 descriptor)
-{
-  __asm {
-    push    0xffffffff
-    push    R6GameServiceAddresses::SelectKeyUpdateEH
-    mov    eax,fs:0x0
-    push    eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x58
-    push    ebx
-    push    ebp
-    xor    ebx,ebx
-    push    esi
-    push    edi
-    mov    esi,ecx
-    mov    DWORD PTR [esp+0x18],ebx
-    push    ebx
-    push    0x3
-    lea    ecx,[esp+0x58]
-    mov    DWORD PTR [esp+0x78],ebx
-    mov    DWORD PTR [esp+0x5c],R6GameServiceAddresses::ClDataListBaseOffsets
-    mov    DWORD PTR [esp+0x6c],R6GameServiceAddresses::ClDataListInnerBaseOffsets
-    call    R6GameServiceAddresses::InitializeClDataFields
-    push    ebx
-    lea    ecx,[esp+0x60]
-    mov    BYTE PTR [esp+0x74],0x1
-    call    R6GameServiceAddresses::ConstructClDataPointerList
-    mov    ebp,R6GameServiceAddresses::clDataListPTR_FUN
-    mov    edi,R6GameServiceAddresses::clDataListPTR_LAB
-    mov    DWORD PTR [esp+0x50],ebp
-    mov    DWORD PTR [esp+0x5c],edi
-    push    ebx
-    push    0x3
-    lea    ecx,[esp+0x28]
-    mov    BYTE PTR [esp+0x78],0x2
-    mov    DWORD PTR [esp+0x2c],R6GameServiceAddresses::ClDataListBaseOffsets
-    mov    DWORD PTR [esp+0x3c],R6GameServiceAddresses::ClDataListInnerBaseOffsets
-    call    R6GameServiceAddresses::InitializeClDataFields
-    push    ebx
-    lea    ecx,[esp+0x30]
-    mov    BYTE PTR [esp+0x74],0x3
-    call    R6GameServiceAddresses::ConstructClDataPointerList
-    mov    DWORD PTR [esp+0x20],ebp
-    mov    DWORD PTR [esp+0x2c],edi
-    push    ebx
-    push    0x3
-    lea    ecx,[esp+0x40]
-    mov    BYTE PTR [esp+0x78],0x4
-    mov    DWORD PTR [esp+0x44],R6GameServiceAddresses::ClDataListBaseOffsets
-    mov    DWORD PTR [esp+0x54],R6GameServiceAddresses::ClDataListInnerBaseOffsets
-    call    R6GameServiceAddresses::InitializeClDataFields
-    push    ebx
-    lea    ecx,[esp+0x48]
-    mov    BYTE PTR [esp+0x74],0x5
-    call    R6GameServiceAddresses::ConstructClDataPointerList
-    mov    DWORD PTR [esp+0x38],ebp
-    mov    DWORD PTR [esp+0x44],edi
-    mov    eax,DWORD PTR [esp+0x7c]
-    mov    ecx,esi
-    push    eax
-    mov    BYTE PTR [esp+0x74],0x6
-    call    R6GameServiceAddresses::ContainsIndexedKey
-    test    al,al
-    jne    Branch69
-    mov    ecx,DWORD PTR [esp+0x7c]
-    push    ecx
-    mov    ecx,esi
-    call    R6GameServiceAddresses::RemoveListRecordsBySecondWord
-    lea    edx,[esp+0x14]
-    lea    ecx,[esp+0x38]
-    push    edx
-    mov    DWORD PTR [esp+0x18],0x13
-    call    R6GameServiceAddresses::AppendClDataListSignedDecimal
-    lea    eax,[esp+0x78]
-    lea    ecx,[esp+0x38]
-    push    eax
-    call    R6GameServiceAddresses::AppendClDataListSignedDecimal
-    lea    ecx,[esp+0x80]
-    push    ecx
-    lea    ecx,[esp+0x54]
-    call    R6GameServiceAddresses::AppendClDataListSignedDecimal
-    lea    edx,[esp+0x38]
-    lea    ecx,[esp+0x50]
-    push    edx
-    call    R6GameServiceAddresses::AppendClDataListCopy
-    lea    eax,[esp+0x14]
-    lea    ecx,[esp+0x20]
-    push    eax
-    mov    DWORD PTR [esp+0x18],0x27
-    call    R6GameServiceAddresses::AppendClDataListSignedDecimal
-    lea    ecx,[esp+0x50]
-    push    ecx
-    lea    ecx,[esp+0x24]
-    call    R6GameServiceAddresses::AppendClDataListCopy
-    sub    esp,0x18
-    lea    edx,[esp+0x38]
-    mov    ecx,esp
-    mov    DWORD PTR [esp+0x2c],esp
-    push    0x1
-    push    edx
-    call    R6GameServiceAddresses::CopyConstructClDataList
-    mov    eax,DWORD PTR [esp+0x9c]
-    mov    ecx,DWORD PTR [esp+0x94]
-    mov    edx,DWORD PTR [esp+0x90]
-    push    eax
-    push    0xd1
-    push    ecx
-    push    edx
-    push    0x2
-    mov    ecx,esi
-    call    R6GameServiceAddresses::QueueTaggedRecord
-    lea    ecx,[esp+0x38]
-    mov    BYTE PTR [esp+0x70],0x4
-    call    R6GameServiceAddresses::DestroyClDataList
-    lea    ecx,[esp+0x20]
-    mov    BYTE PTR [esp+0x70],0x2
-    call    R6GameServiceAddresses::DestroyClDataList
-    lea    ecx,[esp+0x50]
-    mov    BYTE PTR [esp+0x70],bl
-    call    R6GameServiceAddresses::DestroyClDataList
-    lea    ecx,[esp+0x88]
-    mov    DWORD PTR [esp+0x70],0xffffffff
-    call    R6GameServiceAddresses::DestroyClDataList
-    xor    al,al
-    jmp    Branch73
-  Branch69:
-    lea    eax,[esp+0x7c]
-    lea    ecx,[esp+0x14]
-    push    eax
-    push    ecx
-    lea    ecx,[esi+0xac]
-    call    R6GameServiceAddresses::FindIndexedTreeLowerBound
-    mov    edx,DWORD PTR [esp+0x7c]
-    mov    ecx,esi
-    push    edx
-    call    R6GameServiceAddresses::CConnectionListFindBorrowed
-    test    eax,eax
-    jne    Branch71
-    mov    eax,DWORD PTR [esp+0x14]
-    cmp    BYTE PTR [eax+0x98],bl
-    jne    Branch70
-    mov    ecx,DWORD PTR [esp+0x7c]
-    push    ecx
-    mov    ecx,esi
-    call    R6GameServiceAddresses::SendKeyNotificationD1
-  Branch70:
-    lea    edx,[esp+0x80]
-    lea    ecx,[esp+0x20]
-    push    edx
-    call    R6GameServiceAddresses::AppendClDataListSignedDecimal
-    lea    eax,[esp+0x88]
-    lea    ecx,[esp+0x20]
-    push    eax
-    call    R6GameServiceAddresses::AppendClDataListCopy
-    sub    esp,0x18
-    lea    edx,[esp+0x38]
-    mov    ecx,esp
-    mov    DWORD PTR [esp+0x30],esp
-    push    0x1
-    push    edx
-    call    R6GameServiceAddresses::CopyConstructClDataList
-    mov    eax,DWORD PTR [esp+0x9c]
-    mov    ecx,DWORD PTR [esp+0x94]
-    mov    edx,DWORD PTR [esp+0x90]
-    push    eax
-    push    0xd1
-    push    ecx
-    push    edx
-    push    0x1
-    mov    ecx,esi
-    call    R6GameServiceAddresses::QueueTaggedRecord
-    lea    ecx,[esp+0x38]
-    mov    BYTE PTR [esp+0x70],0x4
-    call    R6GameServiceAddresses::DestroyClDataList
-    lea    ecx,[esp+0x20]
-    mov    BYTE PTR [esp+0x70],0x2
-    call    R6GameServiceAddresses::DestroyClDataList
-    lea    ecx,[esp+0x50]
-    mov    BYTE PTR [esp+0x70],bl
-    call    R6GameServiceAddresses::DestroyClDataList
-    mov    DWORD PTR [esp+0x88],ebp
-    mov    DWORD PTR [esp+0x94],edi
-    lea    ecx,[esp+0x94]
-    mov    DWORD PTR [esp+0x70],0x7
-    call    R6GameServiceAddresses::DestroyClDataPointerList
-    mov    al,0x1
-    jmp    Branch73
-  Branch71:
-    mov    edi,DWORD PTR [esp+0x14]
-    mov    eax,DWORD PTR [edi+0x9c]
-    lea    ecx,[edi+0x9c]
-    mov    DWORD PTR [esp+0x18],eax
-    lea    eax,[esp+0x1c]
-    push    eax
-    call    R6GameServiceAddresses::ReadListFirstNodeFromHeadSlot
-    mov    cl,BYTE PTR [esp+0x7c]
-    lea    edx,[esp+0x13]
-    mov    BYTE PTR [esp+0x13],cl
-    lea    ecx,[esp+0x18]
-    push    edx
-    push    ecx
-    push    eax
-    call    R6GameServiceAddresses::CountCircularListRange
-    add    esp,0xc
-    cmp    eax,ebx
-    jne    Branch72
-    mov    DWORD PTR [edi+0xa4],ebx
-  Branch72:
-    lea    edx,[esp+0x80]
-    lea    ecx,[esp+0x20]
-    push    edx
-    call    R6GameServiceAddresses::AppendClDataListSignedDecimal
-    lea    eax,[esp+0x88]
-    lea    ecx,[esp+0x20]
-    push    eax
-    call    R6GameServiceAddresses::AppendClDataListCopy
-    mov    edx,DWORD PTR [esp+0x84]
-    mov    eax,DWORD PTR [esp+0x7c]
-    lea    ecx,[esp+0x20]
-    push    ecx
-    push    edx
-    push    0xd1
-    push    eax
-    mov    ecx,esi
-    call    R6GameServiceAddresses::CConnectionListSendToKey
-    lea    ecx,[esp+0x38]
-    mov    BYTE PTR [esp+0x84],al
-    mov    BYTE PTR [esp+0x70],0x4
-    call    R6GameServiceAddresses::DestroyClDataList
-    lea    ecx,[esp+0x20]
-    mov    BYTE PTR [esp+0x70],0x2
-    call    R6GameServiceAddresses::DestroyClDataList
-    lea    ecx,[esp+0x50]
-    mov    BYTE PTR [esp+0x70],bl
-    call    R6GameServiceAddresses::DestroyClDataList
-    lea    ecx,[esp+0x88]
-    mov    DWORD PTR [esp+0x70],0xffffffff
-    call    R6GameServiceAddresses::DestroyClDataList
-    mov    al,BYTE PTR [esp+0x84]
-  Branch73:
-    mov    ecx,DWORD PTR [esp+0x68]
-    pop    edi
-    pop    esi
-    pop    ebp
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    add    esp,0x64
-    ret    0x28
+// Retain incoming ownership and each partially constructed list; entered cleanup is never retried.
+struct IndexedKeyUpdateCleanup {
+  IndexedKeyUpdateLocals *frame;
+  uint *incoming;
+  int state;
+  bool armed;
+  // Follow the native eight-state ownership map using current physical descriptor slots.
+  ~IndexedKeyUpdateCleanup() noexcept(false)
+  {
+    if (!armed) return;
+    while (state >= 0) {
+      switch (state) {
+      case 0:
+        state = -1;
+        DestroyClDataListAlias(incoming);
+        break;
+      case 1:
+        state = 0;
+        ResetClDataVtable(frame->command);
+        break;
+      case 2:
+        state = 0;
+        DestroyClDataListAlias(frame->command);
+        break;
+      case 3:
+        state = 2;
+        ResetClDataVtable(frame->request);
+        break;
+      case 4:
+        state = 2;
+        DestroyClDataListAlias(frame->request);
+        break;
+      case 5:
+        state = 4;
+        ResetClDataVtable(frame->fields);
+        break;
+      case 6:
+        state = 4;
+        DestroyClDataListAlias(frame->fields);
+        break;
+      case 7:
+        state = -1;
+        ResetClDataVtable(incoming);
+        break;
+      }
+    }
   }
+};
+
+// Queue an unknown key or an inactive known record; otherwise send D1 through its active connection.
+// Keep current arguments, callee-owned outgoing clones and final destructor upper EAX with the selected raw AL.
+// R6GameService.dll @ 100542a0 : complete native control/access order and raw ABI retained.
+uint __thiscall ApplyIndexedKeyUpdate(void *owner,uint value,uint key,uint code,
+    uint modeWord,NativeDescriptorArgument24 descriptor)
+{
+  IndexedKeyUpdateLocals frame;
+  IndexedKeyUpdateCleanup cleanup{&frame,descriptor.words,0,true};
+  uint base = (uint)owner;
+  frame.endOrClone = 0;
+  frame.command[1] = R6GameServiceAddresses::ClDataListBaseOffsets;
+  frame.command[5] = R6GameServiceAddresses::ClDataListInnerBaseOffsets;
+  InitializeClDataFields(frame.command,3,0);
+  cleanup.state = 1;
+  ConstructClDataPointerList(frame.command + 3,0);
+  frame.command[0] = R6GameServiceAddresses::clDataListPTR_FUN;
+  frame.command[3] = R6GameServiceAddresses::clDataListPTR_LAB;
+  cleanup.state = 2;
+  frame.request[1] = R6GameServiceAddresses::ClDataListBaseOffsets;
+  frame.request[5] = R6GameServiceAddresses::ClDataListInnerBaseOffsets;
+  InitializeClDataFields(frame.request,3,0);
+  cleanup.state = 3;
+  ConstructClDataPointerList(frame.request + 3,0);
+  frame.request[0] = R6GameServiceAddresses::clDataListPTR_FUN;
+  frame.request[3] = R6GameServiceAddresses::clDataListPTR_LAB;
+  cleanup.state = 4;
+  frame.fields[1] = R6GameServiceAddresses::ClDataListBaseOffsets;
+  frame.fields[5] = R6GameServiceAddresses::ClDataListInnerBaseOffsets;
+  InitializeClDataFields(frame.fields,3,0);
+  cleanup.state = 5;
+  ConstructClDataPointerList(frame.fields + 3,0);
+  frame.fields[0] = R6GameServiceAddresses::clDataListPTR_FUN;
+  frame.fields[3] = R6GameServiceAddresses::clDataListPTR_LAB;
+  cleanup.state = 6;
+  bool unknown = (byte)ContainsIndexedKey((void *)base,key) == 0;
+  bool inactive = false;
+  if (unknown) {
+    RemoveListRecordsBySecondWord((void *)base,key);
+    frame.scratch = 0x13;
+    AppendClDataListSignedDecimal(frame.fields,&frame.scratch);
+    AppendClDataListSignedDecimal(frame.fields,&value);
+    AppendClDataListSignedDecimal(frame.command,&code);
+    AppendClDataListCopy(frame.command,frame.fields);
+    frame.scratch = 0x27;
+    AppendClDataListSignedDecimal(frame.request,&frame.scratch);
+    AppendClDataListCopy(frame.request,frame.command);
+    // Raw outgoing stack storage transfers to QueueTaggedRecord; no caller-side descriptor destructor.
+    NativeDescriptorArgument24 outgoing;
+    frame.scratch = (uint)&outgoing;
+    CopyConstructClDataList(&outgoing,frame.request,1);
+    uint currentMode = modeWord;
+    uint currentKey = key;
+    uint currentValue = value;
+    QueueTaggedRecord((void *)base,2,currentValue,currentKey,0xd1,currentMode,outgoing);
+  } else {
+    FindIndexedTreeLowerBound((void *)(base + 0xac),(int *)&frame.scratch,(int *)&key);
+    inactive = CConnectionListFindBorrowed((void *)base,key) == 0;
+    if (inactive) {
+      if (*(byte *)(frame.scratch + 0x98) == 0) SendKeyNotificationD1((void *)base,key);
+      AppendClDataListSignedDecimal(frame.request,&code);
+      AppendClDataListCopy(frame.request,descriptor.words);
+      NativeDescriptorArgument24 outgoing;
+      frame.endOrClone = (uint)&outgoing;
+      CopyConstructClDataList(&outgoing,frame.request,1);
+      uint currentMode = modeWord;
+      uint currentKey = key;
+      uint currentValue = value;
+      QueueTaggedRecord((void *)base,1,currentValue,currentKey,0xd1,currentMode,outgoing);
+    } else {
+      uint record = frame.scratch;
+      frame.endOrClone = *(uint *)(record + 0x9c);
+      uint *first = ReadListFirstNodeFromHeadSlot((void *)(record + 0x9c),&frame.first);
+      frame.countTag = (byte)key;
+      if (CountCircularListRange(first,&frame.endOrClone,&frame.countTag) == 0) *(uint *)(record + 0xa4) = 0;
+      AppendClDataListSignedDecimal(frame.request,&code);
+      AppendClDataListCopy(frame.request,descriptor.words);
+      uint currentMode = modeWord;
+      uint currentKey = key;
+      uint sent = CConnectionListSendToKey((void *)base,currentKey,0xd1,currentMode,(int)frame.request);
+      *(byte *)&modeWord = (byte)sent;
+    }
+  }
+  cleanup.state = 4;
+  DestroyClDataList(frame.fields);
+  cleanup.state = 2;
+  DestroyClDataList(frame.request);
+  cleanup.state = 0;
+  DestroyClDataList(frame.command);
+  uint result;
+  if (inactive) {
+    descriptor.words[0] = R6GameServiceAddresses::clDataListPTR_FUN;
+    descriptor.words[3] = R6GameServiceAddresses::clDataListPTR_LAB;
+    cleanup.state = 7;
+    result = DestroyClDataPointerList(descriptor.words + 3);
+    result = (result & 0xffffff00) | 1;
+  } else {
+    cleanup.state = -1;
+    result = DestroyClDataList(descriptor.words);
+    result = (result & 0xffffff00) | (unknown ? 0 : (byte)modeWord);
+  }
+  cleanup.armed = false;
+  return result;
 }
 
 // Destroy the incoming by-value descriptor at inherited EBP+0x14.
@@ -2480,209 +2237,218 @@ const R6GameServiceNative::FuncInfo ApplyIndexedKeyUpdateExceptionInfo = {
   0x0,
 };
 
-// Allocate record/clone storage, initialize late-read fields, publish under cached flags and consume incoming list.
-// Preserve unguarded record allocation, nullable clone result, captured list heads and rewritten byte-field argument.
-// R6GameService.dll @ 10054660 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall QueueTaggedRecord(void *owner,uint flags,uint value,uint key,uint opcode,
-                                          uint byteField,NativeDescriptorArgument24 payload)
-{
-  __asm {
-    push    0xffffffff
-    push    R6GameServiceAddresses::SelectQueuedRecordEH
-    mov    eax,fs:0x0
-    push    eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x8
-    push    ebx
-    push    esi
-    push    edi
-    mov    edi,ecx
-    xor    ebx,ebx
-    push    0x14
-    mov    DWORD PTR [esp+0x20],ebx
-    call    R6GameServiceAddresses::AllocateGameServiceBytes
-    push    0x18
-    mov    DWORD PTR [esp+0x10],eax
-    call    R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    DWORD PTR [esp+0x10],eax
-    cmp    eax,ebx
-    mov    BYTE PTR [esp+0x1c],0x1
-    je    Branch74
-    lea    ecx,[esp+0x38]
-    push    0x1
-    push    ecx
-    mov    ecx,eax
-    call    R6GameServiceAddresses::CopyConstructClDataList
-    jmp    Branch75
-  Branch74:
-    xor    eax,eax
-  Branch75:
-    mov    edx,DWORD PTR [esp+0xc]
-    mov    ecx,DWORD PTR [esp+0x28]
-    mov    BYTE PTR [esp+0x1c],bl
-    mov    bl,BYTE PTR [esp+0x24]
-    mov    DWORD PTR [edx],ecx
-    mov    edx,DWORD PTR [esp+0xc]
-    mov    ecx,DWORD PTR [esp+0x2c]
-    mov    DWORD PTR [edx+0x4],ecx
-    mov    edx,DWORD PTR [esp+0xc]
-    mov    cl,BYTE PTR [esp+0x34]
-    mov    DWORD PTR [edx+0x10],eax
-    mov    eax,DWORD PTR [esp+0xc]
-    mov    edx,DWORD PTR [esp+0x30]
-    mov    BYTE PTR [eax+0xc],cl
-    mov    eax,DWORD PTR [esp+0xc]
-    and    edx,0xff
-    test    bl,0x2
-    mov    DWORD PTR [eax+0x8],edx
-    je    Branch76
-    lea    ecx,[esp+0x34]
-    lea    esi,[edi+0xa4]
-    push    ecx
-    mov    ecx,esi
-    call    R6GameServiceAddresses::CopyListHeadSlot
-    lea    edx,[esp+0xc]
-    mov    ecx,esi
-    push    edx
-    call    R6GameServiceAddresses::AllocateListPayloadNode
-    mov    esi,DWORD PTR [esp+0x34]
-    mov    edx,DWORD PTR [esi+0x4]
-    lea    ecx,[esi+0x4]
-    mov    DWORD PTR [eax],esi
-    mov    DWORD PTR [eax+0x4],edx
-    mov    DWORD PTR [edx],eax
-    mov    DWORD PTR [ecx],eax
-  Branch76:
-    test    bl,0x1
-    je    Branch77
-    lea    esi,[edi+0x9c]
-    lea    eax,[esp+0x34]
-    push    eax
-    mov    ecx,esi
-    call    R6GameServiceAddresses::CopyListHeadSlot
-    lea    ecx,[esp+0xc]
-    push    ecx
-    mov    ecx,esi
-    call    R6GameServiceAddresses::AllocateListPayloadNode
-    mov    esi,DWORD PTR [esp+0x34]
-    mov    edx,DWORD PTR [esi+0x4]
-    lea    ecx,[esi+0x4]
-    mov    DWORD PTR [eax],esi
-    mov    DWORD PTR [eax+0x4],edx
-    mov    DWORD PTR [edx],eax
-    mov    DWORD PTR [ecx],eax
-  Branch77:
-    mov    DWORD PTR [esp+0x38],R6GameServiceAddresses::clDataListPTR_FUN
-    lea    edx,[esp+0x44]
-    mov    DWORD PTR [esp+0x1c],0x2
-    mov    DWORD PTR [esp+0x34],edx
-    mov    DWORD PTR [esp+0x44],R6GameServiceAddresses::clDataListPTR_FUN2
-    push    ecx
-    mov    ecx,DWORD PTR [esp+0x4c]
-    mov    eax,esp
-    push    ecx
-    push    esp
-    mov    BYTE PTR [esp+0x28],0x3
-    mov    DWORD PTR [eax],ecx
-    lea    ecx,[esp+0x54]
-    call    R6GameServiceAddresses::ReadListFirstNodeFromHeadSlot
-    mov    eax,DWORD PTR [esp+0x4c]
-    lea    edx,[esp+0x30]
-    push    edx
-    lea    ecx,[esp+0x50]
-    call    DWORD PTR [eax+0x10]
-    lea    ecx,[esp+0x48]
-    mov    BYTE PTR [esp+0x1c],0x2
-    call    R6GameServiceAddresses::ReleaseNodesAndSentinel
-    mov    ecx,DWORD PTR [esp+0x14]
-    pop    edi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    add    esp,0x14
-    ret    0x2c
+// Inferred logical builder slots: recordS-14, guarded raw cloneS-10 and entered-clear scratchS-60.
+struct TaggedRecordQueueLocals {
+  uint record;
+  uint rawClone;
+  uint cleanupHead;
+};
+
+// Consume the incoming descriptor, freeing only a pending raw clone on construction failure; the record is unguarded.
+struct TaggedRecordQueueCleanup {
+  TaggedRecordQueueLocals *frame;
+  uint *incoming;
+  uint *contextWord;
+  int state;
+  bool armed;
+  // Entered incoming cleanup frees the current rewritten context's head, then resets only the incoming base.
+  ~TaggedRecordQueueCleanup() noexcept(false)
+  {
+    if (!armed) return;
+    while (state >= 0) {
+      switch (state) {
+      case 0:
+        state = -1;
+        DestroyClDataListAlias(incoming);
+        break;
+      case 1:
+        state = 0;
+        ForwardToAllocatorTail((void *)frame->rawClone);
+        break;
+      case 2:
+        state = -1;
+        ResetClDataVtable(incoming);
+        break;
+      case 3:
+        state = 2;
+        frame->cleanupHead = *contextWord == 0 ? 0 : *contextWord + 4;
+        ReleaseNodesAndSentinel((void *)frame->cleanupHead);
+        break;
+      }
+    }
   }
+};
+
+// Clone incoming payload into a record, publish the same record under cached mask bits, then consume the incoming list.
+// Preserve late fields/current record slot, nullable clone results, retained padding and unguarded record allocation.
+// R6GameService.dll @ 10054660 : complete native control/access order and raw ABI retained.
+uint __thiscall QueueTaggedRecord(void *owner,uint flags,uint value,uint key,uint opcode,
+    uint byteField,NativeDescriptorArgument24 payload)
+{
+  TaggedRecordQueueLocals frame;
+  TaggedRecordQueueCleanup cleanup{&frame,payload.words,&byteField,0,true};
+  uint base = (uint)owner;
+  frame.record = (uint)AllocateGameServiceBytes(0x14);
+  uint allocation = (uint)AllocateGameServiceBytes(0x18);
+  frame.rawClone = allocation;
+  cleanup.state = 1;
+  void *clone = nullptr;
+  if (allocation != 0) clone = CopyConstructClDataList((void *)allocation,payload.words,1);
+  uint target = frame.record;
+  uint currentValue = value;
+  cleanup.state = 0;
+  byte mask = (byte)flags;
+  *(uint *)target = currentValue;
+  target = frame.record;
+  uint currentKey = key;
+  *(uint *)(target + 4) = currentKey;
+  target = frame.record;
+  byte capturedByte = (byte)byteField;
+  *(void **)(target + 0x10) = clone;
+  target = frame.record;
+  uint currentOpcode = opcode;
+  *(byte *)(target + 0xc) = capturedByte;
+  target = frame.record;
+  currentOpcode &= 0xff;
+  *(uint *)(target + 8) = currentOpcode;
+  if ((mask & 2) != 0) {
+    void *headSlot = (void *)(base + 0xa4);
+    CopyListHeadSlot(headSlot,&byteField);
+    uint node = (uint)AllocateListPayloadNode((void **)&frame.record);
+    uint head = byteField;
+    uint previous = *(uint *)(head + 4);
+    *(uint *)node = head;
+    *(uint *)(node + 4) = previous;
+    *(uint *)previous = node;
+    *(uint *)(head + 4) = node;
+  }
+  if ((mask & 1) != 0) {
+    void *headSlot = (void *)(base + 0x9c);
+    CopyListHeadSlot(headSlot,&byteField);
+    uint node = (uint)AllocateListPayloadNode((void **)&frame.record);
+    uint head = byteField;
+    uint previous = *(uint *)(head + 4);
+    *(uint *)node = head;
+    *(uint *)(node + 4) = previous;
+    *(uint *)previous = node;
+    *(uint *)(head + 4) = node;
+  }
+  payload.words[0] = R6GameServiceAddresses::clDataListPTR_FUN;
+  cleanup.state = 2;
+  byteField = (uint)(payload.words + 3);
+  payload.words[3] = R6GameServiceAddresses::clDataListPTR_FUN2;
+  uint pastLast = payload.words[4];
+  uint first = pastLast;
+  cleanup.state = 3;
+  ReadListFirstNodeFromHeadSlot(payload.words + 4,&first);
+  uint table = payload.words[3];
+  using RangeABI = uint * (__thiscall *)(void *,uint *,uint,uint);
+  ((RangeABI)*(uint *)(table + 0x10))(payload.words + 3,&value,first,pastLast);
+  cleanup.state = 2;
+  uint result = ReleaseNodesAndSentinel(payload.words + 4);
+  cleanup.armed = false;
+  return result;
 }
 
-// Build selector/incoming descriptor, send D1 with full mode, then release local/incoming lists while retaining sender AL.
-// Preserve rewritten mode-word cleanup context and eight-state lifetimes; upper EAX comes from final release.
-// R6GameService.dll @ 100547d0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall SendDescriptorAsD1(void *owner,uint selector,uint modeWord,
-                                         NativeDescriptorArgument24 descriptor)
-{
-  __asm {
-    push    0xffffffff
-    push    R6GameServiceAddresses::SelectD1SenderEH
-    mov    eax,fs:0x0
-    push    eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x20
-    push    ebx
-    xor    eax,eax
-    push    esi
-    mov    esi,ecx
-    mov    DWORD PTR [esp+0xc],eax
-    mov    ebx,0x3
-    mov    DWORD PTR [esp+0x30],eax
-    mov    DWORD PTR [esp+0x14],R6GameServiceAddresses::ClDataListBaseOffsets
-    mov    DWORD PTR [esp+0x24],R6GameServiceAddresses::ClDataListInnerBaseOffsets
-    mov    DWORD PTR [esp+0x18],ebx
-    mov    DWORD PTR [esp+0x10],R6GameServiceAddresses::PTR_LAB
-    lea    eax,[esp+0xb]
-    lea    ecx,[esp+0x20]
-    push    eax
-    mov    BYTE PTR [esp+0x34],0x2
-    call    R6GameServiceAddresses::InitializePayloadListHeader
-    mov    DWORD PTR [esp+0x10],R6GameServiceAddresses::clDataListPTR_FUN
-    mov    DWORD PTR [esp+0x1c],R6GameServiceAddresses::clDataListPTR_LAB
-    lea    ecx,[esp+0x38]
-    mov    BYTE PTR [esp+0x30],bl
-    push    ecx
-    lea    ecx,[esp+0x14]
-    call    R6GameServiceAddresses::AppendClDataListSignedDecimal
-    lea    edx,[esp+0x40]
-    lea    ecx,[esp+0x10]
-    push    edx
-    call    R6GameServiceAddresses::AppendClDataListCopy
-    mov    ecx,DWORD PTR [esp+0x3c]
-    lea    eax,[esp+0x10]
-    push    eax
-    push    ecx
-    push    0xd1
-    mov    ecx,esi
-    call    R6GameServiceAddresses::CConnectionListBroadcast
-    mov    bl,al
-    mov    DWORD PTR [esp+0x10],R6GameServiceAddresses::clDataListPTR_FUN
-    lea    edx,[esp+0x1c]
-    mov    esi,R6GameServiceAddresses::clDataListPTR_FUN2
-    mov    DWORD PTR [esp+0x3c],edx
-    mov    DWORD PTR [esp+0x1c],esi
-    lea    ecx,[esp+0x1c]
-    mov    BYTE PTR [esp+0x30],0x5
-    call    R6GameServiceAddresses::InvokePointerListClearRange
-    lea    ecx,[esp+0x20]
-    mov    BYTE PTR [esp+0x30],0x4
-    call    R6GameServiceAddresses::ReleaseNodesAndSentinel
-    mov    DWORD PTR [esp+0x10],R6GameServiceAddresses::PTR_LAB
-    mov    DWORD PTR [esp+0x40],R6GameServiceAddresses::clDataListPTR_FUN
-    lea    eax,[esp+0x4c]
-    mov    DWORD PTR [esp+0x30],0x6
-    mov    DWORD PTR [esp+0x3c],eax
-    mov    DWORD PTR [esp+0x4c],esi
-    lea    ecx,[esp+0x4c]
-    mov    BYTE PTR [esp+0x30],0x7
-    call    R6GameServiceAddresses::InvokePointerListClearRange
-    lea    ecx,[esp+0x50]
-    mov    BYTE PTR [esp+0x30],0x6
-    call    R6GameServiceAddresses::ReleaseNodesAndSentinel
-    mov    ecx,DWORD PTR [esp+0x28]
-    mov    al,bl
-    pop    esi
-    pop    ebx
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x2c
-    ret    0x20
+// Inferred physical cookie/scratch/local descriptor at entry ESP-0x2c/-0x28/-0x24; cleanup heads are logical slots.
+struct DescriptorD1Locals {
+  byte cookieStorage[4];
+  uint unused;
+  uint descriptor[6];
+  uint localCleanupHead;
+  uint incomingCleanupHead;
+};
+
+// Preserve incoming ownership, partial local construction and head-only cleanup after entered virtual range clearing.
+struct DescriptorD1Cleanup {
+  DescriptorD1Locals *frame;
+  uint *incoming;
+  uint *modeWord;
+  int state;
+  bool armed;
+  // Re-read the rewritten mode context before either entered-clear cleanup; retain native NULL forwarding.
+  ~DescriptorD1Cleanup() noexcept(false)
+  {
+    if (!armed) return;
+    using EmptyABI = void (__thiscall *)(void *);
+    while (state >= 0) {
+      switch (state) {
+      case 0:
+        state = -1;
+        DestroyClDataListAlias(incoming);
+        break;
+      case 1: case 4:
+        state = 0;
+        ResetClDataVtable(frame->descriptor);
+        break;
+      case 2:
+        state = 1;
+        ((EmptyABI)R6GameServiceAddresses::list_node_support_NoOp)(frame->cookieStorage + 3);
+        break;
+      case 3:
+        state = 0;
+        DestroyClDataListAlias(frame->descriptor);
+        break;
+      case 5:
+        state = 4;
+        frame->localCleanupHead = *modeWord == 0 ? 0 : *modeWord + 4;
+        ReleaseNodesAndSentinel((void *)frame->localCleanupHead);
+        break;
+      case 6:
+        state = -1;
+        ResetClDataVtable(incoming);
+        break;
+      case 7:
+        state = 6;
+        frame->incomingCleanupHead = *modeWord == 0 ? 0 : *modeWord + 4;
+        ReleaseNodesAndSentinel((void *)frame->incomingCleanupHead);
+        break;
+      }
+    }
   }
+};
+
+// Broadcast selector/incoming descriptor as D1, then consume both lists while retaining the broadcast's raw AL.
+// The mode argument becomes the current cleanup context; incoming primary remains derived after normal release.
+// R6GameService.dll @ 100547d0 : complete native control/access order and raw ABI retained.
+uint __thiscall SendDescriptorAsD1(void *owner,uint selector,uint modeWord,NativeDescriptorArgument24 descriptor)
+{
+  DescriptorD1Locals frame;
+  DescriptorD1Cleanup cleanup{&frame,descriptor.words,&modeWord,0,true};
+  void *savedOwner = owner;
+  frame.unused = 0;
+  frame.descriptor[1] = R6GameServiceAddresses::ClDataListBaseOffsets;
+  frame.descriptor[5] = R6GameServiceAddresses::ClDataListInnerBaseOffsets;
+  frame.descriptor[2] = 3;
+  frame.descriptor[0] = R6GameServiceAddresses::PTR_LAB;
+  cleanup.state = 2;
+  InitializePayloadListHeader(frame.descriptor + 4,(uint)(frame.cookieStorage + 3));
+  frame.descriptor[0] = R6GameServiceAddresses::clDataListPTR_FUN;
+  frame.descriptor[3] = R6GameServiceAddresses::clDataListPTR_LAB;
+  cleanup.state = 3;
+  AppendClDataListSignedDecimal(frame.descriptor,&selector);
+  AppendClDataListCopy(frame.descriptor,descriptor.words);
+  uint currentMode = modeWord;
+  uint sent = CConnectionListBroadcast(savedOwner,0xd1,currentMode,(int)frame.descriptor);
+  byte resultByte = (byte)sent;
+  frame.descriptor[0] = R6GameServiceAddresses::clDataListPTR_FUN;
+  modeWord = (uint)(frame.descriptor + 3);
+  frame.descriptor[3] = R6GameServiceAddresses::clDataListPTR_FUN2;
+  cleanup.state = 5;
+  InvokePointerListClearRange(frame.descriptor + 3);
+  cleanup.state = 4;
+  ReleaseNodesAndSentinel(frame.descriptor + 4);
+  frame.descriptor[0] = R6GameServiceAddresses::PTR_LAB;
+  descriptor.words[0] = R6GameServiceAddresses::clDataListPTR_FUN;
+  cleanup.state = 6;
+  modeWord = (uint)(descriptor.words + 3);
+  descriptor.words[3] = R6GameServiceAddresses::clDataListPTR_FUN2;
+  cleanup.state = 7;
+  InvokePointerListClearRange(descriptor.words + 3);
+  cleanup.state = 6;
+  uint released = ReleaseNodesAndSentinel(descriptor.words + 4);
+  cleanup.armed = false;
+  return (released & 0xffffff00) | resultByte;
 }
 
 // Destroy the builder incoming descriptor at inherited EBP+0x18.
@@ -3257,132 +3023,111 @@ undefined4 __thiscall MarkKeyRecordPending(void *this,int key)
   return CONCAT31((int3)((uint)returnResidue >> 8),1);
 }
 
-// Find exact key before allocation, build two descriptors using current key, send through CURRENT transport1d0.
-// AL-success marks CURRENT saved record+98 before destruction; retain raw upperEAX and distinct cleanup states.
-// R6GameService.dll @ 10053970 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall SendKeyNotificationD1(void *owner,int key)
-{
-  __asm {
-    push   0xffffffff
-    push   R6GameServiceAddresses::SelectKeyNotificationSenderEH
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x38
-    push   ebp
-    push   esi
-    mov    esi,ecx
-    push   edi
-    lea    eax,[esp+0x54]
-    xor    ebp,ebp
-    lea    edi,[esi+0xac]
-    push   eax
-    mov    ecx,edi
-    mov    DWORD PTR [esp+0x14],ebp
-    call   R6GameServiceAddresses::FindIndexedTreeKey
-    mov    ecx,DWORD PTR [edi]
-    mov    DWORD PTR [esp+0x10],eax
-    cmp    eax,ecx
-    jne    Branch91
-    pop    edi
-    pop    esi
-    xor    al,al
-    pop    ebp
-    mov    ecx,DWORD PTR [esp+0x38]
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x44
-    ret    0x4
-  Branch91:
-    push   ebx
-    mov    ebx,0x3
-    mov    DWORD PTR [esp+0x34],R6GameServiceAddresses::ClDataListBaseOffsets
-    mov    DWORD PTR [esp+0x44],R6GameServiceAddresses::ClDataListInnerBaseOffsets
-    mov    DWORD PTR [esp+0x38],ebx
-    mov    DWORD PTR [esp+0x30],R6GameServiceAddresses::PTR_LAB
-    push   ebp
-    lea    ecx,[esp+0x40]
-    mov    DWORD PTR [esp+0x54],ebp
-    call   R6GameServiceAddresses::ConstructClDataPointerList
-    mov    ebp,R6GameServiceAddresses::clDataListPTR_FUN
-    mov    edi,R6GameServiceAddresses::clDataListPTR_LAB
-    mov    DWORD PTR [esp+0x30],ebp
-    mov    DWORD PTR [esp+0x3c],edi
-    mov    DWORD PTR [esp+0x50],0x1
-    mov    DWORD PTR [esp+0x1c],R6GameServiceAddresses::ClDataListBaseOffsets
-    mov    DWORD PTR [esp+0x2c],R6GameServiceAddresses::ClDataListInnerBaseOffsets
-    mov    DWORD PTR [esp+0x20],ebx
-    mov    DWORD PTR [esp+0x18],R6GameServiceAddresses::PTR_LAB
-    push   0x0
-    lea    ecx,[esp+0x28]
-    mov    BYTE PTR [esp+0x54],0x2
-    call   R6GameServiceAddresses::ConstructClDataPointerList
-    mov    DWORD PTR [esp+0x18],ebp
-    mov    DWORD PTR [esp+0x24],edi
-    lea    ecx,[esp+0x58]
-    mov    BYTE PTR [esp+0x50],bl
-    push   ecx
-    lea    ecx,[esp+0x34]
-    call   R6GameServiceAddresses::AppendClDataListSignedDecimal
-    lea    edx,[esp+0x10]
-    lea    ecx,[esp+0x18]
-    push   edx
-    mov    DWORD PTR [esp+0x14],ebx
-    call   R6GameServiceAddresses::AppendClDataListSignedDecimal
-    lea    eax,[esp+0x30]
-    lea    ecx,[esp+0x18]
-    push   eax
-    call   R6GameServiceAddresses::AppendClDataListCopy
-    lea    ecx,[esp+0x18]
-    push   ecx
-    mov    ecx,DWORD PTR [esi+0x1d0]
-    push   0x1
-    push   0xd1
-    call   R6GameServiceAddresses::SendTransportPayload
-    test   al,al
-    pop    ebx
-    jne    Branch92
-    mov    DWORD PTR [esp+0x14],ebp
-    mov    DWORD PTR [esp+0x20],edi
-    lea    ecx,[esp+0x20]
-    mov    BYTE PTR [esp+0x4c],0x4
-    call   R6GameServiceAddresses::DestroyClDataPointerList
-    mov    DWORD PTR [esp+0x14],R6GameServiceAddresses::PTR_LAB
-    mov    DWORD PTR [esp+0x2c],ebp
-    mov    DWORD PTR [esp+0x38],edi
-    lea    ecx,[esp+0x38]
-    mov    DWORD PTR [esp+0x4c],0x5
-    call   R6GameServiceAddresses::DestroyClDataPointerList
-    pop    edi
-    pop    esi
-    xor    al,al
-    pop    ebp
-    mov    ecx,DWORD PTR [esp+0x38]
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x44
-    ret    0x4
-  Branch92:
-    mov    edx,DWORD PTR [esp+0x10]
-    mov    BYTE PTR [edx+0x98],0x1
-    mov    DWORD PTR [esp+0x14],ebp
-    mov    DWORD PTR [esp+0x20],edi
-    lea    ecx,[esp+0x20]
-    mov    BYTE PTR [esp+0x4c],0x6
-    call   R6GameServiceAddresses::DestroyClDataPointerList
-    mov    DWORD PTR [esp+0x14],R6GameServiceAddresses::PTR_LAB
-    mov    DWORD PTR [esp+0x2c],ebp
-    mov    DWORD PTR [esp+0x38],edi
-    lea    ecx,[esp+0x38]
-    mov    DWORD PTR [esp+0x4c],0x7
-    call   R6GameServiceAddresses::DestroyClDataPointerList
-    mov    ecx,DWORD PTR [esp+0x44]
-    pop    edi
-    pop    esi
-    mov    al,0x1
-    pop    ebp
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x44
-    ret    0x4
+// Inferred key sender locals: opcode scratchS-44, current recordS-40, envelopeS-3c and key payloadS-24.
+struct KeyNotificationLocals {
+  uint opcode;
+  uint record;
+  uint envelope[6];
+  uint payload[6];
+};
+
+// Release only completed descriptor stages; entered member destruction resets its base without retrying its storage.
+struct KeyNotificationCleanup {
+  KeyNotificationLocals *frame;
+  int state;
+  bool armed;
+  // The second descriptor precedes the first in full cleanup; states5/7 reset only the first descriptor base.
+  ~KeyNotificationCleanup() noexcept(false)
+  {
+    if (!armed) return;
+    while (state >= 0) {
+      switch (state) {
+      case 0: case 5: case 7:
+        state = -1;
+        ResetClDataVtable(frame->payload);
+        break;
+      case 1:
+        state = -1;
+        DestroyClDataListAlias(frame->payload);
+        break;
+      case 2: case 4: case 6:
+        state = 1;
+        ResetClDataVtable(frame->envelope);
+        break;
+      case 3:
+        state = 1;
+        DestroyClDataListAlias(frame->envelope);
+        break;
+      }
+    }
   }
+};
+
+// Send a keyed D1 notification, marking the current saved record+98 after successful send and before local cleanup.
+// Missing keys return lookup upper EAX/AL0 without allocation. Key/transport/record reads stay late; names inferred.
+// R6GameService.dll @ 10053970 : complete native control/access order and raw ABI retained.
+uint __thiscall SendKeyNotificationD1(void *owner,int key)
+{
+  KeyNotificationLocals frame;
+  KeyNotificationCleanup cleanup{&frame,-1,true};
+  void *savedOwner = owner;
+  void *tree = (byte *)savedOwner + 0xac;
+  frame.opcode = 0;
+  uint record = FindIndexedTreeKey(tree,&key);
+  uint head = *(uint *)tree;
+  frame.record = record;
+  if (record == head) return record & 0xffffff00u;
+  frame.payload[1] = R6GameServiceAddresses::ClDataListBaseOffsets;
+  frame.payload[5] = R6GameServiceAddresses::ClDataListInnerBaseOffsets;
+  frame.payload[2] = 3;
+  frame.payload[0] = R6GameServiceAddresses::PTR_LAB;
+  cleanup.state = 0;
+  ConstructClDataPointerList(frame.payload + 3,0);
+  frame.payload[0] = R6GameServiceAddresses::clDataListPTR_FUN;
+  frame.payload[3] = R6GameServiceAddresses::clDataListPTR_LAB;
+  cleanup.state = 1;
+  frame.envelope[1] = R6GameServiceAddresses::ClDataListBaseOffsets;
+  frame.envelope[5] = R6GameServiceAddresses::ClDataListInnerBaseOffsets;
+  frame.envelope[2] = 3;
+  frame.envelope[0] = R6GameServiceAddresses::PTR_LAB;
+  cleanup.state = 2;
+  ConstructClDataPointerList(frame.envelope + 3,0);
+  frame.envelope[0] = R6GameServiceAddresses::clDataListPTR_FUN;
+  frame.envelope[3] = R6GameServiceAddresses::clDataListPTR_LAB;
+  cleanup.state = 3;
+  AppendClDataListSignedDecimal(frame.payload,&key);
+  frame.opcode = 3;
+  AppendClDataListSignedDecimal(frame.envelope,&frame.opcode);
+  uint copied = AppendClDataListCopy(frame.envelope,frame.payload);
+  void *currentTransport = *(void **)((byte *)savedOwner + 0x1d0);
+  uint sent = SendTransportPayload(currentTransport,0xd1,1,frame.envelope,copied);
+  bool success = (byte)sent != 0;
+  uint result;
+  if (!success) {
+    frame.envelope[0] = R6GameServiceAddresses::clDataListPTR_FUN;
+    frame.envelope[3] = R6GameServiceAddresses::clDataListPTR_LAB;
+    cleanup.state = 4;
+    DestroyClDataPointerList(frame.envelope + 3);
+    frame.envelope[0] = R6GameServiceAddresses::PTR_LAB;
+    frame.payload[0] = R6GameServiceAddresses::clDataListPTR_FUN;
+    frame.payload[3] = R6GameServiceAddresses::clDataListPTR_LAB;
+    cleanup.state = 5;
+    result = DestroyClDataPointerList(frame.payload + 3);
+  } else {
+    uint currentRecord = frame.record;
+    *(byte *)(currentRecord + 0x98) = 1;
+    frame.envelope[0] = R6GameServiceAddresses::clDataListPTR_FUN;
+    frame.envelope[3] = R6GameServiceAddresses::clDataListPTR_LAB;
+    cleanup.state = 6;
+    DestroyClDataPointerList(frame.envelope + 3);
+    frame.envelope[0] = R6GameServiceAddresses::PTR_LAB;
+    frame.payload[0] = R6GameServiceAddresses::clDataListPTR_FUN;
+    frame.payload[3] = R6GameServiceAddresses::clDataListPTR_LAB;
+    cleanup.state = 7;
+    result = DestroyClDataPointerList(frame.payload + 3);
+  }
+  cleanup.armed = false;
+  return (result & 0xffffff00u) | (success ? 1u : 0u);
 }
 
 // Key sender state0 resets base of descriptor at inherited EBP-24.
@@ -3475,214 +3220,136 @@ __declspec(naked) void __cdecl SelectKeyNotificationSenderEH(void)
   }
 }
 
-// Cache successor before removal, load current key last, then compare successor to CURRENT owner+ac head.
-// Ignore removal status, retain final raw upperEAX/AL1 and no own EH.
-// R6GameService.dll @ 10054110 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall ProcessIndexedRecordsInKeyOrder(void *owner)
+// Computes each successor before removal, loads the old key last and ignores removal status; final AL is always one.
+// R6GameService.dll @ 10054110 : ECX owner, no stack words; iterator/field names are inferred.
+uint __fastcall ProcessIndexedRecordsInKeyOrder(void *owner)
 {
-  __asm {
-    push   esi
-    push   edi
-    mov    edi,ecx
-    mov    eax,DWORD PTR [edi+0xac]
-    mov    esi,DWORD PTR [eax+0x8]
-    cmp    esi,eax
-    je    Branch99
-  Branch93:
-    mov    eax,DWORD PTR [esi+0xc]
-    mov    ecx,esi
-    test   eax,eax
-    je    Branch95
-    mov    esi,eax
-    mov    eax,DWORD PTR [esi+0x8]
-    test   eax,eax
-    je    Branch98
-  Branch94:
-    mov    esi,eax
-    mov    eax,DWORD PTR [esi+0x8]
-    test   eax,eax
-    jne    Branch94
-    jmp    Branch98
-  Branch95:
-    mov    eax,DWORD PTR [esi+0x4]
-    cmp    esi,DWORD PTR [eax+0xc]
-    jne    Branch97
-  Branch96:
-    mov    esi,eax
-    mov    eax,DWORD PTR [eax+0x4]
-    cmp    esi,DWORD PTR [eax+0xc]
-    je    Branch96
-  Branch97:
-    cmp    DWORD PTR [esi+0xc],eax
-    je    Branch98
-    mov    esi,eax
-  Branch98:
-    mov    eax,DWORD PTR [ecx+0x10]
-    mov    ecx,edi
-    push   eax
-    call   R6GameServiceAddresses::RemoveIndexedRecordAndQueueNotifications
-    cmp    esi,DWORD PTR [edi+0xac]
-    jne    Branch93
-  Branch99:
-    pop    edi
-    mov    al,0x1
-    pop    esi
-    ret
+  uint base = (uint)owner;
+  uint head = *(uint *)(base + 0xac);
+  uint cursor = *(uint *)(head + 8);
+  uint result = head;
+  using RemoveABI = uint (__thiscall *)(void *,int);
+  while (cursor != head) {
+    uint previous = cursor;
+    uint right = *(uint *)(cursor + 0xc);
+    if (right != 0) {
+      cursor = right;
+      uint left = *(uint *)(cursor + 8);
+      while (left != 0) {
+        cursor = left;
+        left = *(uint *)(cursor + 8);
+      }
+    } else {
+      uint parent = *(uint *)(cursor + 4);
+      while (cursor == *(uint *)(parent + 0xc)) {
+        cursor = parent;
+        parent = *(uint *)(parent + 4);
+      }
+      if (*(uint *)(cursor + 0xc) != parent) cursor = parent;
+    }
+    int key = *(int *)(previous + 0x10);
+    result = ((RemoveABI)R6GameServiceAddresses::RemoveIndexedRecordAndQueueNotifications)(owner,key);
+    head = *(uint *)(base + 0xac);
   }
+  return (result & 0xffffff00u) | 1u;
 }
 
-// Find exact signed key using captured header, then compare CURRENT header and BYTEstate2; preserve current-header upperEAX.
-// R6GameService.dll @ 10054170 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall IndexedRecordHasState2(void *owner,int key)
+// Finds a signed key using a captured header, then checks the current header and preserves its upper return bits.
+// R6GameService.dll @ 10054170 : ECX owner, signed key word, RET4; field/iterator names are inferred.
+uint __thiscall IndexedRecordHasState2(void *owner,int key)
 {
-  __asm {
-    push   esi
-    mov    esi,DWORD PTR [ecx+0xac]
-    push   edi
-    mov    edi,DWORD PTR [esp+0xc]
-    mov    eax,DWORD PTR [esi+0x4]
-    mov    edx,esi
-    test   eax,eax
-    je    Branch103
-  Branch100:
-    cmp    DWORD PTR [eax+0x10],edi
-    jl    Branch101
-    mov    edx,eax
-    mov    eax,DWORD PTR [eax+0x8]
-    jmp    Branch102
-  Branch101:
-    mov    eax,DWORD PTR [eax+0xc]
-  Branch102:
-    test   eax,eax
-    jne    Branch100
-  Branch103:
-    cmp    edx,esi
-    je    Branch104
-    cmp    edi,DWORD PTR [edx+0x10]
-    jge    Branch105
-  Branch104:
-    mov    edx,esi
-  Branch105:
-    mov    eax,DWORD PTR [ecx+0xac]
-    pop    edi
-    cmp    edx,eax
-    pop    esi
-    je    Branch106
-    cmp    BYTE PTR [edx+0x98],0x2
-    jne    Branch106
-    mov    al,0x1
-    ret    0x4
-  Branch106:
-    xor    al,al
-    ret    0x4
+  uint base = (uint)owner;
+  uint capturedHead = *(uint *)(base + 0xac);
+  int wanted = key;
+  uint node = *(uint *)(capturedHead + 4);
+  uint candidate = capturedHead;
+  while (node != 0) {
+    if (*(int *)(node + 0x10) < wanted) {
+      node = *(uint *)(node + 0xc);
+    } else {
+      candidate = node;
+      node = *(uint *)(node + 8);
+    }
   }
+  if (candidate == capturedHead || wanted < *(int *)(candidate + 0x10)) candidate = capturedHead;
+  uint currentHead = *(uint *)(base + 0xac);
+  bool found = candidate != currentHead && *(byte *)(candidate + 0x98) == 2;
+  return (currentHead & 0xffffff00u) | (found ? 1u : 0u);
 }
 
 
-// Cache successor only after wrapper free, compare CURRENT head after each step; no own EH, retain raw EAX.
+// Remove pending records matching a captured second word; reload payload/links after their respective callbacks.
+// Return initial head for an empty list, last unmatched payload, or the last node-free result. No cleanup or rollback.
 // R6GameService.dll @ 100541d0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall RemoveListRecordsBySecondWord(void *owner,int secondWord)
+uint __thiscall RemoveListRecordsBySecondWord(void *owner,int secondWord)
 {
-  __asm {
-    push   ebx
-    mov    ebx,ecx
-    push   esi
-    mov    eax,DWORD PTR [ebx+0xa4]
-    mov    esi,DWORD PTR [eax]
-    cmp    esi,eax
-    je    Branch111
-    push   ebp
-    mov    ebp,DWORD PTR [esp+0x10]
-    push   edi
-  Branch107:
-    mov    eax,DWORD PTR [esi+0x8]
-    cmp    DWORD PTR [eax+0x4],ebp
-    jne    Branch109
-    mov    ecx,DWORD PTR [eax+0x10]
-    test   ecx,ecx
-    je    Branch108
-    mov    eax,DWORD PTR [ecx]
-    push   0x1
-    call   DWORD PTR [eax]
-  Branch108:
-    mov    ecx,DWORD PTR [esi+0x8]
-    push   ecx
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    eax,DWORD PTR [esi+0x4]
-    mov    edi,DWORD PTR [esi]
-    push   esi
-    mov    DWORD PTR [eax],edi
-    mov    DWORD PTR [edi+0x4],eax
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    esi,edi
-    jmp    Branch110
-  Branch109:
-    mov    esi,DWORD PTR [esi]
-  Branch110:
-    cmp    esi,DWORD PTR [ebx+0xa4]
-    jne    Branch107
-    pop    edi
-    pop    ebp
-  Branch111:
-    pop    esi
-    pop    ebx
-    ret    0x4
-  }
+  uint base = (uint)owner;
+  uint head = *(uint *)(base + 0xa4);
+  uint node = *(uint *)head;
+  uint result = head;
+  if (node == head) return result;
+  int capturedSecond = secondWord;
+  do {
+    uint payload = *(uint *)(node + 8);
+    result = payload;
+    if (*(int *)(payload + 4) == capturedSecond) {
+      void *object = *(void **)(payload + 0x10);
+      if (object != nullptr) {
+        uint table = *(uint *)object;
+        using DeleteABI = void * (__thiscall *)(void *,uint);
+        ((DeleteABI)*(uint *)table)(object,1);
+      }
+      void *currentPayload = *(void **)(node + 8);
+      TailFreeThroughGlobalAllocator(currentPayload);
+      uint previous = *(uint *)(node + 4);
+      uint next = *(uint *)node;
+      *(uint *)previous = next;
+      *(uint *)(next + 4) = previous;
+      result = TailFreeThroughGlobalAllocator((void *)node);
+      node = next;
+    } else {
+      node = *(uint *)node;
+    }
+  } while (node != *(uint *)(base + 0xa4));
+  return result;
 }
 
-// Remove matching pending-list word pairs: capture arg1, reload arg2 per comparison, destroy current payload then unlink node.
-// Keep nonmatch cached successor versus post-callback matched reload, current loop head and raw final successor, RET8.
+// Remove matching word pairs, capturing the second word but reloading the first word for each candidate match.
+// Nonmatches use a pre-comparison successor; matches reload links after callbacks. Return the final cursor, RET8.
 // R6GameService.dll @ 10054230 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall RemoveListRecordsByWordPair(void *owner,int secondWord,int firstWord)
+uint __thiscall RemoveListRecordsByWordPair(void *owner,int secondWord,int firstWord)
 {
-  __asm {
-    push   ebp
-    mov    ebp,ecx
-    mov    ecx,DWORD PTR [ebp+0xa4]
-    mov    eax,DWORD PTR [ecx]
-    cmp    eax,ecx
-    je    Branch115
-    push   ebx
-    mov    ebx,DWORD PTR [esp+0xc]
-    push   esi
-    push   edi
-  Branch112:
-    mov    esi,eax
-    mov    eax,DWORD PTR [eax]
-    mov    ecx,DWORD PTR [esi+0x8]
-    cmp    DWORD PTR [ecx+0x4],ebx
-    jne    Branch114
-    mov    edx,DWORD PTR [esp+0x18]
-    mov    edi,DWORD PTR [ecx]
-    cmp    edi,edx
-    jne    Branch114
-    mov    ecx,DWORD PTR [ecx+0x10]
-    test   ecx,ecx
-    je    Branch113
-    mov    eax,DWORD PTR [ecx]
-    push   0x1
-    call   DWORD PTR [eax]
-  Branch113:
-    mov    ecx,DWORD PTR [esi+0x8]
-    push   ecx
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    eax,DWORD PTR [esi+0x4]
-    mov    edi,DWORD PTR [esi]
-    push   esi
-    mov    DWORD PTR [eax],edi
-    mov    DWORD PTR [edi+0x4],eax
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    eax,edi
-  Branch114:
-    cmp    eax,DWORD PTR [ebp+0xa4]
-    jne    Branch112
-    pop    edi
-    pop    esi
-    pop    ebx
-  Branch115:
-    pop    ebp
-    ret    0x8
-  }
+  uint base = (uint)owner;
+  uint head = *(uint *)(base + 0xa4);
+  uint cursor = *(uint *)head;
+  if (cursor == head) return cursor;
+  int capturedSecond = secondWord;
+  do {
+    uint node = cursor;
+    cursor = *(uint *)node;
+    uint payload = *(uint *)(node + 8);
+    if (*(int *)(payload + 4) == capturedSecond) {
+      int currentFirst = firstWord;
+      int storedFirst = *(int *)payload;
+      if (storedFirst == currentFirst) {
+        void *object = *(void **)(payload + 0x10);
+        if (object != nullptr) {
+          uint table = *(uint *)object;
+          using DeleteABI = void * (__thiscall *)(void *,uint);
+          ((DeleteABI)*(uint *)table)(object,1);
+        }
+        void *currentPayload = *(void **)(node + 8);
+        TailFreeThroughGlobalAllocator(currentPayload);
+        uint previous = *(uint *)(node + 4);
+        uint next = *(uint *)node;
+        *(uint *)previous = next;
+        *(uint *)(next + 4) = previous;
+        TailFreeThroughGlobalAllocator((void *)node);
+        cursor = next;
+      }
+    }
+  } while (cursor != *(uint *)(base + 0xa4));
+  return cursor;
 }
 
 // Literal accumulating-notification cleanup map/FuncInfo; state6 is not armed by the normal parent.

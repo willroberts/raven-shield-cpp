@@ -64,98 +64,76 @@ __declspec(naked) uint __thiscall AcceptCipherModuleGSXorKey(void *owner,uint ke
   }
 }
 
-// Requires exact capacity, copies in native word/byte groups, then masks and transposes the output in place.
-// R6GameService.dll @ 10037940 : ECX receiver, four stack words, RET0x10; sets only AL after helper or failure.
-__declspec(naked) uint __thiscall EncodeCipherModuleGSXorBuffer(
-    void *owner,const byte *source,uint byteCount,byte *destination,uint *destinationByteCount)
-{
-  __asm {
-    mov    eax,dword ptr [esp+0xc]
-    mov    edx,dword ptr [esp+0x10]
-    push   ebx
-    push   esi
-    mov    esi,dword ptr [esp+0x10]
-    mov    ebx,ecx
-    test   eax,eax
-    jz     capacity_mismatch
-    mov    ecx,dword ptr [edx]
-    cmp    ecx,esi
-    jne    capacity_mismatch
-    mov    esi,dword ptr [esp+0xc]
-    push   ebp
-    mov    ebp,ecx
-    push   edi
-    mov    edi,eax
-    shr    ecx,2
-    rep movsd
-    mov    ecx,ebp
-    and    ecx,3
-    rep movsb
-    mov    ecx,dword ptr [edx]
-    push   ecx
-    mov    ecx,dword ptr [ebx+0xc]
-    push   eax
-    call   R6GameServiceAddresses::EncodeMaskedSquareTransposition
-    pop    edi
-    pop    ebp
-    pop    esi
-    mov    al,1
-    pop    ebx
-    ret    0x10
-  capacity_mismatch:
-    mov    dword ptr [edx],esi
-    pop    esi
-    xor    al,al
-    pop    ebx
-    ret    0x10
+namespace {
+// Inferred C++ view of the native DWORD/tail copies; forward access order preserves overlapping-buffer behavior.
+inline void CopyGSXorBytesForward(uint destination,uint source,uint count) {
+  uint words = count >> 2;
+  while (words != 0) {
+    uint value = *(const uint *)source;
+    *(uint *)destination = value;
+    source += 4;
+    destination += 4;
+    --words;
+  }
+  uint tail = count & 3;
+  while (tail != 0) {
+    byte value = *(const byte *)source;
+    *(byte *)destination = value;
+    ++source;
+    ++destination;
+    --tail;
   }
 }
+}
 
-// Requires exact capacity, copies in native word/byte groups, then reverses transposition and masking in place.
-// R6GameService.dll @ 10037990 : ECX receiver, four stack words, RET0x10; sets only AL after helper or failure.
-__declspec(naked) uint __thiscall DecodeCipherModuleGSXorBuffer(
+// Require exact capacity, copy forward and then mask/transpose in place using the count reloaded after copying.
+// R6GameService.dll @ 10037940 : only AL is replaced with status; failure reports the required count.
+uint __thiscall EncodeCipherModuleGSXorBuffer(
     void *owner,const byte *source,uint byteCount,byte *destination,uint *destinationByteCount)
 {
-  __asm {
-    mov    eax,dword ptr [esp+0xc]
-    mov    edx,dword ptr [esp+0x10]
-    push   ebx
-    push   esi
-    mov    esi,dword ptr [esp+0x10]
-    mov    ebx,ecx
-    test   eax,eax
-    jz     capacity_mismatch
-    mov    ecx,dword ptr [edx]
-    cmp    ecx,esi
-    jne    capacity_mismatch
-    mov    esi,dword ptr [esp+0xc]
-    push   ebp
-    mov    ebp,ecx
-    push   edi
-    mov    edi,eax
-    shr    ecx,2
-    rep movsd
-    mov    ecx,ebp
-    and    ecx,3
-    rep movsb
-    mov    ecx,dword ptr [edx]
-    push   ecx
-    mov    ecx,dword ptr [ebx+0xc]
-    push   eax
-    call   R6GameServiceAddresses::DecodeMaskedSquareTransposition
-    pop    edi
-    pop    ebp
-    pop    esi
-    mov    al,1
-    pop    ebx
-    ret    0x10
-  capacity_mismatch:
-    mov    dword ptr [edx],esi
-    pop    esi
-    xor    al,al
-    pop    ebx
-    ret    0x10
+  uint address = (uint)destination;
+  uint *countSlot = destinationByteCount;
+  uint required = byteCount;
+  if (address != 0) {
+    uint capacity = *countSlot;
+    if (capacity == required) {
+      uint first = (uint)source;
+      CopyGSXorBytesForward(address,first,capacity);
+      uint count = *countSlot;
+      void *context = *(void **)((byte *)owner + 0xc);
+      using TransformABI = uint (__thiscall *)(void *,byte *,int);
+      uint result = ((TransformABI)R6GameServiceAddresses::EncodeMaskedSquareTransposition)(
+          context,(byte *)address,(int)count);
+      return (result & 0xffffff00) | 1;
+    }
   }
+  *countSlot = required;
+  return address & 0xffffff00;
+}
+
+// Require exact capacity, copy forward, then decode in place using the count reloaded after copying.
+// R6GameService.dll @ 10037990 : only AL is replaced with status; failure reports the required count.
+uint __thiscall DecodeCipherModuleGSXorBuffer(
+    void *owner,const byte *source,uint byteCount,byte *destination,uint *destinationByteCount)
+{
+  uint address = (uint)destination;
+  uint *countSlot = destinationByteCount;
+  uint required = byteCount;
+  if (address != 0) {
+    uint capacity = *countSlot;
+    if (capacity == required) {
+      uint first = (uint)source;
+      CopyGSXorBytesForward(address,first,capacity);
+      uint count = *countSlot;
+      void *context = *(void **)((byte *)owner + 0xc);
+      using TransformABI = uint (__thiscall *)(void *,byte *,int);
+      uint result = ((TransformABI)R6GameServiceAddresses::DecodeMaskedSquareTransposition)(
+          context,(byte *)address,(int)count);
+      return (result & 0xffffff00) | 1;
+    }
+  }
+  *countSlot = required;
+  return address & 0xffffff00;
 }
 
 // Native virtual-table prefix: CipherModule_GSXorVTable

@@ -527,181 +527,161 @@ const R6GameServiceNative::FuncInfo DestroyTransportRecordMembersExceptionInfo =
   0x0,
 };
 
-// Run actual member destruction, then read CURRENT low flag bit0 and optionally free cached owner.
-// Preserve the physical DWORD argument/RET4 and return cached owner regardless of cleanup EAX.
-// R6GameService.dll @ 100573a0 : complete native control/access order and raw ABI retained.
-__declspec(naked) void *__thiscall DestroyTransportRecordAndMaybeFree(void *owner,uint deleteFlags)
+// Destroy members before sampling the current deletion flag; optionally release storage and return the cached receiver.
+// R6GameService.dll @ 100573a0 : full physical flags word; only bit 0 controls storage ownership.
+void * __thiscall DestroyTransportRecordAndMaybeFree(void *owner,uint deleteFlags)
 {
-  __asm {
-    push   esi
-    mov    esi,ecx
-    call   R6GameServiceAddresses::DestroyTransportRecordMembers
-    test   BYTE PTR [esp+0x8],0x1
-    je     Branch22
-    push   esi
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch22:
-    mov    eax,esi
-    pop    esi
-    ret    0x4
-  }
+  using DestroyABI = uint (__fastcall *)(void *);
+  ((DestroyABI)R6GameServiceAddresses::DestroyTransportRecordMembers)(owner);
+  if ((deleteFlags & 1) != 0) TailFreeThroughGlobalAllocator(owner);
+  return owner;
 }
 
-// Pump update, close CURRENT stream then CURRENT datagram, returning each raw AL0 failure immediately.
-// Only successful datagram close clears +54/+58; success sets AL1 while retaining the last raw upper EAX.
-// R6GameService.dll @ 10057940 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall ShutdownTransportChannels(void *owner)
+// Update the provider, close current channels in order and clear datagram state only after its successful close.
+// R6GameService.dll @ 10057940 : test only child AL; retain the last full result above the final success byte.
+uint __fastcall ShutdownTransportChannels(void *owner)
 {
-  __asm {
-    push   esi
-    mov    esi,ecx
-    call   R6GameServiceAddresses::UpdateTransportProvider
-    mov    ecx,DWORD PTR [esi+0x14]
-    test   ecx,ecx
-    je     Branch23
-    call   R6GameServiceAddresses::CloseConnectionAndClearSendQueue
-    test   al,al
-    jne    Branch23
-    pop    esi
-    ret
-  Branch23:
-    mov    ecx,DWORD PTR [esi+0x18]
-    test   ecx,ecx
-    je     Branch25
-    call   R6GameServiceAddresses::CloseDatagramSocket
-    test   al,al
-    jne    Branch24
-    pop    esi
-    ret
-  Branch24:
-    mov    DWORD PTR [esi+0x54],0x0
-    mov    DWORD PTR [esi+0x58],0x0
-  Branch25:
-    mov    al,0x1
-    pop    esi
-    ret
+  using OperationABI = uint (__fastcall *)(void *);
+  uint result = ((OperationABI)R6GameServiceAddresses::UpdateTransportProvider)(owner);
+  void *stream = *(void **)((byte *)owner + 0x14);
+  if (stream != nullptr) {
+    result = ((OperationABI)R6GameServiceAddresses::CloseConnectionAndClearSendQueue)(stream);
+    if ((byte)result == 0) return result;
   }
+  void *datagram = *(void **)((byte *)owner + 0x18);
+  if (datagram != nullptr) {
+    result = ((OperationABI)R6GameServiceAddresses::CloseDatagramSocket)(datagram);
+    if ((byte)result == 0) return result;
+    *(uint *)((byte *)owner + 0x54) = 0;
+    *(uint *)((byte *)owner + 0x58) = 0;
+  }
+  return (result & 0xffffff00) | 1;
 }
 
-// Restore clConnectElem primary, shut down channels, delete current stream, destroy/free cached datagram/helper.
-// Then clear receive, send and game-message lists in order, preserving exact range arguments and header ownership.
-// ENTRY ESP S: ownerS-18/receiveS-14/currentListS-10/stateS-4; eight-state cleanup and raw final allocator EAX.
-// Keep dangling members, callback reloads, cached raw frees and native no-retry states; no stronger rollback.
-// R6GameService.dll @ 100575f0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall DestroyTransportRecordMembers(void *owner)
-{
-  __asm {
-    push   0xffffffff
-    push   R6GameServiceAddresses::SelectConnectElemDestroyEH
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0xc
-    push   ebx
-    push   ebp
-    push   esi
-    push   edi
-    mov    edi,ecx
-    mov    DWORD PTR [esp+0x10],edi
-    mov    DWORD PTR [edi],R6GameServiceAddresses::clConnectElemVTable
-    mov    DWORD PTR [esp+0x24],0x2
-    call   R6GameServiceAddresses::ShutdownTransportChannels
-    mov    ecx,DWORD PTR [edi+0x14]
-    test   ecx,ecx
-    je     Branch26
-    mov    eax,DWORD PTR [ecx]
-    push   0x1
-    call   DWORD PTR [eax]
-  Branch26:
-    mov    esi,DWORD PTR [edi+0x18]
-    test   esi,esi
-    je     Branch27
-    mov    ecx,esi
-    call   R6GameServiceAddresses::DestroyDatagramSocketOwner
-    push   esi
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch27:
-    mov    esi,DWORD PTR [edi+0x4c]
-    test   esi,esi
-    je     Branch28
-    mov    ecx,esi
-    call   R6GameServiceAddresses::DestroySharedCryptoContext
-    push   esi
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch28:
-    lea    esi,[edi+0x3c]
-    mov    DWORD PTR [esp+0x14],esi
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clPointerList_PAVclRcvElementVTable
-    mov    ecx,esi
-    mov    BYTE PTR [esp+0x24],0x3
-    call   R6GameServiceAddresses::InvokePointerListClearRange
-    add    esi,0x4
-    mov    DWORD PTR [esp+0x18],esi
-    mov    ecx,esi
-    mov    BYTE PTR [esp+0x24],0x4
-    call   R6GameServiceAddresses::ReleaseListNodesRetainHeader
-    mov    ecx,DWORD PTR [esi]
-    push   0x1
-    push   ecx
-    mov    ecx,esi
-    call   R6GameServiceAddresses::ReleaseMemoryIgnoringSize
-    lea    esi,[edi+0x2c]
-    mov    DWORD PTR [esp+0x18],esi
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clPointerList_PAVclSendElementVTable
-    push   ecx
-    mov    ecx,DWORD PTR [esi+0x4]
-    lea    ebx,[esi+0x4]
-    mov    eax,esp
-    push   ecx
-    push   esp
-    mov    DWORD PTR [eax],ecx
-    mov    ebp,DWORD PTR [esi]
-    mov    ecx,ebx
-    mov    BYTE PTR [esp+0x30],0x5
-    call   R6GameServiceAddresses::ReadListFirstNodeFromHeadSlot
-    lea    edx,[esp+0x1c]
-    mov    ecx,esi
-    push   edx
-    call   DWORD PTR [ebp+0x10]
-    mov    ecx,ebx
-    mov    BYTE PTR [esp+0x24],0x0
-    call   R6GameServiceAddresses::ReleaseNodesAndSentinel
-    lea    esi,[edi+0x20]
-    mov    DWORD PTR [esp+0x18],esi
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clPointerList_PAVclGameMessageVTable
-    push   ecx
-    mov    ecx,DWORD PTR [esi+0x4]
-    lea    edi,[esi+0x4]
-    mov    eax,esp
-    push   ecx
-    push   esp
-    mov    DWORD PTR [eax],ecx
-    mov    ebx,DWORD PTR [esi]
-    mov    ecx,edi
-    mov    DWORD PTR [esp+0x30],0x6
-    call   R6GameServiceAddresses::ReadListFirstNodeFromHeadSlot
-    lea    eax,[esp+0x1c]
-    mov    ecx,esi
-    push   eax
-    call   DWORD PTR [ebx+0x10]
-    mov    DWORD PTR [esp+0x10],edi
-    mov    ecx,edi
-    mov    DWORD PTR [esp+0x24],0x7
-    call   R6GameServiceAddresses::ReleaseListNodesRetainHeader
-    mov    ecx,DWORD PTR [edi]
-    push   0x1
-    push   ecx
-    mov    ecx,edi
-    call   R6GameServiceAddresses::ReleaseMemoryIgnoringSize
-    mov    ecx,DWORD PTR [esp+0x1c]
-    pop    edi
-    pop    esi
-    pop    ebp
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    add    esp,0x18
-    ret
+namespace {
+// Inferred scope guard for the eight native member-destruction states; saved pointers remain live cleanup inputs.
+struct TransportRecordDestructionCleanup {
+  byte *savedOwner;
+  byte *receiveList; // Reused as the later range-output word.
+  byte *currentList;
+  int state;
+  // Continue only the native pending member cleanups, preserving entered no-retry states.
+  ~TransportRecordDestructionCleanup() noexcept(false) {
+    using CleanupABI = void (__fastcall *)(void *);
+    while (state >= 0) {
+      switch (state) {
+      case 0:
+        state = -1;
+        ((CleanupABI)R6GameServiceAddresses::thunk_DestroyEmbeddedListOwnerAndSentinel)(
+            (void *)((uint)savedOwner + 0x20));
+        break;
+      case 1:
+        state = 0;
+        ((CleanupABI)R6GameServiceAddresses::ForwardCompactPointerListDestroy)((void *)((uint)savedOwner + 0x2c));
+        break;
+      case 2:
+        state = 1;
+        ((CleanupABI)R6GameServiceAddresses::thunk_DestroyEmbeddedListAndSentinel)((void *)((uint)savedOwner + 0x3c));
+        break;
+      case 3:
+        state = 1;
+        currentList = receiveList == nullptr ? nullptr : receiveList + 4;
+        ((CleanupABI)R6GameServiceAddresses::ReleaseNodesAndSentinel)(currentList);
+        break;
+      case 4:
+        state = 1;
+        ((CleanupABI)R6GameServiceAddresses::list_node_support_NoOp)(currentList);
+        break;
+      case 5: {
+        state = 0;
+        byte *headSlot = currentList == nullptr ? nullptr : currentList + 4;
+        ((CleanupABI)R6GameServiceAddresses::ReleaseNodesAndSentinel)(headSlot);
+        break;
+      }
+      case 6:
+        state = -1;
+        savedOwner = currentList == nullptr ? nullptr : currentList + 4;
+        ((CleanupABI)R6GameServiceAddresses::ReleaseNodesAndSentinel)(savedOwner);
+        break;
+      case 7:
+        state = -1;
+        ((CleanupABI)R6GameServiceAddresses::list_node_support_NoOp)(savedOwner);
+        break;
+      }
+    }
   }
+};
+}
+
+// Shut down channels, release current resources, then destroy receive/send/game lists with native staged ownership.
+// R6GameService.dll @ 100575f0 : eight cleanup states; dangling members and cached raw frees are preserved.
+uint __fastcall DestroyTransportRecordMembers(void *owner)
+{
+  using OperationABI = uint (__fastcall *)(void *);
+  using DeleteABI = uint (__thiscall *)(void *,uint);
+  using FreeABI = uint (__stdcall *)(void *,uint);
+  using FirstABI = uint * (__thiscall *)(void *,uint *);
+  using RangeABI = uint * (__thiscall *)(void *,uint *,uint,uint);
+  TransportRecordDestructionCleanup cleanup{(byte *)owner, nullptr, nullptr, -1};
+  *(uint *)owner = R6GameServiceAddresses::clConnectElemVTable;
+  cleanup.state = 2;
+  ((OperationABI)R6GameServiceAddresses::ShutdownTransportChannels)(owner);
+  void *stream = *(void **)((byte *)owner + 0x14);
+  if (stream != nullptr) {
+    byte *table = *(byte **)stream;
+    (*(DeleteABI *)table)(stream,1);
+  }
+  void *datagram = *(void **)((byte *)owner + 0x18);
+  if (datagram != nullptr) {
+    ((OperationABI)R6GameServiceAddresses::DestroyDatagramSocketOwner)(datagram);
+    TailFreeThroughGlobalAllocator(datagram);
+  }
+  void *helper = *(void **)((byte *)owner + 0x4c);
+  if (helper != nullptr) {
+    using CryptoDestroyABI = void (__fastcall *)(void *);
+    ((CryptoDestroyABI)R6GameServiceAddresses::DestroySharedCryptoContext)(helper);
+    TailFreeThroughGlobalAllocator(helper);
+  }
+  byte *receiveList = (byte *)owner + 0x3c;
+  cleanup.receiveList = receiveList;
+  *(uint *)receiveList = R6GameServiceAddresses::clPointerList_PAVclRcvElementVTable;
+  *(byte *)&cleanup.state = 3;
+  ((OperationABI)R6GameServiceAddresses::InvokePointerListClearRange)(receiveList);
+  byte *receiveHeadSlot = receiveList + 4;
+  cleanup.currentList = receiveHeadSlot;
+  *(byte *)&cleanup.state = 4;
+  ((OperationABI)R6GameServiceAddresses::ReleaseListNodesRetainHeader)(receiveHeadSlot);
+  void *receiveHead = *(void **)receiveHeadSlot;
+  ((FreeABI)R6GameServiceAddresses::ReleaseMemoryIgnoringSize)(receiveHead,1);
+  byte *sendList = (byte *)owner + 0x2c;
+  cleanup.currentList = sendList;
+  *(uint *)sendList = R6GameServiceAddresses::clPointerList_PAVclSendElementVTable;
+  uint sendEnd = *(uint *)(sendList + 4);
+  byte *sendHeadSlot = sendList + 4;
+  uint sendBegin = sendEnd;
+  byte *sendTable = *(byte **)sendList;
+  *(byte *)&cleanup.state = 5;
+  ((FirstABI)R6GameServiceAddresses::ReadListFirstNodeFromHeadSlot)(sendHeadSlot,&sendBegin);
+  (*(RangeABI *)(sendTable + 0x10))(sendList,(uint *)&cleanup.receiveList,sendBegin,sendEnd);
+  *(byte *)&cleanup.state = 0;
+  ((OperationABI)R6GameServiceAddresses::ReleaseNodesAndSentinel)(sendHeadSlot);
+  byte *gameList = (byte *)owner + 0x20;
+  cleanup.currentList = gameList;
+  *(uint *)gameList = R6GameServiceAddresses::clPointerList_PAVclGameMessageVTable;
+  uint gameEnd = *(uint *)(gameList + 4);
+  byte *gameHeadSlot = gameList + 4;
+  uint gameBegin = gameEnd;
+  byte *gameTable = *(byte **)gameList;
+  cleanup.state = 6;
+  ((FirstABI)R6GameServiceAddresses::ReadListFirstNodeFromHeadSlot)(gameHeadSlot,&gameBegin);
+  (*(RangeABI *)(gameTable + 0x10))(gameList,(uint *)&cleanup.receiveList,gameBegin,gameEnd);
+  cleanup.savedOwner = gameHeadSlot;
+  cleanup.state = 7;
+  ((OperationABI)R6GameServiceAddresses::ReleaseListNodesRetainHeader)(gameHeadSlot);
+  void *gameHead = *(void **)gameHeadSlot;
+  uint result = ((FreeABI)R6GameServiceAddresses::ReleaseMemoryIgnoringSize)(gameHead,1);
+  cleanup.state = -1;
+  return result;
 }
 
 // Apply exact inherited destructor-frame cleanup, including current scratch writes and unconditional targets.

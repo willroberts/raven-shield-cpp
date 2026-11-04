@@ -170,100 +170,64 @@ __declspec(naked) void * __thiscall AssignSTGameData(void *destination,const voi
   }
 }
 
-// Destroys password, player/map arrays and remaining strings in reverse lifetime order with staged cleanup.
-// R6GameService.dll @ 10003020 : RET0; exact member order and partial-construction cleanup states.
-__declspec(naked) void __thiscall DestroySTGameData(void *gameData)
-{
-  byte *nativeStack,*receiver;
-  __asm {
-    // Initial state8 and byte-only intermediate decrements retain exact parent frame; final first-string call runs in state-1.
-    push   0xffffffff
-    push   R6GameServiceAddresses::SelectGameDataExceptionInfo
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    push   ecx
-    push   esi
-    mov    esi,ecx
-    mov    DWORD PTR [esp+0x4],esi
-    mov    nativeStack,esp
-    mov    receiver,esi
+namespace {
+// Inferred scope guard representing the native member-unwind map; array storage is never initialized here.
+struct GameDataCleanup {
+  byte *record;
+  int state;
+  // Destroy only the members still armed in the native lifetime map.
+  ~GameDataCleanup() noexcept(false) {
+    using DestroyABI = void (__thiscall *)(void *);
+    static const unsigned offsets[] = {0x24, 0x30, 0x44, 0x50, 0x5c, 0x68, 0x74, 0x80, 0x8c};
+    while (state >= 0) {
+      int member = state--;
+      if (member == 8)
+        ((DestroyABI)R6GameServiceAddresses::unreal_array_support_ForwardArrayDestroy2)(record + offsets[member]);
+      else if (member == 7)
+        ((DestroyABI)R6GameServiceAddresses::unreal_array_support_ForwardArrayDestroy)(record + offsets[member]);
+      else
+        (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(record + offsets[member]);
+    }
   }
-  using MemberABI = uint (__thiscall *)(void *);
-  *(uint *)(nativeStack + 0x10) = 8;
-  (*(MemberABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(receiver + 0x98);
-  *(byte *)(nativeStack + 0x10) = 7;
-  ((MemberABI)R6GameServiceAddresses::DestroyArray2CByteElements)(receiver + 0x8c);
-  *(byte *)(nativeStack + 0x10) = 6;
-  ((MemberABI)R6GameServiceAddresses::DestroyArray18ByteElements)(receiver + 0x80);
-  *(byte *)(nativeStack + 0x10) = 5;
-  (*(MemberABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(receiver + 0x74);
-  *(byte *)(nativeStack + 0x10) = 4;
-  (*(MemberABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(receiver + 0x68);
-  *(byte *)(nativeStack + 0x10) = 3;
-  (*(MemberABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(receiver + 0x5c);
-  *(byte *)(nativeStack + 0x10) = 2;
-  (*(MemberABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(receiver + 0x50);
-  *(byte *)(nativeStack + 0x10) = 1;
-  (*(MemberABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(receiver + 0x44);
-  *(byte *)(nativeStack + 0x10) = 0;
-  (*(MemberABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(receiver + 0x30);
-  *(uint *)(nativeStack + 0x10) = 0xffffffff;
-  uint rawEax = (*(MemberABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(receiver + 0x24);
-  __asm {
-    mov    eax,rawEax
-    mov    ecx,DWORD PTR [esp+0x8]
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x10
-    ret
+};
+}
+
+// Destroys password, player/map arrays and remaining strings in reverse lifetime order with staged cleanup.
+// R6GameService.dll @ 10003020 : receiver in ECX, no stack arguments; member order and exception cleanup preserved.
+void __thiscall DestroySTGameData(void *gameData)
+{
+  byte *record = (byte *)gameData;
+  GameDataCleanup cleanup{record, 8};
+  using DestroyABI = void (__thiscall *)(void *);
+  (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(record + 0x98);
+  cleanup.state = 7;
+  ((DestroyABI)R6GameServiceAddresses::DestroyArray2CByteElements)(record + 0x8c);
+  cleanup.state = 6;
+  ((DestroyABI)R6GameServiceAddresses::DestroyArray18ByteElements)(record + 0x80);
+  static const unsigned offsets[] = {0x74, 0x68, 0x5c, 0x50, 0x44, 0x30, 0x24};
+  for (unsigned offset : offsets) {
+    --cleanup.state;
+    (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(record + offset);
   }
 }
 
 // Constructs eight no-init strings and returns the original record without initializing scalar or array storage.
-// R6GameService.dll @ 100030f0 : RET0; exact member order and partial-construction cleanup states.
-__declspec(naked) void * __thiscall ConstructServerGameData(void *gameData)
+// R6GameService.dll @ 100030f0 : receiver in ECX, no stack arguments; member order and exception cleanup preserved.
+void * __thiscall ConstructServerGameData(void *gameData)
 {
-  byte *nativeStack,*receiver;
-  __asm {
-    // State jumps5 to8 before password construction: failure can clean both untouched array headers; no zeroing is invented.
-    push   0xffffffff
-    push   R6GameServiceAddresses::SelectGameDataExceptionInfo
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    push   ecx
-    push   esi
-    mov    esi,ecx
-    lea    ecx,[esi+0x24]
-    mov    DWORD PTR [esp+0x4],esi
-    mov    nativeStack,esp
-    mov    receiver,esi
+  byte *record = (byte *)gameData;
+  GameDataCleanup cleanup{record, -1};
+  using ConstructABI = void (__thiscall *)(void *);
+  static const unsigned offsets[] = {0x24, 0x30, 0x44, 0x50, 0x5c, 0x68, 0x74};
+  for (unsigned offset : offsets) {
+    (*(ConstructABI *)R6GameServiceAddresses::Core__ConstructFStringNoInitSlot)(record + offset);
+    ++cleanup.state;
   }
-  using MemberABI = uint (__thiscall *)(void *);
-  (*(MemberABI *)R6GameServiceAddresses::Core__ConstructFStringNoInitSlot)(receiver + 0x24);
-  *(uint *)(nativeStack + 0x10) = 0;
-  (*(MemberABI *)R6GameServiceAddresses::Core__ConstructFStringNoInitSlot)(receiver + 0x30);
-  *(byte *)(nativeStack + 0x10) = 1;
-  (*(MemberABI *)R6GameServiceAddresses::Core__ConstructFStringNoInitSlot)(receiver + 0x44);
-  *(byte *)(nativeStack + 0x10) = 2;
-  (*(MemberABI *)R6GameServiceAddresses::Core__ConstructFStringNoInitSlot)(receiver + 0x50);
-  *(byte *)(nativeStack + 0x10) = 3;
-  (*(MemberABI *)R6GameServiceAddresses::Core__ConstructFStringNoInitSlot)(receiver + 0x5c);
-  *(byte *)(nativeStack + 0x10) = 4;
-  (*(MemberABI *)R6GameServiceAddresses::Core__ConstructFStringNoInitSlot)(receiver + 0x68);
-  *(byte *)(nativeStack + 0x10) = 5;
-  (*(MemberABI *)R6GameServiceAddresses::Core__ConstructFStringNoInitSlot)(receiver + 0x74);
-  *(byte *)(nativeStack + 0x10) = 8;
-  (*(MemberABI *)R6GameServiceAddresses::Core__ConstructFStringNoInitSlot)(receiver + 0x98);
-  __asm {
-    mov    ecx,DWORD PTR [esp+0x8]
-    mov    eax,esi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x10
-    ret
-  }
+  // The native state skips to 8: failure destroys both preexisting array headers before the seven strings.
+  cleanup.state = 8;
+  (*(ConstructABI *)R6GameServiceAddresses::Core__ConstructFStringNoInitSlot)(record + 0x98);
+  cleanup.state = -1;
+  return gameData;
 }
 
 // Copy-constructs game-data scalars, reflected flag bits, eight strings and both arrays under exact staged cleanup.

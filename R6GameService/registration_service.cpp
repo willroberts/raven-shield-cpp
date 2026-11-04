@@ -16,7 +16,7 @@ extern const R6GameServiceNative::FuncInfo OptionalRegistrationExceptionHandlerF
 // R6GameService.dll data @ 10080624 : function metadata supplied by the exception selector.
 extern const R6GameServiceNative::FuncInfo RegistrationMatchExceptionHandlerFunctionInfo;
 
-// Singleton slot used by the registration-service API; the concrete native class name is unresolved.
+// Singleton slot used by the registration-service API; constructor2f460 identifies CRegisterServerCB.
 // R6GameService.dll data @ 10093d14 : native storage identity retained.
 extern void *GRegistrationServiceSingleton;
 
@@ -33,22 +33,19 @@ uint __cdecl InitializeRegistrationServiceSingleton(void)
   return ((uint)service & 0xffffff00) | 1;
 }
 
-// Calls the singleton's first virtual slot with delete flag 1 when present, then clears it and sets AL=1.
-// R6GameService.dll @ 1002f260 : cdecl, no arguments, RET; absent singleton preserves incoming upper EAX.
-__declspec(naked) uint __cdecl UninitializeRegistrationService(void)
+// Delete the captured registration singleton if present, clear the current global slot, then report success.
+// The sole selected-image caller discards upper EAX immediately; the native return width is AL.
+// R6GameService.dll @ 1002f260 : inferred bool result; cdecl RET0, no owned-local guard.
+bool __cdecl UninitializeRegistrationService(void)
 {
-  __asm {
-    mov ecx,dword ptr ds:[R6GameServiceAddresses::GRegistrationServiceSingleton]
-    test ecx,ecx
-    jz clear_registration_singleton
-    mov eax,dword ptr [ecx]
-    push 1
-    call dword ptr [eax]
-  clear_registration_singleton:
-    mov dword ptr ds:[R6GameServiceAddresses::GRegistrationServiceSingleton],0
-    mov al,1
-    ret
+  void *service = GRegistrationServiceSingleton;
+  if (service != nullptr) {
+    uint table = *(uint *)service;
+    using DeleteABI = void (__thiscall *)(void *,uint);
+    (*(DeleteABI *)table)(service,1);
   }
+  GRegistrationServiceSingleton = nullptr;
+  return true;
 }
 
 // Pumps registration-service callbacks through the singleton.
@@ -229,14 +226,14 @@ __declspec(naked) uint __stdcall ConnectToLobbyServer
   }
 }
 
-// Forwards lobby-connection close through the singleton.
-// R6GameService.dll @ 1002f3c0 : native singleton tail adapter to 0x100308c0; no added null guard.
-__declspec(naked) uint __cdecl CloseLobbyServerConnection(void)
+// Close through the captured registration singleton without adding a singleton null guard.
+// The selected outer caller immediately discards EAX; byte is an inferred AL view, not a recovered declaration.
+// R6GameService.dll @ 1002f3c0 : cdecl RET0; native tail receiver adjustment, no argument or result normalization.
+byte __cdecl CloseLobbyServerConnection(void)
 {
-  __asm {
-    mov ecx,dword ptr ds:[R6GameServiceAddresses::GRegistrationServiceSingleton]
-    jmp R6GameServiceAddresses::CloseLobbyServerTransport
-  }
+  void *service = GRegistrationServiceSingleton;
+  using CloseABI = byte (__fastcall *)(void *);
+  return ((CloseABI)R6GameServiceAddresses::CloseLobbyServerTransport)(service);
 }
 
 // Forwards the lobby-login text and value through the singleton.
@@ -426,7 +423,7 @@ __declspec(naked) uint __fastcall PumpRegistrationMessages(void *service)
         void *payload = *(void **)((byte *)message + 8);
         ((DispatchABI)R6GameServiceAddresses::DispatchParsedOpcode26Or27RecordList)(receiver,replyWord,payload);
       }
-      ((uint (__thiscall *)(void *))R6GameServiceAddresses::DeleteOwnedObjectAtOffset8)(message);
+      ((void (__thiscall *)(void *))R6GameServiceAddresses::DeleteOwnedObjectAtOffset8)(message);
       ((void (__stdcall *)(void *))R6GameServiceAddresses::TailFreeThroughGlobalAllocator)(message);
       transport = *(void **)((byte *)receiver + 0x120);
       message = ((TakeABI)R6GameServiceAddresses::TakeNextTransportMessage)(transport);
@@ -498,7 +495,7 @@ __declspec(naked) uint __fastcall DropRegistrationTransport(void *service)
     mov    transport,edi
   }
   if (transport != nullptr) {
-    ((uint (__thiscall *)(void *))R6GameServiceAddresses::CConnectionDestroyProvider)(transport);
+    ((void (__thiscall *)(void *))R6GameServiceAddresses::CConnectionDestroyProvider)(transport);
     ((void (__stdcall *)(void *))R6GameServiceAddresses::TailFreeThroughGlobalAllocator)(transport);
   }
   byte *table = *(byte **)receiver;
@@ -1142,20 +1139,16 @@ __declspec(naked) uint __thiscall ConnectLobbyServerTransport(void *service,uint
   }
 }
 
-// Tail-dispatches provider slot +8, or clears only AL when no provider exists.
-// R6GameService.dll @ 100308c0 : ECX service, RET; native receiver adjustment and tail result.
-__declspec(naked) uint __fastcall CloseLobbyServerTransport(void *service)
+// Return AL0 for a missing provider, otherwise forward its slot+8 result byte without normalizing it.
+// Upper EAX residue is unconsumed by the sole ordinary route; the service pointer itself remains unchecked.
+// R6GameService.dll @ 100308c0 : inferred AL return view; ECX service, RET0, no local guard.
+byte __fastcall CloseLobbyServerTransport(void *service)
 {
-  __asm {
-    mov    ecx,dword ptr [ecx+0x124]
-    test   ecx,ecx
-    jne lobby_provider_close
-    xor    al,al
-    ret
-  lobby_provider_close:
-    mov    eax,dword ptr [ecx]
-    jmp    dword ptr [eax+0x8]
-  }
+  void *provider = *(void **)((uint)service + 0x124);
+  if (provider == nullptr) return 0;
+  uint table = *(uint *)provider;
+  using CloseABI = byte (__thiscall *)(void *);
+  return (*(CloseABI *)(table + 8))(provider);
 }
 
 // Native allocation guard record: its saved pointer precedes the three-word FS exception-chain record.
@@ -1300,7 +1293,7 @@ uint __thiscall SendServerRegistrationOpcodeD5(void *service,int parentWord0,int
   AppendClDataListSignedDecimal(&frame.envelope[0],&frame.scratchWord);
   AppendClDataListSignedDecimal(&frame.envelope[0],&parentWord0);
   AppendClDataListCopy(&frame.envelope[0],&frame.payload[0]);
-  sendResult = SendTransportPayload(*(void **)((int)service + 0x120),0xd5,1,(const void *)&frame.envelope[0]);
+  sendResult = SendTransportPayload(*(void **)((int)service + 0x120),0xd5,1,(const void *)&frame.envelope[0],(uint)&frame.envelope[0]);
   frame.binary2[0] = (uint)&clDataBinPTR_FUN;
   frame.state = (frame.state & 0xffffff00) | 0x10;
   ReleaseNonNullFirstWordBuffer((frame.binary2 + 3));
@@ -2945,210 +2938,17 @@ void __thiscall DispatchSecondaryBinaryTextNotification(void *service,void *mess
   TailFreeThroughGlobalAllocator(buffer);
 }
 
-// Optionally installs virtual-base offset tables, constructs state, then callbacks and final primary/base tables.
-// Construction bitmap and EH state are separate; cached offset-table pointer and raw receiver/RET4 are retained.
-// R6GameService.dll @ 1002f460 : native control/access order and raw ABI retained.
-__declspec(naked) void * __thiscall ConstructRegistrationService(void *service,int initializeBaseVtables)
-{
-  __asm {
-    push   0xffffffff
-    push   R6GameServiceAddresses::SelectRegistrationConstructionLifetime
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x8
-    mov    eax,DWORD PTR [esp+0x18]
-    push   esi
-    mov    esi,ecx
-    mov    DWORD PTR [esp+0x4],0x0
-    test   eax,eax
-    mov    DWORD PTR [esp+0x8],esi
-    je     Branch8
-    mov    DWORD PTR [esi+0x130],R6GameServiceAddresses::GRegistrationBaseOffsets
-    mov    DWORD PTR [esi+0x174],R6GameServiceAddresses::GRegistrationSecondaryOffsets
-    mov    DWORD PTR [esi+0x170],R6GameServiceAddresses::clExtalloc_Override_BaseclassVTable
-    mov    DWORD PTR [esp+0x4],0x3
-    mov    DWORD PTR [esp+0x14],0x1
-  Branch8:
-    mov    ecx,esi
-    call   R6GameServiceAddresses::InitializeRegistrationServiceState
-    mov    eax,DWORD PTR [esi+0x130]
-    mov    DWORD PTR [esi+0x134],R6GameServiceAddresses::NoOpServiceCallbackRet0C
-    mov    DWORD PTR [esi+0x138],R6GameServiceAddresses::list_node_support_NoOp
-    mov    DWORD PTR [esi+0x13c],R6GameServiceAddresses::NoOpServiceCallbackRet18
-    mov    DWORD PTR [esi+0x140],R6GameServiceAddresses::NoOpRegistrationCallbackRet1C
-    mov    DWORD PTR [esi+0x144],R6GameServiceAddresses::NoOpServiceCallbackRet10
-    mov    DWORD PTR [esi+0x148],R6GameServiceAddresses::NoOpServiceCallbackRet0C
-    mov    DWORD PTR [esi+0x14c],R6GameServiceAddresses::list_node_support_NoOp
-    mov    DWORD PTR [esi+0x150],R6GameServiceAddresses::NoOpRegistrationCallbackRet1C
-    mov    DWORD PTR [esi+0x154],R6GameServiceAddresses::shared_native_NoOp
-    mov    DWORD PTR [esi+0x15c],R6GameServiceAddresses::NoOpServiceCallbackRet0C
-    mov    DWORD PTR [esi+0x160],R6GameServiceAddresses::NoOp
-    mov    DWORD PTR [esi+0x164],R6GameServiceAddresses::NoOp
-    mov    DWORD PTR [esi+0x168],R6GameServiceAddresses::NoOpRegistrationCallbackRet54
-    mov    DWORD PTR [esi+0x16c],R6GameServiceAddresses::NoOpServiceCallbackRet0C
-    mov    DWORD PTR [esi],R6GameServiceAddresses::CRegisterServerCBVTable
-    mov    ecx,DWORD PTR [eax+0x8]
-    mov    eax,esi
-    mov    DWORD PTR [ecx+esi*1+0x130],R6GameServiceAddresses::CRegisterServerCBVTableAdjusted368
-    mov    ecx,DWORD PTR [esp+0xc]
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x14
-    ret    0x4
-  }
-}
+// Relocated CRegisterServerCB member 1002f460: CRegisterServerCB.cpp.
 
-// Destroys state, reads late low deletion byte, resets allocation base table, optionally frees and returns saved owner.
-// R6GameService.dll @ 1002f580 : native control/access order and raw ABI retained.
-__declspec(naked) void * __thiscall DeleteRegistrationService(void *service,uint deleteFlags)
-{
-  __asm {
-    push   esi
-    mov    esi,ecx
-    call   R6GameServiceAddresses::DestroyRegistrationService
-    mov    al,BYTE PTR [esp+0x8]
-    mov    DWORD PTR [esi+0x170],R6GameServiceAddresses::clExtalloc_Override_BaseclassVTable
-    test   al,0x1
-    je     Branch9
-    push   esi
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch9:
-    mov    eax,esi
-    pop    esi
-    ret    0x4
-  }
-}
+// Relocated CRegisterServerCB member 1002f580: CRegisterServerCB.cpp.
 
-// Restores primary and offset-selected allocation-base tables, then tail-transfers to state destruction.
-// R6GameService.dll @ 1002f5b0 : native control/access order and raw ABI retained.
-__declspec(naked) void __fastcall DestroyRegistrationService(void *service)
-{
-  __asm {
-    mov    eax,DWORD PTR [ecx+0x130]
-    mov    DWORD PTR [ecx],R6GameServiceAddresses::CRegisterServerCBVTable
-    mov    edx,DWORD PTR [eax+0x8]
-    mov    DWORD PTR [edx+ecx*1+0x130],R6GameServiceAddresses::CRegisterServerCBVTableAdjusted368
-    jmp    R6GameServiceAddresses::DestroyRegistrationServiceState
-  }
-}
+// Relocated CRegisterServerCB member 1002f5b0: CRegisterServerCB.cpp.
 
-// Clears selected state fields, forward-copies live default bytes, allocates and constructs owned list.
-// Pending allocation arms only after allocation; publication/return retain state0 and cached receiver.
-// R6GameService.dll @ 1002f760 : native control/access order and raw ABI retained.
-__declspec(naked) void * __fastcall InitializeRegistrationServiceState(void *service)
-{
-  __asm {
-    push   0xffffffff
-    push   R6GameServiceAddresses::SharedRegistrationAllocationExceptionHandler
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    push   ecx
-    push   ebx
-    push   esi
-    mov    esi,ecx
-    push   edi
-    xor    ebx,ebx
-    mov    ecx,0x20
-    xor    eax,eax
-    lea    edi,[esi+0x18]
-    mov    DWORD PTR [esi],R6GameServiceAddresses::CRegisterServerVTable
-    mov    DWORD PTR [esi+0x120],ebx
-    rep    stos DWORD PTR es:[edi],eax
-    stos   BYTE PTR es:[edi],al
-    mov    eax,R6GameServiceAddresses::GRegistrationEmptyText
-    lea    edx,[esi+0x8]
-    mov    BYTE PTR [esi+0x99],bl
-    mov    DWORD PTR [esi+0x124],ebx
-    mov    BYTE PTR [esi+0x9a],bl
-    sub    edx,eax
-  Branch10:
-    mov    cl,BYTE PTR [eax]
-    mov    BYTE PTR [edx+eax*1],cl
-    inc    eax
-    cmp    cl,bl
-    jne    Branch10
-    push   0xc
-    mov    DWORD PTR [esi+0x128],ebx
-    mov    DWORD PTR [esi+0x12c],ebx
-    mov    BYTE PTR [esi+0x9b],bl
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    DWORD PTR [esp+0xc],eax
-    cmp    eax,ebx
-    mov    DWORD PTR [esp+0x18],ebx
-    je     Branch11
-    push   0x1
-    mov    ecx,eax
-    call   R6GameServiceAddresses::ConstructParsedServiceRecordList
-    mov    DWORD PTR [esi+0x4],eax
-    mov    eax,esi
-    pop    edi
-    pop    esi
-    pop    ebx
-    mov    ecx,DWORD PTR [esp+0x4]
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x10
-    ret
-  Branch11:
-    mov    ecx,DWORD PTR [esp+0x10]
-    mov    DWORD PTR [esi+0x4],ebx
-    mov    eax,esi
-    pop    edi
-    pop    esi
-    pop    ebx
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x10
-    ret
-  }
-}
+// Relocated CRegisterServer member 1002f760: CRegisterServer.cpp.
 
-// Destroys state then tests late low deletion bit and optionally uses cdecl free, returning saved owner.
-// R6GameService.dll @ 1002f820 : native control/access order and raw ABI retained.
-__declspec(naked) void * __thiscall DeleteRegistrationServiceState(void *service,uint deleteFlags)
-{
-  __asm {
-    push   esi
-    mov    esi,ecx
-    call   R6GameServiceAddresses::DestroyRegistrationServiceState
-    test   BYTE PTR [esp+0x8],0x1
-    je     Branch12
-    push   esi
-    call   R6GameServiceAddresses::FreeThroughGlobalAllocator
-    add    esp,0x4
-  Branch12:
-    mov    eax,esi
-    pop    esi
-    ret    0x4
-  }
-}
+// Relocated CRegisterServer member 1002f820: CRegisterServer.cpp.
 
-// Captures secondary pointer before table reset, deletes it, then reloads/deletes current owned list; leaves slots dangling.
-// R6GameService.dll @ 1002f840 : native control/access order and raw ABI retained.
-__declspec(naked) void __fastcall DestroyRegistrationServiceState(void *service)
-{
-  __asm {
-    push   esi
-    mov    esi,ecx
-    mov    ecx,DWORD PTR [esi+0x124]
-    mov    DWORD PTR [esi],R6GameServiceAddresses::CRegisterServerVTable
-    test   ecx,ecx
-    je     Branch13
-    mov    eax,DWORD PTR [ecx]
-    push   0x1
-    call   DWORD PTR [eax]
-  Branch13:
-    mov    ecx,DWORD PTR [esi+0x4]
-    pop    esi
-    test   ecx,ecx
-    je     Branch14
-    mov    edx,DWORD PTR [ecx]
-    push   0x1
-    call   DWORD PTR [edx]
-  Branch14:
-    ret
-  }
-}
+// Relocated CRegisterServer member 1002f840: CRegisterServer.cpp.
 
 // For inherited construction bitmap mask1, forwards saved owner+170 to shared native no-op; other flags remain.
 // R6GameService.dll @ 10065ee0 : native control/access order and raw ABI retained.

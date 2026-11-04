@@ -1,6 +1,20 @@
 #include "native_addresses.h"
 #include "native_records.h"
 
+// Inferred cleanup guard: a failed destruction releases the current header without retrying node traversal.
+struct ServiceRecordTreeStorageCleanup {
+  void *savedTree;
+  bool armed;
+  // Read the saved tree's current first word even if the normal header release failed.
+  ~ServiceRecordTreeStorageCleanup() noexcept(false)
+  {
+    if (armed) {
+      using ReleaseABI = uint (__fastcall *)(void *);
+      ((ReleaseABI)R6GameServiceAddresses::ReleaseFirstWordBuffer)(savedTree);
+    }
+  }
+};
+
 // clMatchResults identity: primary77d58 -> COL79b34 -> type8fe34; original member spellings inferred.
 
 // Reset destination, append two signed summary fields, then one copied nested descriptor for each ordered record.
@@ -503,21 +517,17 @@ const R6GameServiceNative::FuncInfo UpdateStringKeyedRecordExceptionInfo = {
 // Destroy clMatchResults, then test CURRENT deleting flag low byte/bit0 before freeing the original receiver.
 // No own cleanup registration; destruction/free failures retain native partial effects. RET4/owner EAX.
 // R6GameService.dll @ 100413e0 : complete native control/access order and raw ABI retained.
-__declspec(naked) void *__thiscall DeleteOptionalChannelTree(void *owner,uint deletingFlags)
+void *__thiscall DeleteOptionalChannelTree(void *owner,uint deletingFlags)
 {
-  __asm {
-    push   esi
-    mov    esi,ecx
-    call   R6GameServiceAddresses::DestroyServiceRecordTree
-    test   BYTE PTR [esp+0x8],0x1
-    je     Branch13
-    push   esi
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch13:
-    mov    eax,esi
-    pop    esi
-    ret    0x4
+  void *savedOwner = owner;
+  using DestroyABI = uint (__fastcall *)(undefined4 *);
+  ((DestroyABI)R6GameServiceAddresses::DestroyServiceRecordTree)((undefined4 *)savedOwner);
+  byte flags = *(byte *)&deletingFlags;
+  if ((flags & 1) != 0) {
+    using FreeABI = uint (__stdcall *)(void *);
+    ((FreeABI)R6GameServiceAddresses::TailFreeThroughGlobalAllocator)(savedOwner);
   }
+  return savedOwner;
 }
 
 // Destroy clMatchResults owned byte-key records right-first; count gates traversal, not the number of released nodes.
@@ -526,65 +536,41 @@ __declspec(naked) void *__thiscall DeleteOptionalChannelTree(void *owner,uint de
 // ENTRY ESP frame saves tree slot at-10/state0; shared cleanup can repeat current header free after failure.
 // Raw final allocator EAX; original summary fields retained.
 // R6GameService.dll @ 10041400 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall DestroyServiceRecordTree(undefined4 *owner)
+uint __fastcall DestroyServiceRecordTree(undefined4 *owner)
 {
-  __asm {
-    push   0xffffffff
-    push   R6GameServiceAddresses::SelectCollectionEH
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    push   ecx
-    push   edi
-    lea    edi,[ecx+0x8]
-    mov    DWORD PTR [ecx],R6GameServiceAddresses::clMatchResultsVTable
-    mov    DWORD PTR [esp+0x4],edi
-    mov    eax,DWORD PTR [edi+0x4]
-    mov    DWORD PTR [esp+0x10],0x0
-    test   eax,eax
-    je     Branch16
-    mov    eax,DWORD PTR [edi]
-    push   esi
-    mov    esi,DWORD PTR [eax+0x4]
-    test   esi,esi
-    je     Branch15
-    push   ebx
-  Branch14:
-    mov    ecx,DWORD PTR [esi+0xc]
-    push   ecx
-    mov    ecx,edi
-    call   R6GameServiceAddresses::ReleaseServiceTreeSubtree
-    mov    ebx,DWORD PTR [esi+0x8]
-    push   0x0
-    lea    ecx,[esi+0x10]
-    call   R6GameServiceAddresses::DestroyServiceTreeRecordDeletingDestructor
-    push   0x1
-    push   esi
-    mov    ecx,edi
-    call   R6GameServiceAddresses::ReleaseMemoryIgnoringSize
-    test   ebx,ebx
-    mov    esi,ebx
-    jne    Branch14
-    pop    ebx
-  Branch15:
-    mov    eax,DWORD PTR [edi]
-    pop    esi
-    mov    DWORD PTR [eax+0x8],eax
-    mov    edx,DWORD PTR [edi]
-    mov    DWORD PTR [edx+0x4],0x0
-    mov    eax,DWORD PTR [edi]
-    mov    DWORD PTR [eax+0xc],eax
-    mov    DWORD PTR [edi+0x4],0x0
-  Branch16:
-    mov    eax,DWORD PTR [edi]
-    push   eax
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    ecx,DWORD PTR [esp+0x8]
-    pop    edi
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x10
-    ret
+  ServiceRecordTreeStorageCleanup cleanup{0, false};
+  void *tree = (void *)((uint)owner + 8);
+  *(uint *)owner = R6GameServiceAddresses::clMatchResultsVTable;
+  cleanup.savedTree = tree;
+  uint count = *(uint *)((uint)tree + 4);
+  cleanup.armed = true;
+  using SubtreeABI = void (__thiscall *)(void *,uint);
+  using PairABI = void * (__thiscall *)(void *,uint);
+  using ReleaseABI = uint (__thiscall *)(void *,void *,uint);
+  using FreeABI = uint (__stdcall *)(void *);
+  if (count != 0) {
+    uint head = *(uint *)tree;
+    uint node = *(uint *)(head + 4);
+    while (node != 0) {
+      uint right = *(uint *)(node + 0xc);
+      ((SubtreeABI)R6GameServiceAddresses::ReleaseServiceTreeSubtree)(tree,right);
+      uint left = *(uint *)(node + 8);
+      ((PairABI)R6GameServiceAddresses::DestroyServiceTreeRecordDeletingDestructor)((void *)(node + 0x10),0);
+      ((ReleaseABI)R6GameServiceAddresses::ReleaseMemoryIgnoringSize)(tree,(void *)node,1);
+      node = left;
+    }
+    head = *(uint *)tree;
+    *(uint *)(head + 8) = head;
+    uint rootHead = *(uint *)tree;
+    *(uint *)(rootHead + 4) = 0;
+    head = *(uint *)tree;
+    *(uint *)(head + 0xc) = head;
+    *(uint *)((uint)tree + 4) = 0;
   }
+  void *head = *(void **)tree;
+  uint result = ((FreeABI)R6GameServiceAddresses::TailFreeThroughGlobalAllocator)(head);
+  cleanup.armed = false;
+  return result;
 }
 
 // Native virtual-table prefix: clMatchResultsVTable

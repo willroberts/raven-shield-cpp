@@ -1,6 +1,41 @@
 #include "native_addresses.h"
 #include "native_records.h"
 
+// Inferred four-state guard distinguishes pending list storage from an entered list cleanup.
+struct ProxyConnectionDestructionCleanup {
+  void *savedOwner;
+  void *savedList;
+  void *savedSlot;
+  int state;
+  // Continue through current text/base storage; state3 never retries the list or its head.
+  ~ProxyConnectionDestructionCleanup() noexcept(false)
+  {
+    using MethodABI = uint (__fastcall *)(void *);
+    using EmptyABI = void (__fastcall *)(void *);
+    while (state >= 0) {
+      switch (state) {
+      case 0:
+        state = -1;
+        ((MethodABI)R6GameServiceAddresses::DestroyTransportRecordMembers)(savedOwner);
+        break;
+      case 1:
+        state = 0;
+        ((MethodABI)R6GameServiceAddresses::ReleaseFirstWordBuffer)((void *)((uint)savedOwner + 0x68));
+        break;
+      case 2:
+        state = 1;
+        savedSlot = savedList == 0 ? 0 : (void *)((uint)savedList + 4);
+        ((MethodABI)R6GameServiceAddresses::ReleaseNodesAndSentinel)(savedSlot);
+        break;
+      case 3:
+        state = 1;
+        ((EmptyABI)R6GameServiceAddresses::list_node_support_NoOp)(savedSlot);
+        break;
+      }
+    }
+  }
+};
+
 // RTTI primary783c8/COL7a898 and list783ec/COL7a84c identify clProxyConnection and its proxy-message list.
 // Raw entry views retain explicit offsets/ABI; original nonvirtual names, callback return types and full layouts remain unresolved.
 
@@ -176,83 +211,49 @@ __declspec(naked) void * __thiscall InitializeDerivedTransportRecordWithText(
 
 // Destroy proxy first, then test CURRENT deleteWord lowBYTE bit0 before freeing; return original owner. RET4.
 // R6GameService.dll @ 10062510 : complete native control/access order and raw ABI retained.
-__declspec(naked) void * __thiscall DeleteDerivedTransportRecordWithText(void *owner,uint deleteWord)
+void *__thiscall DeleteDerivedTransportRecordWithText(void *owner,uint deleteWord)
 {
-  __asm {
-    push    esi
-    mov    esi,ecx
-    call    R6GameServiceAddresses::DestroyDerivedTransportRecordWithText
-    test    BYTE PTR [esp+0x8],0x1
-    je    Branch8
-    push    esi
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch8:
-    mov    eax,esi
-    pop    esi
-    ret    0x4
-  }
+  void *savedOwner = owner;
+  using DestroyABI = uint (__fastcall *)(void *);
+  ((DestroyABI)R6GameServiceAddresses::DestroyDerivedTransportRecordWithText)(savedOwner);
+  if ((*(byte *)&deleteWord & 1) != 0) TailFreeThroughGlobalAllocator(savedOwner);
+  return savedOwner;
 }
 
 // Reset class/list tables, invoke captured list range target, free CURRENT list head then text buffer and base.
 // Four-state map preserves entered head-only/no-op gaps and CURRENT saved contexts; raw base cleanup EAX.
 // R6GameService.dll @ 10062560 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall DestroyDerivedTransportRecordWithText(void *owner)
+uint __fastcall DestroyDerivedTransportRecordWithText(void *owner)
 {
-  __asm {
-    push    0xffffffff
-    push    R6GameServiceAddresses::SelectProxyDestructionEH
-    mov    eax,fs:0x0
-    push    eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x10
-    push    ebx
-    push    ebp
-    push    esi
-    mov    esi,ecx
-    push    edi
-    mov    DWORD PTR [esp+0x10],esi
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clProxyConnectionVTable
-    mov    DWORD PTR [esp+0x28],0x0
-    lea    edi,[esi+0x84]
-    mov    DWORD PTR [esp+0x14],edi
-    mov    DWORD PTR [edi],R6GameServiceAddresses::clPointerList_PAVclProxyMessageVTable
-    push    ecx
-    mov    ecx,DWORD PTR [edi+0x4]
-    lea    ebx,[edi+0x4]
-    mov    eax,esp
-    push    ecx
-    push    esp
-    mov    DWORD PTR [eax],ecx
-    mov    ebp,DWORD PTR [edi]
-    mov    ecx,ebx
-    mov    BYTE PTR [esp+0x34],0x2
-    call    R6GameServiceAddresses::ReadListFirstNodeFromHeadSlot
-    lea    eax,[esp+0x20]
-    mov    ecx,edi
-    push    eax
-    call    DWORD PTR [ebp+0x10]
-    mov    DWORD PTR [esp+0x1c],ebx
-    mov    ecx,ebx
-    mov    BYTE PTR [esp+0x28],0x3
-    call    R6GameServiceAddresses::ReleaseListNodesRetainHeader
-    mov    ebx,DWORD PTR [ebx]
-    push    ebx
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    eax,DWORD PTR [esi+0x68]
-    push    eax
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    ecx,esi
-    mov    DWORD PTR [esp+0x28],0xffffffff
-    call    R6GameServiceAddresses::DestroyTransportRecordMembers
-    mov    ecx,DWORD PTR [esp+0x20]
-    pop    edi
-    pop    esi
-    pop    ebp
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    add    esp,0x1c
-    ret
-  }
+  uint base = (uint)owner;
+  ProxyConnectionDestructionCleanup cleanup;
+  cleanup.savedOwner = owner;
+  cleanup.state = -1;
+  *(uint *)owner = R6GameServiceAddresses::clProxyConnectionVTable;
+  cleanup.state = 0;
+  void *list = (void *)(base + 0x84);
+  cleanup.savedList = list;
+  *(uint *)list = R6GameServiceAddresses::clPointerList_PAVclProxyMessageVTable;
+  uint end = *(uint *)((uint)list + 4);
+  void *headSlot = (void *)((uint)list + 4);
+  uint begin = end;
+  uint table = *(uint *)list;
+  cleanup.state = 2;
+  using FirstABI = uint *(__thiscall *)(void *,uint *);
+  ((FirstABI)R6GameServiceAddresses::ReadListFirstNodeFromHeadSlot)(headSlot,&begin);
+  uint ignored;
+  using RangeABI = uint *(__thiscall *)(void *,uint *,uint,uint);
+  (*(RangeABI *)(table + 0x10))(list,&ignored,begin,end);
+  cleanup.savedSlot = headSlot;
+  cleanup.state = 3;
+  using MethodABI = uint (__fastcall *)(void *);
+  ((MethodABI)R6GameServiceAddresses::ReleaseListNodesRetainHeader)(headSlot);
+  void *head = *(void **)headSlot;
+  TailFreeThroughGlobalAllocator(head);
+  void *text = *(void **)(base + 0x68);
+  TailFreeThroughGlobalAllocator(text);
+  cleanup.state = -1;
+  return ((MethodABI)R6GameServiceAddresses::DestroyTransportRecordMembers)(owner);
 }
 
 // Connect via table+4 using text68 and raw owner-upper/WORD74 lane; AL0 formats/logs the current endpoint.
@@ -359,21 +360,14 @@ __declspec(naked) uint __thiscall ConnectAndSendProxyRequest(void *owner,const c
 
 // Close the provider before clearing ready78; return close-result upper24 with AL1. No own guard.
 // R6GameService.dll @ 100627a0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall CloseProxyAndClearReady(void *owner)
+uint __fastcall CloseProxyAndClearReady(void *owner)
 {
-  __asm {
-    push    esi
-    push    R6GameServiceAddresses::TextDisconnecting
-    mov    esi,ecx
-    call    R6GameServiceAddresses::list_node_support_NoOp
-    add    esp,0x4
-    mov    ecx,esi
-    call    R6GameServiceAddresses::ShutdownTransportChannels
-    mov    DWORD PTR [esi+0x78],0x0
-    mov    al,0x1
-    pop    esi
-    ret
-  }
+  using EmptyABI = void (__cdecl *)(const char *);
+  ((EmptyABI)R6GameServiceAddresses::list_node_support_NoOp)((const char *)R6GameServiceAddresses::TextDisconnecting);
+  using CloseABI = uint (__fastcall *)(void *);
+  uint result = ((CloseABI)R6GameServiceAddresses::ShutdownTransportChannels)(owner);
+  *(uint *)((uint)owner + 0x78) = 0;
+  return (result & 0xffffff00) | 1;
 }
 
 // Tail-forward all five log words through CURRENT owner90; NULL logger returns incoming EAX unchanged. RET14.
@@ -730,7 +724,7 @@ const R6GameServiceNative::UnwindEntry InitializeDerivedTransportRecordWithTextU
 };
 
 // Literal native proxy lifetime map/FuncInfo.
-// R6GameService.dll data @ 10084a78 : native storage identity retained.
+// R6GameService.dll data @ 10084ab8 : native storage identity retained.
 const R6GameServiceNative::FuncInfo InitializeDerivedTransportRecordWithTextExceptionInfo = {
   0x19930520,
   0x8,
@@ -751,7 +745,7 @@ const R6GameServiceNative::UnwindEntry DestroyDerivedTransportRecordWithTextUnwi
 };
 
 // Literal native proxy lifetime map/FuncInfo.
-// R6GameService.dll data @ 10084ad4 : native storage identity retained.
+// R6GameService.dll data @ 10084af4 : native storage identity retained.
 const R6GameServiceNative::FuncInfo DestroyDerivedTransportRecordWithTextExceptionInfo = {
   0x19930520,
   0x4,
@@ -774,7 +768,7 @@ const R6GameServiceNative::UnwindEntry ConnectAndSendProxyRequestUnwindMap[6] = 
 };
 
 // Literal native proxy lifetime map/FuncInfo.
-// R6GameService.dll data @ 10084b10 : native storage identity retained.
+// R6GameService.dll data @ 10084b40 : native storage identity retained.
 const R6GameServiceNative::FuncInfo ConnectAndSendProxyRequestExceptionInfo = {
   0x19930520,
   0x6,

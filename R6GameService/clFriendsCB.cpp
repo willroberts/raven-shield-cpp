@@ -50,42 +50,32 @@ __declspec(naked) void * __thiscall InitializeServiceObjectVtablesAndStorage(
 // clFriendsCB: restore tables from adjusted virtual base+48, install allocator-base table and optionally free owner.
 // Only flag BYTE bit0 selects freeing; always return complete owner and RET4, with no local EH guard.
 // R6GameService.dll @ 1004b8c0 : complete native control/access order and raw ABI retained.
-__declspec(naked) void * __thiscall DestroyServiceObjectAtAdjustedSubobject(
-    void *adjustedVirtualBase,byte deletionFlags)
+void *__thiscall DestroyServiceObjectAtAdjustedSubobject(void *secondary,byte deletionFlags)
 {
-  __asm {
-    push    esi
-    lea    esi,[ecx-0x48]
-    push    edi
-    lea    edi,[esi+0x48]
-    mov    ecx,edi
-    call    R6GameServiceAddresses::RestoreServiceObjectBaseVtables
-    mov    al,BYTE PTR [esp+0xc]
-    mov    DWORD PTR [edi],R6GameServiceAddresses::clExtalloc_Override_BaseclassVTable
-    test    al,0x1
-    je    Branch2
-    push    esi
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch2:
-    mov    eax,esi
-    pop    edi
-    pop    esi
-    ret    0x4
+  uint owner = (uint)secondary - 0x48;
+  void *fixedBase = (void *)(owner + 0x48);
+  using RestoreABI = uint (__fastcall *)(void *);
+  ((RestoreABI)R6GameServiceAddresses::RestoreServiceObjectBaseVtables)(fixedBase);
+  byte flags = *(byte *)&deletionFlags;
+  *(uint *)fixedBase = R6GameServiceAddresses::clExtalloc_Override_BaseclassVTable;
+  if ((flags & 1) != 0) {
+    using FreeABI = uint (__stdcall *)(void *);
+    ((FreeABI)R6GameServiceAddresses::TailFreeThroughGlobalAllocator)((void *)owner);
   }
+  return (void *)owner;
 }
 
 // clFriendsCB: from adjusted virtual base, load vbptr then restore primary and dynamic secondary tables.
 // Read dynamic offset after primary store; retain raw EAX=vbptr and unchanged adjusted ECX.
 // R6GameService.dll @ 1004b8f0 : complete native control/access order and raw ABI retained.
-__declspec(naked) void __fastcall RestoreServiceObjectBaseVtables(void *adjustedVirtualBase)
+uint __fastcall RestoreServiceObjectBaseVtables(void *secondary)
 {
-  __asm {
-    mov    eax,DWORD PTR [ecx-0x44]
-    mov    DWORD PTR [ecx-0x48],R6GameServiceAddresses::clFriendsCBVTable
-    mov    edx,DWORD PTR [eax+0x8]
-    mov    DWORD PTR [edx+ecx*1-0x44],R6GameServiceAddresses::clFriendsCBVTableAdjusted72
-    ret
-  }
+  uint owner = (uint)secondary - 0x48;
+  uint offsetTable = *(uint *)(owner + 4);
+  *(uint *)owner = R6GameServiceAddresses::clFriendsCBVTable;
+  uint displacement = *(uint *)(offsetTable + 8);
+  *(uint *)(owner + 4 + displacement) = R6GameServiceAddresses::clFriendsCBVTableAdjusted72;
+  return offsetTable;
 }
 
 // Tail-forward owner+c callback with 3 stack words; NULL returns EAX0/RETc.

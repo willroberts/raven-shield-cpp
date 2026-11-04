@@ -2,24 +2,19 @@
 
 // Shared wire-header helpers; original enclosing types unresolved. Six-/seven-byte callers use different field views.
 
-// Clear released scratchS-4, pack WORD header0/BYTE2 into bytes1..3, rewrite original argument, then tail ordinal14.
-// RET4.
+// Zero the native scratch word at entryESP-4, pack WORD0/BYTE2 into bytes1..3 and convert the rewritten argument.
 // R6GameService.dll @ 10059790 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __stdcall ReadHeaderSize24(const byte *header)
+uint __stdcall ReadHeaderSize24(const byte *header)
 {
-  __asm {
-    push    ecx
-    mov    eax,DWORD PTR [esp+0x8]
-    mov    DWORD PTR [esp+0x0],0x0
-    add    esp,0x4
-    mov    cx,WORD PTR [eax]
-    mov    WORD PTR [esp-0x3],cx
-    mov    dl,BYTE PTR [eax+0x2]
-    mov    BYTE PTR [esp-0x1],dl
-    mov    eax,DWORD PTR [esp-0x4]
-    mov    DWORD PTR [esp+0x4],eax
-    jmp    DWORD PTR ds:R6GameServiceAddresses::WS2_32_ntohlSlot
-  }
+  const byte *source = header;
+  uint packed = 0;
+  ushort first = *(const ushort *)source;
+  *(ushort *)((byte *)&packed + 1) = first;
+  byte last = source[2];
+  *((byte *)&packed + 3) = last;
+  header = (const byte *)packed;
+  using ConvertABI = uint (__stdcall *)(uint);
+  return (*(ConvertABI *)R6GameServiceAddresses::WS2_32_ntohlSlot)((uint)header);
 }
 
 // Zero-extend header BYTE3 then shift6, returning its top two bits as full EAX/RET4.
@@ -67,20 +62,17 @@ uint __stdcall ReadHeaderWord5(const byte *header)
 // Convert full size through ordinal8, reload CURRENT header argument, reuse original size slot for converted word.
 // Cache converted bytes1..2/byte3 before WORD0 then BYTE2 writes; raw EAX has converted byte3 in AL. RET8.
 // R6GameService.dll @ 10059820 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __stdcall WriteHeaderSize24(byte *header,uint valueWord)
+uint __stdcall WriteHeaderSize24(byte *header,uint valueWord)
 {
-  __asm {
-    mov    eax,DWORD PTR [esp+0x8]
-    push    eax
-    call    DWORD PTR ds:R6GameServiceAddresses::WS2_32_htonlSlot
-    mov    ecx,DWORD PTR [esp+0x4]
-    mov    DWORD PTR [esp+0x8],eax
-    mov    dx,WORD PTR [esp+0x9]
-    mov    al,BYTE PTR [esp+0xb]
-    mov    WORD PTR [ecx],dx
-    mov    BYTE PTR [ecx+0x2],al
-    ret    0x8
-  }
+  using ConvertABI = uint (__stdcall *)(uint);
+  uint converted = (*(ConvertABI *)R6GameServiceAddresses::WS2_32_htonlSlot)(valueWord);
+  byte *destination = header;
+  valueWord = converted;
+  ushort first = *(ushort *)((byte *)&valueWord + 1);
+  byte last = *((byte *)&valueWord + 3);
+  *(ushort *)destination = first;
+  destination[2] = last;
+  return (converted & 0xffffff00) | last;
 }
 
 // Replace BYTE3 upper2 from lowBYTE<<6, preserve lower5 and CLEAR bit5; return cached header pointer/RET8.
@@ -99,16 +91,13 @@ uint __stdcall SetHeaderByte3Bit5(byte *header,uint valueWord)
   return reinterpret_cast<uint>(header);
 }
 
-// Store supplied lowBYTE at4; replace only entry AL with that BYTE and retain entry EAX upper24/RET8.
+// Store the supplied low BYTE at4; inferred void return follows all observed callers. RET8.
 // R6GameService.dll @ 10059890 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __stdcall WriteHeaderByte4(byte *header,uint valueWord)
+void __stdcall WriteHeaderByte4(byte *header,uint valueWord)
 {
-  __asm {
-    mov    ecx,DWORD PTR [esp+0x4]
-    mov    al,BYTE PTR [esp+0x8]
-    mov    BYTE PTR [ecx+0x4],al
-    ret    0x8
-  }
+  byte *destination = header;
+  byte value = *(byte *)&valueWord;
+  destination[4] = value;
 }
 
 // Combine supplied lowBYTE<<4 with current BYTE5 low nibble; return cached header pointer/RET8.
@@ -129,49 +118,33 @@ uint __stdcall WriteHeaderByte5LowNibble(byte *header,uint valueWord)
   return reinterpret_cast<uint>(header);
 }
 
-// Store supplied lowWORD unaligned at5/6; return entry EAX upper16 with supplied AX/RET8.
+// Store the supplied low WORD unaligned at5/6; inferred void return follows all observed callers. RET8.
 // R6GameService.dll @ 100598e0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __stdcall WriteHeaderWord5(byte *header,uint valueWord)
+void __stdcall WriteHeaderWord5(byte *header,uint valueWord)
 {
-  __asm {
-    mov    ecx,DWORD PTR [esp+0x4]
-    mov    ax,WORD PTR [esp+0x8]
-    mov    WORD PTR [ecx+0x5],ax
-    ret    0x8
-  }
+  byte *destination = header;
+  ushort value = *(ushort *)&valueWord;
+  *(ushort *)(destination + 5) = value;
 }
 
-// Signed input length<6 clears only entry AL, no header read. Otherwise decode size and accept signed6..3000000.
-// Out-of-range prints one fixed literal and clears only printf AL; success sets only decoded-size AL1. RET8.
-// R6GameService.dll @ 100598f0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __stdcall IsEncodedHeaderSizeValid(const byte *header,int inputLength)
+// Reject signed lengths below6 without reading the header; otherwise accept only signed decoded sizes6..3000000.
+// Failure keeps entry or printf upper EAX; success replaces only decoded-size AL. No encoded-size<=input-size check.
+// R6GameService.dll @ 100598f0 : EAX input view, two native stack words/stdcall RET8; no local ownership.
+uint IsEncodedHeaderSizeValid(
+    const byte *header,int inputLength,[[r6abi::register_input("eax")]] uint eaxAtEntry)
 {
-  __asm {
-    cmp    DWORD PTR [esp+0x8],0x6
-    jge    Branch1
-    xor    al,al
-    ret    0x8
-  Branch1:
-    mov    eax,DWORD PTR [esp+0x4]
-    push    eax
-    call    R6GameServiceAddresses::ReadHeaderSize24
-    cmp    eax,0x2dc6c0
-    jle    Branch2
-    push    R6GameServiceAddresses::TextOnALSizeMAXMESSAGESIZE
-    call    R6GameServiceAddresses::printf
-    add    esp,0x4
-    xor    al,al
-    ret    0x8
-  Branch2:
-    cmp    eax,0x6
-    jge    Branch3
-    push    R6GameServiceAddresses::TextOnALSizeGSHEADERSIZE
-    call    R6GameServiceAddresses::printf
-    add    esp,0x4
-    xor    al,al
-    ret    0x8
-  Branch3:
-    mov    al,0x1
-    ret    0x8
+  if (inputLength < 6) return eaxAtEntry & 0xffffff00;
+  uint decoded = ReadHeaderSize24(header);
+  using PrintABI = int (__cdecl *)(const char *,...);
+  if ((int)decoded > 3000000) {
+    uint printed = (uint)((PrintABI)R6GameServiceAddresses::printf)(
+        (const char *)R6GameServiceAddresses::TextOnALSizeMAXMESSAGESIZE);
+    return printed & 0xffffff00;
   }
+  if ((int)decoded < 6) {
+    uint printed = (uint)((PrintABI)R6GameServiceAddresses::printf)(
+        (const char *)R6GameServiceAddresses::TextOnALSizeGSHEADERSIZE);
+    return printed & 0xffffff00;
+  }
+  return (decoded & 0xffffff00) | 1;
 }

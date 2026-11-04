@@ -1,6 +1,21 @@
 #include "native_addresses.h"
 #include "native_records.h"
 
+namespace {
+// Inferred scope guard for the first string shared by the native two-string record lifetimes.
+struct FirstRecordStringCleanup {
+  void *record;
+  bool armed;
+  // Finish the first string when destruction of the later string throws.
+  ~FirstRecordStringCleanup() noexcept(false) {
+    if (armed) {
+      using DestroyABI = uint (__thiscall *)(void *);
+      (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(record);
+    }
+  }
+};
+}
+
 // Unassigned record helpers: imported FStringNoInit identity and member offsets are established, containing types are not.
 // R6GameService.dll data @ 1007ab7c : state0 destroys the saved first string; no catch blocks.
 const R6GameServiceNative::UnwindEntry string_record_supportSharedLifetimeUnwindMap[1] = {
@@ -95,72 +110,26 @@ __declspec(naked) void * __thiscall CopyStringRecord2C(void *destination,const v
   }
 }
 
-// Destroys the +c string under first-string cleanup, then disarms cleanup and destroys +0.
+// Destroy the +0xc string, then the first string; failure of the later string still cleans the first.
 // R6GameService.dll @ 10001bd0 : RET0; final imported destructor EAX and first-string unwind action retained.
-__declspec(naked) uint __thiscall DestroyStringPairRecord18(void *record)
+uint __thiscall DestroyStringPairRecord18(void *record)
 {
-  byte *nativeStack,*receiver;
-  __asm {
-    // Raw final imported destructor EAX survives; the uint view does not assert an original C++ destructor return type.
-    push   0xffffffff
-    push   R6GameServiceAddresses::SelectStringRecordExceptionInfo
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    push   ecx
-    push   esi
-    mov    esi,ecx
-    mov    DWORD PTR [esp+0x4],esi
-    mov    nativeStack,esp
-    mov    receiver,esi
-  }
-  *(uint *)(nativeStack + 0x10) = 0;
+  FirstRecordStringCleanup cleanup{record, true};
   using DestroyABI = uint (__thiscall *)(void *);
-  (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(receiver + 0xc);
-  *(uint *)(nativeStack + 0x10) = 0xffffffff;
-  uint rawEax = (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(receiver);
-  __asm {
-    mov    eax,rawEax
-    mov    ecx,DWORD PTR [esp+0x8]
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x10
-    ret
-  }
+  (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)((byte *)record + 0xc);
+  cleanup.armed = false;
+  return (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(record);
 }
 
-// Destroys the +20 string under first-string cleanup, then disarms cleanup and destroys +0.
+// Destroy the +0x20 string, then the first string; failure of the later string still cleans the first.
 // R6GameService.dll @ 10001c20 : RET0; final imported destructor EAX and first-string unwind action retained.
-__declspec(naked) uint __thiscall DestroyStringRecord2C(void *record)
+uint __thiscall DestroyStringRecord2C(void *record)
 {
-  byte *nativeStack,*receiver;
-  __asm {
-    // Raw final imported destructor EAX survives; the uint view does not assert an original C++ destructor return type.
-    push   0xffffffff
-    push   R6GameServiceAddresses::SelectStringRecordExceptionInfo
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    push   ecx
-    push   esi
-    mov    esi,ecx
-    mov    DWORD PTR [esp+0x4],esi
-    mov    nativeStack,esp
-    mov    receiver,esi
-  }
-  *(uint *)(nativeStack + 0x10) = 0;
+  FirstRecordStringCleanup cleanup{record, true};
   using DestroyABI = uint (__thiscall *)(void *);
-  (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(receiver + 0x20);
-  *(uint *)(nativeStack + 0x10) = 0xffffffff;
-  uint rawEax = (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(receiver);
-  __asm {
-    mov    eax,rawEax
-    mov    ecx,DWORD PTR [esp+0x8]
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x10
-    ret
-  }
+  (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)((byte *)record + 0x20);
+  cleanup.armed = false;
+  return (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringNoInitSlot)(record);
 }
 
 // Tail-forwards the current saved first-string pointer from inherited parent EBP-10 to its destructor.
@@ -259,34 +228,19 @@ __declspec(naked) void __thiscall ResetStringRecordArray2C(void *array,uint capa
   }
 }
 
-// Checks a range, destroys its cached extent of 0x18-byte records and forwards the late original count to removal.
+// Destroy a checked, cached range of 0x18-byte records using live storage, then remove the original range.
 // R6GameService.dll @ 10002af0 : RET8; signed wrapped bounds, cached extent and current per-element storage.
-__declspec(naked) void __thiscall RemoveStringPairRange18(void *array,int firstIndex,int count)
+void __thiscall RemoveStringPairRange18(void *array,int firstIndex,int count)
 {
-  byte *nativeStack,*receiver;
-  int first;
+  byte *receiver = (byte *)array;
+  int first = firstIndex;
   using AssertABI = void (__cdecl *)(const char *,const char *,int);
-  AssertABI fail;
-  __asm {
-    // Signed gates use wrapped index+count; data reloads per element, but loop extent is cached before destruction.
-    push   ebx
-    mov    ebx,DWORD PTR [esp+0x8]
-    test   ebx,ebx
-    push   ebp
-    push   esi
-    mov    esi,DWORD PTR ds:R6GameServiceAddresses::Core__appFailAssertSlot
-    push   edi
-    mov    ebp,ecx
-    mov    nativeStack,esp
-    mov    receiver,ebp
-    mov    first,ebx
-    mov    fail,esi
-  }
+  AssertABI fail = *(AssertABI *)R6GameServiceAddresses::Core__appFailAssertSlot;
   if (first < 0) fail((const char *)R6GameServiceAddresses::TextIndex0,
       (const char *)R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH,0x201);
   if (first > *(int *)(receiver + 4)) fail((const char *)R6GameServiceAddresses::TextIndexArrayNum,
       (const char *)R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH,0x202);
-  uint end = (uint)first + *(uint *)(nativeStack + 0x18);
+  uint end = (uint)first + (uint)count;
   if ((int)end > *(int *)(receiver + 4)) fail((const char *)R6GameServiceAddresses::TextIndexCountArrayNum,
       (const char *)R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH,0x203);
   if (first < (int)end) {
@@ -299,17 +253,8 @@ __declspec(naked) void __thiscall RemoveStringPairRange18(void *array,int firstI
       offset += 24;
     } while (--remaining != 0);
   }
-  int count = *(int *)(nativeStack + 0x18);
-  using RemoveABI = uint (__thiscall *)(void *,int,int,int);
-  uint rawEax = (*(RemoveABI *)R6GameServiceAddresses::Core_FArray_RemoveSlot)(receiver,first,count,24);
-  __asm {
-    mov    eax,rawEax
-    pop    edi
-    pop    esi
-    pop    ebp
-    pop    ebx
-    ret    0x8
-  }
+  using RemoveABI = void (__thiscall *)(void *,int,int,int);
+  (*(RemoveABI *)R6GameServiceAddresses::Core_FArray_RemoveSlot)(receiver,first,count,24);
 }
 
 // Skips self-assignment; otherwise resets destination and copies live source records through Add and record construction.
@@ -374,34 +319,19 @@ __declspec(naked) void * __thiscall CopyStringPairArray18(void *destination,cons
   }
 }
 
-// Checks a range, destroys its cached extent of 0x2c-byte records and forwards the late original count to removal.
+// Destroy a checked, cached range of 0x2c-byte records using live storage, then remove the original range.
 // R6GameService.dll @ 10002c00 : RET8; signed wrapped bounds, cached extent and current per-element storage.
-__declspec(naked) void __thiscall RemoveStringRecordRange2C(void *array,int firstIndex,int count)
+void __thiscall RemoveStringRecordRange2C(void *array,int firstIndex,int count)
 {
-  byte *nativeStack,*receiver;
-  int first;
+  byte *receiver = (byte *)array;
+  int first = firstIndex;
   using AssertABI = void (__cdecl *)(const char *,const char *,int);
-  AssertABI fail;
-  __asm {
-    // Signed gates use wrapped index+count; data reloads per element, but loop extent is cached before destruction.
-    push   ebx
-    mov    ebx,DWORD PTR [esp+0x8]
-    test   ebx,ebx
-    push   ebp
-    push   esi
-    mov    esi,DWORD PTR ds:R6GameServiceAddresses::Core__appFailAssertSlot
-    push   edi
-    mov    ebp,ecx
-    mov    nativeStack,esp
-    mov    receiver,ebp
-    mov    first,ebx
-    mov    fail,esi
-  }
+  AssertABI fail = *(AssertABI *)R6GameServiceAddresses::Core__appFailAssertSlot;
   if (first < 0) fail((const char *)R6GameServiceAddresses::TextIndex0,
       (const char *)R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH,0x201);
   if (first > *(int *)(receiver + 4)) fail((const char *)R6GameServiceAddresses::TextIndexArrayNum,
       (const char *)R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH,0x202);
-  uint end = (uint)first + *(uint *)(nativeStack + 0x18);
+  uint end = (uint)first + (uint)count;
   if ((int)end > *(int *)(receiver + 4)) fail((const char *)R6GameServiceAddresses::TextIndexCountArrayNum,
       (const char *)R6GameServiceAddresses::TextDRavenshield412CoreIncUnTemplateH,0x203);
   if (first < (int)end) {
@@ -414,17 +344,8 @@ __declspec(naked) void __thiscall RemoveStringRecordRange2C(void *array,int firs
       offset += 44;
     } while (--remaining != 0);
   }
-  int count = *(int *)(nativeStack + 0x18);
-  using RemoveABI = uint (__thiscall *)(void *,int,int,int);
-  uint rawEax = (*(RemoveABI *)R6GameServiceAddresses::Core_FArray_RemoveSlot)(receiver,first,count,44);
-  __asm {
-    mov    eax,rawEax
-    pop    edi
-    pop    esi
-    pop    ebp
-    pop    ebx
-    ret    0x8
-  }
+  using RemoveABI = void (__thiscall *)(void *,int,int,int);
+  (*(RemoveABI *)R6GameServiceAddresses::Core_FArray_RemoveSlot)(receiver,first,count,44);
 }
 
 // Skips self-assignment; otherwise resets destination and copies live source records through Add and record construction.

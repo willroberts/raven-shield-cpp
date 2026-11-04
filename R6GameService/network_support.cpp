@@ -590,31 +590,22 @@ __declspec(naked) uint __stdcall FindIPv4Interface(char *addressOut,char *maskOu
   }
 }
 
-// Closes the cached handle even if invalid; only success resets handle/error. Kind byte is untouched.
-// Failure stores current provider error and clears only AL; context receiver remains cached across calls.
-// R6GameService.dll @ 1002e350 : native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall CloseSocketAndReset(void *socketContext)
+// Close the cached handle even if invalid; reset it only on success and retain the full error in the owner.
+// R6GameService.dll @ 1002e350 : selected PE32 call/access order; receiver/layout names remain inferred.
+uint __fastcall CloseSocketAndReset(void *socketContext)
 {
-  __asm {
-    push   esi
-    mov    esi,ecx
-    mov    eax,DWORD PTR [esi+0x4]
-    push   eax
-    call   DWORD PTR ds:R6GameServiceAddresses::WS2_32_closesocketSlot
-    test   eax,eax
-    jne    Branch25
-    mov    DWORD PTR [esi+0x4],0xffffffff
-    mov    DWORD PTR [esi+0x8],eax
-    mov    al,0x1
-    pop    esi
-    ret
-  Branch25:
-    call   DWORD PTR ds:R6GameServiceAddresses::WS2_32_WSAGetLastErrorSlot
-    mov    DWORD PTR [esi+0x8],eax
-    xor    al,al
-    pop    esi
-    ret
+  using CloseABI = int (__stdcall *)(uint);
+  using ErrorABI = uint (__stdcall *)(void);
+  uint handle = *(uint *)((byte *)socketContext + 4);
+  int result = (*(CloseABI *)R6GameServiceAddresses::WS2_32_closesocketSlot)(handle);
+  if (result == 0) {
+    *(uint *)((byte *)socketContext + 4) = 0xffffffff;
+    *(uint *)((byte *)socketContext + 8) = 0;
+    return 1;
   }
+  uint error = (*(ErrorABI *)R6GameServiceAddresses::WS2_32_WSAGetLastErrorSlot)();
+  *(uint *)((byte *)socketContext + 8) = error;
+  return error & 0xffffff00;
 }
 
 // Writes low argument byte back as a DWORD in the original argument slot and passes that address to FIONBIO.
@@ -824,70 +815,46 @@ uint __fastcall GetSocketLastError(int socketContext)
 // R6GameService.dll data @ 10076c10 : nonfunction base-offset table installed by socket-context initialization.
 const R6GameServiceNative::BaseOffsets<1> GSocketContextBaseOffsets = {0, {0x10}};
 
-// Sends with flags0, returning full provider count; only ffffffff queries/stores provider error, otherwise clears it.
-// R6GameService.dll @ 1002dd40 : native control/access order and raw ABI retained.
-__declspec(naked) int __thiscall SendSocketBytes(void *socketContext,uint buffer,uint byteCount)
+// Send with flags zero; only a full-word -1 queries provider error, while every other count clears stored error.
+// R6GameService.dll @ 1002dd40 : selected PE32 call/access order; receiver/layout names remain inferred.
+int __thiscall SendSocketBytes(void *socketContext,uint buffer,uint byteCount)
 {
-  __asm {
-    mov    eax,DWORD PTR [esp+0x8]
-    push   esi
-    mov    esi,ecx
-    mov    ecx,DWORD PTR [esp+0x8]
-    push   0x0
-    push   eax
-    mov    edx,DWORD PTR [esi+0x4]
-    push   ecx
-    push   edx
-    call   DWORD PTR ds:R6GameServiceAddresses::WS2_32_sendSlot
-    cmp    eax,0xffffffff
-    jne    Branch32
-    call   DWORD PTR ds:R6GameServiceAddresses::WS2_32_WSAGetLastErrorSlot
-    mov    DWORD PTR [esi+0x8],eax
-    or     eax,0xffffffff
-    pop    esi
-    ret    0x8
-  Branch32:
-    mov    DWORD PTR [esi+0x8],0x0
-    pop    esi
-    ret    0x8
+  using SendABI = int (__stdcall *)(uint,uint,uint,uint);
+  using ErrorABI = uint (__stdcall *)(void);
+  uint count = byteCount;
+  uint data = buffer;
+  uint handle = *(uint *)((byte *)socketContext + 4);
+  int result = (*(SendABI *)R6GameServiceAddresses::WS2_32_sendSlot)(handle,data,count,0);
+  if (result == -1) {
+    uint error = (*(ErrorABI *)R6GameServiceAddresses::WS2_32_WSAGetLastErrorSlot)();
+    *(uint *)((byte *)socketContext + 8) = error;
+    return -1;
   }
+  *(uint *)((byte *)socketContext + 8) = 0;
+  return result;
 }
 
-// Receives with flags0; would-block becomes0/error0, provider0 becomes-1/errorffffffff, other failures retain error.
-// R6GameService.dll @ 1002dea0 : native control/access order and raw ABI retained.
-__declspec(naked) int __thiscall ReceiveSocketBytes(void *socketContext,uint buffer,uint byteCount)
+// Receive with flags zero; map would-block to zero/error zero and orderly closure to -1/error ffffffff.
+// R6GameService.dll @ 1002dea0 : selected PE32 call/access order; receiver/layout names remain inferred.
+int __thiscall ReceiveSocketBytes(void *socketContext,uint buffer,uint byteCount)
 {
-  __asm {
-    mov    eax,DWORD PTR [esp+0x8]
-    push   esi
-    mov    esi,ecx
-    mov    ecx,DWORD PTR [esp+0x8]
-    push   0x0
-    push   eax
-    mov    edx,DWORD PTR [esi+0x4]
-    push   ecx
-    push   edx
-    call   DWORD PTR ds:R6GameServiceAddresses::WS2_32_recvSlot
-    cmp    eax,0xffffffff
-    jne    Branch34
-    call   DWORD PTR ds:R6GameServiceAddresses::WS2_32_WSAGetLastErrorSlot
-    cmp    eax,0x2733
-    mov    DWORD PTR [esi+0x8],eax
-    jne    Branch35
-    xor    eax,eax
-  Branch33:
-    mov    DWORD PTR [esi+0x8],0x0
-    pop    esi
-    ret    0x8
-  Branch34:
-    test   eax,eax
-    jne    Branch33
-    mov    DWORD PTR [esi+0x8],0xffffffff
-  Branch35:
-    or     eax,0xffffffff
-    pop    esi
-    ret    0x8
+  using ReceiveABI = int (__stdcall *)(uint,uint,uint,uint);
+  using ErrorABI = uint (__stdcall *)(void);
+  uint count = byteCount;
+  uint data = buffer;
+  uint handle = *(uint *)((byte *)socketContext + 4);
+  int result = (*(ReceiveABI *)R6GameServiceAddresses::WS2_32_recvSlot)(handle,data,count,0);
+  if (result == -1) {
+    uint error = (*(ErrorABI *)R6GameServiceAddresses::WS2_32_WSAGetLastErrorSlot)();
+    *(uint *)((byte *)socketContext + 8) = error;
+    if (error != 0x2733) return -1;
+    result = 0;
+  } else if (result == 0) {
+    *(uint *)((byte *)socketContext + 8) = 0xffffffff;
+    return -1;
   }
+  *(uint *)((byte *)socketContext + 8) = 0;
+  return result;
 }
 
 // Peeks/grows up to25 times, then consumes and copies sender text/port even if that final receive fails.
@@ -1444,35 +1411,24 @@ __declspec(naked) uint __stdcall AllocateResolvedIPv4Record(
   }
 }
 
-// Clears the cached output record, writes family2/converted port, then reads current original address or cached IPv4.
-// Port caches before clearing; later argument/cache loads and selected-address upper EAX are retained.
-// R6GameService.dll @ 1002d900 : native control/access order and raw ABI retained.
-__declspec(naked) uint __stdcall BuildIPv4AddressRecord(uint address,uint port,uint *recordOut)
+// Clear the endpoint, store family/converted port, then select the current address or cached default IPv4.
+// R6GameService.dll @ 1002d900 : selected PE32 call/access order; receiver/layout names remain inferred.
+uint __stdcall BuildIPv4AddressRecord(uint address,uint port,uint *recordOut)
 {
-  __asm {
-    push   esi
-    mov    esi,DWORD PTR [esp+0x10]
-    mov    ecx,esi
-    xor    eax,eax
-    mov    edx,DWORD PTR [esp+0xc]
-    mov    DWORD PTR [ecx],eax
-    push   edx
-    mov    DWORD PTR [ecx+0x4],eax
-    mov    DWORD PTR [ecx+0x8],eax
-    mov    DWORD PTR [ecx+0xc],eax
-    mov    WORD PTR [esi],0x2
-    call   DWORD PTR ds:R6GameServiceAddresses::WS2_32_htonsSlot
-    mov    WORD PTR [esi+0x2],ax
-    mov    eax,DWORD PTR [esp+0x8]
-    test   eax,eax
-    jne    Branch55
-    mov    eax,ds:R6GameServiceAddresses::GResolvedIPv4Address
-  Branch55:
-    mov    DWORD PTR [esi+0x4],eax
-    mov    al,0x1
-    pop    esi
-    ret    0xc
-  }
+  using PortABI = uint (__stdcall *)(uint);
+  uint *record = recordOut;
+  uint portWord = port;
+  record[0] = 0;
+  record[1] = 0;
+  record[2] = 0;
+  record[3] = 0;
+  *(ushort *)record = 2;
+  uint converted = (*(PortABI *)R6GameServiceAddresses::WS2_32_htonsSlot)(portWord);
+  *(ushort *)((byte *)record + 2) = (ushort)converted;
+  uint selected = address;
+  if (selected == 0) selected = *(uint *)R6GameServiceAddresses::GResolvedIPv4Address;
+  record[1] = selected;
+  return (selected & 0xffffff00) | 1;
 }
 
 // Builds a local IPv4 record and binds current handle; only ffffffff queries error, otherwise clears error and sets AL1.
@@ -1815,62 +1771,33 @@ __declspec(naked) int __thiscall SendSocketBytesToResolvedIPv4(
   }
 }
 
-// Builds stack endpoint and sends with flags0; only ffffffff queries/stores error, otherwise clears error and returns full count.
-// R6GameService.dll @ 1002de20 : native control/access order and raw ABI retained.
-__declspec(naked) int __thiscall SendSocketBytesToIPv4(
-    void *socketContext,uint buffer,uint byteCount,uint address,uint port)
+// Build a local IPv4 endpoint and send with flags zero; preserve the provider count and store errors on failure.
+// R6GameService.dll @ 1002de20 : selected PE32 call/access order; receiver/layout names remain inferred.
+int __thiscall SendSocketBytesToIPv4(void *socketContext,uint buffer,uint byteCount,uint address,uint port)
 {
-  __asm {
-    mov    edx,DWORD PTR [esp+0xc]
-    sub    esp,0x10
-    lea    eax,[esp+0x0]
-    push   esi
-    push   edi
-    mov    edi,ecx
-    mov    ecx,DWORD PTR [esp+0x28]
-    push   eax
-    push   ecx
-    push   edx
-    call   R6GameServiceAddresses::BuildIPv4AddressRecord
-    test   al,al
-    je     Branch69
-    mov    ecx,DWORD PTR [esp+0x20]
-    mov    edx,DWORD PTR [esp+0x1c]
-    lea    eax,[esp+0x8]
-    push   0x10
-    push   eax
-    mov    eax,DWORD PTR [edi+0x4]
-    push   0x0
-    push   ecx
-    push   edx
-    push   eax
-    call   DWORD PTR ds:R6GameServiceAddresses::WS2_32_sendtoSlot
-    mov    esi,eax
-    cmp    esi,0xffffffff
-    jne    Branch68
-    call   DWORD PTR ds:R6GameServiceAddresses::WS2_32_WSAGetLastErrorSlot
-    mov    DWORD PTR [edi+0x8],eax
-    mov    eax,esi
-    pop    edi
-    pop    esi
-    add    esp,0x10
-    ret    0x10
-  Branch68:
-    mov    DWORD PTR [edi+0x8],0x0
-    mov    eax,esi
-    pop    edi
-    pop    esi
-    add    esp,0x10
-    ret    0x10
-  Branch69:
-    call   DWORD PTR ds:R6GameServiceAddresses::WS2_32_WSAGetLastErrorSlot
-    mov    DWORD PTR [edi+0x8],eax
-    pop    edi
-    or     eax,0xffffffff
-    pop    esi
-    add    esp,0x10
-    ret    0x10
+  using BuildABI = uint (__stdcall *)(uint,uint,uint *);
+  using SendABI = int (__stdcall *)(uint,uint,uint,uint,const void *,uint);
+  using ErrorABI = uint (__stdcall *)(void);
+  uint addressWord = address;
+  uint endpoint[4];
+  uint portWord = port;
+  uint built = ((BuildABI)R6GameServiceAddresses::BuildIPv4AddressRecord)(addressWord,portWord,endpoint);
+  if ((byte)built != 0) {
+    uint count = byteCount;
+    uint data = buffer;
+    uint handle = *(uint *)((byte *)socketContext + 4);
+    int result = (*(SendABI *)R6GameServiceAddresses::WS2_32_sendtoSlot)(handle,data,count,0,endpoint,0x10);
+    if (result == -1) {
+      uint error = (*(ErrorABI *)R6GameServiceAddresses::WS2_32_WSAGetLastErrorSlot)();
+      *(uint *)((byte *)socketContext + 8) = error;
+    } else {
+      *(uint *)((byte *)socketContext + 8) = 0;
+    }
+    return result;
   }
+  uint error = (*(ErrorABI *)R6GameServiceAddresses::WS2_32_WSAGetLastErrorSlot)();
+  *(uint *)((byte *)socketContext + 8) = error;
+  return -1;
 }
 
 // R6GameService.dll data @ 1008e080 : initial seconds word copied into select timeout; microseconds are separately zeroed.

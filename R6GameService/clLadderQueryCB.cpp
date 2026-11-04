@@ -34,40 +34,31 @@ __declspec(naked) void * __thiscall InitializeVtableSubobject(void *owner,uint i
 // Restore clLadderQueryCB through adjusted receiver+c, restore allocator table, free complete owner if low bit1.
 // Load flag after restoration; return complete owner despite free EAX, with no own EH. RET4.
 // R6GameService.dll @ 1004fda0 : complete native control/access order and raw ABI retained.
-__declspec(naked) void * __thiscall DeleteclLadderQueryCB(void *adjustedReceiver,uint deleteFlags)
+void *__thiscall DeleteclLadderQueryCB(void *secondary,uint deletionFlags)
 {
-  __asm {
-    push    esi
-    lea    esi,[ecx-0xc]
-    push    edi
-    lea    edi,[esi+0xc]
-    mov    ecx,edi
-    call    R6GameServiceAddresses::RestoreVtableSubobject
-    mov    al,BYTE PTR [esp+0xc]
-    mov    DWORD PTR [edi],R6GameServiceAddresses::clExtalloc_Override_BaseclassVTable
-    test    al,0x1
-    je    Branch2
-    push    esi
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch2:
-    mov    eax,esi
-    pop    edi
-    pop    esi
-    ret    0x4
+  uint owner = (uint)secondary - 0xc;
+  void *fixedBase = (void *)(owner + 0xc);
+  using RestoreABI = uint (__fastcall *)(void *);
+  ((RestoreABI)R6GameServiceAddresses::RestoreVtableSubobject)(fixedBase);
+  byte flags = *(byte *)&deletionFlags;
+  *(uint *)fixedBase = R6GameServiceAddresses::clExtalloc_Override_BaseclassVTable;
+  if ((flags & 1) != 0) {
+    using FreeABI = uint (__stdcall *)(void *);
+    ((FreeABI)R6GameServiceAddresses::TailFreeThroughGlobalAllocator)((void *)owner);
   }
+  return (void *)owner;
 }
 
 // Restore clLadderQueryCB primary at receiver-c, then dynamic secondary; raw EAX=loaded vbptr.
 // R6GameService.dll @ 1004fdd0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall RestoreVtableSubobject(void *adjustedReceiver)
+uint __fastcall RestoreVtableSubobject(void *secondary)
 {
-  __asm {
-    mov    eax,DWORD PTR [ecx-0x8]
-    mov    DWORD PTR [ecx-0xc],R6GameServiceAddresses::clLadderQueryCBVTable
-    mov    edx,DWORD PTR [eax+0x8]
-    mov    DWORD PTR [edx+ecx*1-0x8],R6GameServiceAddresses::clLadderQueryCBVTableAdjusted12
-    ret
-  }
+  uint owner = (uint)secondary - 0xc;
+  uint offsetTable = *(uint *)(owner + 4);
+  *(uint *)owner = R6GameServiceAddresses::clLadderQueryCBVTable;
+  uint displacement = *(uint *)(offsetTable + 8);
+  *(uint *)(owner + 4 + displacement) = R6GameServiceAddresses::clLadderQueryCBVTableAdjusted12;
+  return offsetTable;
 }
 
 // If member+8 exists, load first word into ECX, rewrite its same stack slot and tail target with all3 words.

@@ -33,207 +33,148 @@ __declspec(naked) void *__thiscall clSendMsgQueue_InitializeCompactRecordList(vo
   }
 }
 
+namespace {
+// Inferred native scratch words and two live Boolean bytes; original argument words also become iterator scratch.
+struct SendCompactInsertScratch {
+  byte untouched[2];
+  byte seenPreceding;
+  byte active;
+  uint current;
+  uint savedOwner;
+  uint wrapper;
+  uint serializedSize;
+  uint position;
+};
+}
+
 // Serialize cached source into sizeS-8, own buffer through wrapper16; remove FIRST matching active entry.
 // Insert after first preceding tuple and before next nonpreceding tuple, or append if none; signed key uses <=.
 // ENTRY ESP S: ownerS-10/wrapperS-c/sizeS-8/nodeS-14; keyS+4 and sourceS+8 become iterator/Boolean scratch.
 // Count WORD+c decrements after replacement and increments after insertion; no local EH/rollback. AL1/owner upper, RET8.
-// R6GameService.dll @ 1005cb00 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall InsertOrReplaceCompactPayloadRecord(void *owner,uint keyWord,void *source)
+// R6GameService.dll @ 1005cb00 : inferred scratch view; current source/key, virtual erasure and slot reloads.
+uint __thiscall InsertOrReplaceCompactPayloadRecord(void *owner,uint keyWord,void *source)
 {
-  __asm {
-    sub    esp,0x18
-    push    ebx
-    push    ebp
-    mov    ebp,DWORD PTR [esp+0x28]
-    push    esi
-    push    edi
-    mov    edi,ecx
-    mov    eax,DWORD PTR [ebp+0x0]
-    lea    ecx,[esp+0x20]
-    push    ecx
-    mov    ecx,ebp
-    mov    DWORD PTR [esp+0x1c],edi
-    call    DWORD PTR [eax+0x4]
-    push    0x10
-    mov    esi,eax
-    call    R6GameServiceAddresses::AllocateGameServiceBytes
-    test    eax,eax
-    je    Branch2
-    mov    edx,DWORD PTR [esp+0x20]
-    mov    ecx,DWORD PTR [esp+0x2c]
-    push    0x1
-    push    edx
-    mov    dl,BYTE PTR [ebp+0xe]
-    push    esi
-    push    ecx
-    mov    cl,BYTE PTR [ebp+0xc]
-    push    edx
-    push    ecx
-    mov    ecx,eax
-    call    R6GameServiceAddresses::InitializeCompactPayloadRecord
-    jmp    Branch3
-  Branch2:
-    xor    eax,eax
-  Branch3:
-    mov    DWORD PTR [esp+0x1c],eax
-    mov    al,BYTE PTR [ebp+0xe]
-    mov    bl,al
-    mov    BYTE PTR [esp+0x30],0x0
-    and    bl,0x1f
-    test    al,0x20
-    mov    eax,DWORD PTR [edi+0x4]
-    seta    BYTE PTR [esp+0x13]
-    mov    esi,DWORD PTR [eax]
-    add    edi,0x4
-    cmp    esi,eax
-    mov    DWORD PTR [esp+0x14],esi
-    je    Branch7
-  Branch4:
-    mov    al,BYTE PTR [esp+0x30]
-    test    al,al
-    jne    Branch7
-    mov    edi,DWORD PTR [esi+0x8]
-    mov    dl,BYTE PTR [ebp+0xc]
-    mov    cl,BYTE PTR [edi+0x4]
-    mov    al,BYTE PTR [edi+0x5]
-    cmp    dl,cl
-    mov    dl,al
-    sete    cl
-    and    dl,0x1f
-    cmp    bl,dl
-    sete    dl
-    and    cl,dl
-    mov    dx,WORD PTR [esp+0x2c]
-    cmp    dx,WORD PTR [edi+0x6]
-    mov    edi,DWORD PTR [esp+0x18]
-    sete    dl
-    and    cl,dl
-    test    al,0x20
-    seta    al
-    test    al,cl
-    je    Branch5
-    push    ecx
-    mov    ecx,edi
-    mov    eax,esp
-    mov    DWORD PTR [esp+0x34],esp
-    mov    DWORD PTR [eax],esi
-    mov    edx,DWORD PTR [edi]
-    lea    eax,[esp+0x28]
-    push    eax
-    call    DWORD PTR [edx+0x14]
-    mov    esi,DWORD PTR [eax]
-    dec    WORD PTR [edi+0xc]
-    mov    BYTE PTR [esp+0x30],0x1
-    jmp    Branch6
-  Branch5:
-    mov    esi,DWORD PTR [esi]
-  Branch6:
-    mov    ecx,DWORD PTR [edi+0x4]
-    lea    eax,[edi+0x4]
-    cmp    esi,ecx
-    mov    DWORD PTR [esp+0x14],esi
-    jne    Branch4
-  Branch7:
-    mov    ecx,DWORD PTR [esp+0x18]
-    mov    BYTE PTR [esp+0x12],0x0
-    mov    BYTE PTR [esp+0x30],0x0
-    mov    eax,DWORD PTR [ecx+0x4]
-    lea    edi,[ecx+0x4]
-    mov    ebp,DWORD PTR [eax]
-    cmp    ebp,eax
-    mov    DWORD PTR [esp+0x14],ebp
-    je    Branch13
-  Branch8:
-    mov    al,BYTE PTR [esp+0x30]
-    test    al,al
-    jne    Branch14
-    mov    esi,DWORD PTR [ebp+0x8]
-    mov    cl,BYTE PTR [esi+0x5]
-    mov    al,cl
-    and    al,0x1f
-    test    cl,0x20
-    seta    dl
-    cmp    bl,al
-    seta    cl
-    test    cl,cl
-    jne    Branch9
-    cmp    bl,al
-    jne    Branch9
-    mov    al,BYTE PTR [esp+0x13]
-    cmp    al,dl
-    seta    cl
-    test    cl,cl
-    jne    Branch9
-    cmp    al,dl
-    jne    Branch9
-    mov    dx,WORD PTR [esp+0x2c]
-    cmp    dx,WORD PTR [esi+0x6]
-    setge    cl
-  Branch9:
-    mov    al,BYTE PTR [esp+0x12]
-    test    al,al
-    je    Branch10
-    test    cl,cl
-    jne    Branch11
-    lea    eax,[esp+0x14]
-    lea    ecx,[esp+0x24]
-    push    eax
-    call    R6GameServiceAddresses::CopyFirstWord
-    lea    ecx,[esp+0x1c]
-    push    ecx
-    mov    ecx,edi
-    call    R6GameServiceAddresses::AllocateListPayloadNode
-    mov    esi,DWORD PTR [esp+0x24]
-    mov    BYTE PTR [esp+0x30],0x1
-    mov    edx,DWORD PTR [esi+0x4]
-    lea    ecx,[esi+0x4]
-    mov    DWORD PTR [eax],esi
-    mov    DWORD PTR [eax+0x4],edx
-    mov    DWORD PTR [edx],eax
-    mov    DWORD PTR [ecx],eax
-    mov    ebp,DWORD PTR [esp+0x14]
-    jmp    Branch12
-  Branch10:
-    test    cl,cl
-    je    Branch12
-  Branch11:
-    mov    BYTE PTR [esp+0x12],0x1
-  Branch12:
-    mov    ebp,DWORD PTR [ebp+0x0]
-    mov    eax,DWORD PTR [edi]
-    cmp    ebp,eax
-    mov    DWORD PTR [esp+0x14],ebp
-    jne    Branch8
-    mov    al,BYTE PTR [esp+0x30]
-    test    al,al
-    jne    Branch14
-  Branch13:
-    lea    edx,[esp+0x2c]
-    mov    ecx,edi
-    push    edx
-    call    R6GameServiceAddresses::CopyListHeadSlot
-    lea    eax,[esp+0x1c]
-    mov    ecx,edi
-    push    eax
-    call    R6GameServiceAddresses::AllocateListPayloadNode
-    mov    esi,DWORD PTR [esp+0x2c]
-    mov    edx,DWORD PTR [esi+0x4]
-    lea    ecx,[esi+0x4]
-    mov    DWORD PTR [eax],esi
-    mov    DWORD PTR [eax+0x4],edx
-    mov    DWORD PTR [edx],eax
-    mov    DWORD PTR [ecx],eax
-  Branch14:
-    mov    eax,DWORD PTR [esp+0x18]
-    pop    edi
-    pop    esi
-    pop    ebp
-    inc    WORD PTR [eax+0xc]
-    mov    al,0x1
-    pop    ebx
-    add    esp,0x18
-    ret    0x8
+  uint cachedSource = (uint)source;
+  uint initialOwner = (uint)owner;
+  SendCompactInsertScratch scratch;
+  uint sourceTable = *(uint *)cachedSource;
+  using SerializeABI = uint (__thiscall *)(void *,uint *);
+  scratch.savedOwner = initialOwner;
+  uint bytes = (*(SerializeABI *)(sourceTable + 4))((void *)cachedSource,&scratch.serializedSize);
+  using AllocateABI = uint (__stdcall *)(uint);
+  uint allocated = ((AllocateABI)R6GameServiceAddresses::AllocateGameServiceBytes)(16);
+  uint wrapper = 0;
+  if (allocated != 0) {
+    uint size = scratch.serializedSize;
+    uint key = keyWord;
+    uint flagsWord = (size & 0xffffff00) | *(byte *)(cachedSource + 0xe);
+    uint headerWord = (key & 0xffffff00) | *(byte *)(cachedSource + 0xc);
+    using ConstructABI = uint (__thiscall *)(void *,uint,uint,uint,void *,uint,uint);
+    wrapper = ((ConstructABI)R6GameServiceAddresses::InitializeCompactPayloadRecord)(
+        (void *)allocated,headerWord,flagsWord,key,(void *)bytes,size,1);
   }
+  scratch.wrapper = wrapper;
+  byte incomingFlags = *(byte *)(cachedSource + 0xe);
+  *(byte *)&source = 0;
+  byte priority = incomingFlags & 0x1f;
+  uint head = *(uint *)(initialOwner + 4);
+  scratch.active = (incomingFlags & 0x20) != 0;
+  uint current = *(uint *)head;
+  scratch.current = current;
+  while (current != head) {
+    if (*(byte *)&source != 0) break;
+    uint oldWrapper = *(uint *)(current + 8);
+    byte wantedClass = *(byte *)(cachedSource + 0xc);
+    byte oldClass = *(byte *)(oldWrapper + 4);
+    byte oldFlags = *(byte *)(oldWrapper + 5);
+    bool matches = wantedClass == oldClass;
+    byte oldPriority = oldFlags & 0x1f;
+    matches &= priority == oldPriority;
+    ushort currentKey = *(ushort *)&keyWord;
+    ushort oldKey = *(ushort *)(oldWrapper + 6);
+    uint listOwner = scratch.savedOwner;
+    matches &= currentKey == oldKey;
+    bool oldActive = (oldFlags & 0x20) != 0;
+    if (oldActive && matches) {
+      uint iterator = current;
+      source = &iterator;
+      uint table = *(uint *)listOwner;
+      using EraseABI = uint * (__thiscall *)(void *,uint *,void *);
+      EraseABI erase = *(EraseABI *)(table + 0x14);
+      uint *returned = erase((void *)listOwner,&scratch.position,(void *)iterator);
+      current = *returned;
+      ushort count = *(ushort *)(listOwner + 0xc);
+      *(ushort *)(listOwner + 0xc) = (ushort)(count - 1);
+      *(byte *)&source = 1;
+    } else {
+      current = *(uint *)current;
+    }
+    head = *(uint *)(listOwner + 4);
+    scratch.current = current;
+  }
+  uint listOwner = scratch.savedOwner;
+  scratch.seenPreceding = 0;
+  *(byte *)&source = 0;
+  head = *(uint *)(listOwner + 4);
+  uint *headSlot = (uint *)(listOwner + 4);
+  current = *(uint *)head;
+  scratch.current = current;
+  using CopyABI = uint * (__thiscall *)(uint *,const uint *);
+  using AllocateNodeABI = uint (__thiscall *)(void *,const uint *);
+  while (current != head) {
+    if (*(byte *)&source != 0) break;
+    uint oldWrapper = *(uint *)(current + 8);
+    byte oldFlags = *(byte *)(oldWrapper + 5);
+    byte oldPriority = oldFlags & 0x1f;
+    byte oldActive = (oldFlags & 0x20) != 0;
+    bool preceding = priority > oldPriority;
+    if (!preceding && priority == oldPriority) {
+      byte active = scratch.active;
+      preceding = active > oldActive;
+      if (!preceding && active == oldActive) {
+        short currentKey = *(short *)&keyWord;
+        short oldKey = *(short *)(oldWrapper + 6);
+        preceding = currentKey >= oldKey;
+      }
+    }
+    byte seenPreceding = scratch.seenPreceding;
+    if (seenPreceding != 0) {
+      if (!preceding) {
+        ((CopyABI)R6GameServiceAddresses::CopyFirstWord)(&scratch.position,&scratch.current);
+        uint node = ((AllocateNodeABI)R6GameServiceAddresses::AllocateListPayloadNode)(headSlot,&scratch.wrapper);
+        uint position = scratch.position;
+        *(byte *)&source = 1;
+        uint previous = *(uint *)(position + 4);
+        *(uint *)node = position;
+        *(uint *)(node + 4) = previous;
+        *(uint *)previous = node;
+        *(uint *)(position + 4) = node;
+        current = scratch.current;
+      } else {
+        scratch.seenPreceding = 1;
+      }
+    } else if (preceding) {
+      scratch.seenPreceding = 1;
+    }
+    current = *(uint *)current;
+    head = *headSlot;
+    scratch.current = current;
+  }
+  if (*(byte *)&source == 0) {
+    using HeadABI = uint * (__thiscall *)(void *,uint *);
+    ((HeadABI)R6GameServiceAddresses::CopyListHeadSlot)(headSlot,&keyWord);
+    uint node = ((AllocateNodeABI)R6GameServiceAddresses::AllocateListPayloadNode)(headSlot,&scratch.wrapper);
+    uint position = keyWord;
+    uint previous = *(uint *)(position + 4);
+    *(uint *)node = position;
+    *(uint *)(node + 4) = previous;
+    *(uint *)previous = node;
+    *(uint *)(position + 4) = node;
+  }
+  uint result = scratch.savedOwner;
+  ushort count = *(ushort *)(result + 0xc);
+  *(ushort *)(result + 0xc) = (ushort)(count + 1);
+  return (result & 0xffffff00) | 1;
 }
 
 // Serialize cached source through slot4 into original argumentS+4, then build wrapper16 owning returned bytes/count.
@@ -312,159 +253,143 @@ __declspec(naked) uint __thiscall AppendCompactPayloadRecord(void *owner,void *s
   }
 }
 
+namespace {
+// Inferred contiguous native scratch words at S-0x0c, S-8 and S-4; copying can overwrite their current contents.
+struct CompactConcatScratch {
+  uint selectedCount;
+  uint savedOwner;
+  uint allocation;
+};
+
+// Copy forward in DWORD/tail groups, caching the saved owner between the two native REP instructions.
+inline uint CopyCompactPayloadForward(uint destination,uint source,uint count,const uint *savedOwnerSlot) {
+  uint words = count >> 2;
+  while (words != 0) {
+    uint value = *(const uint *)source;
+    *(uint *)destination = value;
+    source += 4;
+    destination += 4;
+    --words;
+  }
+  uint owner = *savedOwnerSlot;
+  uint tail = count & 3;
+  while (tail != 0) {
+    byte value = *(const byte *)source;
+    *(byte *)destination = value;
+    ++source;
+    ++destination;
+    --tail;
+  }
+  return owner;
+}
+}
+
 // Select records while signed wrapped cumulative size<limit, accepting current record at zero total even when at/over limit.
 // Allocate selected size, then rescan CURRENT list and copy using signed16 selected/counter comparison and live payload sizes.
 // Original limit argument becomes copy counter; reload size after each copy and output pointer late. No local EH/NULL guard. RET8.
-// R6GameService.dll @ 1005cda0 : complete native control/access order and raw ABI retained.
-__declspec(naked) void * __thiscall ConcatenateCompactPayloadsThroughLimit(
-    void *owner,int byteLimit,int *copiedByteCount)
+// R6GameService.dll @ 1005cda0 : inferred scratch view; wrapped sizes and live argument/scratch aliases retained.
+void *__thiscall ConcatenateCompactPayloadsThroughLimit(void *owner,int byteLimit,int *copiedByteCount)
 {
-  __asm {
-    sub    esp,0xc
-    push    ebx
-    mov    ebx,DWORD PTR [ecx+0x4]
-    push    ebp
-    push    esi
-    mov    edx,DWORD PTR [ebx]
-    push    edi
-    xor    ebp,ebp
-    xor    edi,edi
-    xor    al,al
-    cmp    edx,ebx
-    mov    DWORD PTR [esp+0x14],ecx
-    mov    DWORD PTR [esp+0x10],edi
-    je    Branch27
-  Branch19:
-    test    al,al
-    jne    Branch23
-    mov    ecx,DWORD PTR [edx+0x8]
-    mov    esi,DWORD PTR [ecx+0xc]
-    lea    ecx,[esi+ebp*1]
-    cmp    ecx,DWORD PTR [esp+0x20]
-    jl    Branch21
-    test    ebp,ebp
-    jne    Branch20
-    mov    ebp,esi
-    inc    edi
-  Branch20:
-    mov    al,0x1
-    jmp    Branch22
-  Branch21:
-    mov    ebp,ecx
-    inc    edi
-  Branch22:
-    mov    edx,DWORD PTR [edx]
-    cmp    edx,ebx
-    jne    Branch19
-  Branch23:
-    test    ebp,ebp
-    mov    DWORD PTR [esp+0x10],edi
-    je    Branch27
-    push    ebp
-    call    R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    edx,DWORD PTR [esp+0x14]
-    mov    DWORD PTR [esp+0x18],eax
-    xor    ebx,ebx
-    mov    eax,DWORD PTR [edx+0x4]
-    mov    DWORD PTR [esp+0x20],ebx
-    mov    edx,DWORD PTR [eax]
-    cmp    edx,eax
-    je    Branch26
-    jmp    Branch25
-  Branch24:
-    mov    edi,DWORD PTR [esp+0x10]
-  Branch25:
-    cmp    WORD PTR [esp+0x20],di
-    jge    Branch26
-    mov    esi,DWORD PTR [edx+0x8]
-    mov    eax,DWORD PTR [esp+0x18]
-    mov    ecx,DWORD PTR [esi+0xc]
-    mov    esi,DWORD PTR [esi+0x8]
-    lea    edi,[ebx+eax*1]
-    mov    eax,ecx
-    shr    ecx,0x2
-    rep    movs DWORD PTR es:[edi],DWORD PTR ds:[esi]
-    mov    ecx,eax
-    mov    eax,DWORD PTR [esp+0x14]
-    and    ecx,0x3
-    rep    movs BYTE PTR es:[edi],BYTE PTR ds:[esi]
-    mov    ecx,DWORD PTR [edx+0x8]
-    mov    esi,DWORD PTR [esp+0x20]
-    mov    edx,DWORD PTR [edx]
-    mov    edi,DWORD PTR [ecx+0xc]
-    mov    ecx,DWORD PTR [eax+0x4]
-    add    ebx,edi
-    inc    esi
-    cmp    edx,ecx
-    mov    DWORD PTR [esp+0x20],esi
-    jne    Branch24
-  Branch26:
-    mov    ecx,DWORD PTR [esp+0x24]
-    mov    eax,DWORD PTR [esp+0x18]
-    pop    edi
-    pop    esi
-    mov    DWORD PTR [ecx],ebp
-    pop    ebp
-    pop    ebx
-    add    esp,0xc
-    ret    0x8
-  Branch27:
-    mov    edx,DWORD PTR [esp+0x24]
-    pop    edi
-    pop    esi
-    pop    ebp
-    mov    DWORD PTR [edx],0x0
-    xor    eax,eax
-    pop    ebx
-    add    esp,0xc
-    ret    0x8
+  CompactConcatScratch scratch;
+  uint head = *(uint *)((uint)owner + 4);
+  uint node = *(uint *)head;
+  uint total = 0;
+  uint selected = 0;
+  bool stopped = false;
+  scratch.savedOwner = (uint)owner;
+  scratch.selectedCount = 0;
+  if (node == head) {
+    *copiedByteCount = 0;
+    return nullptr;
   }
+  do {
+    if (stopped) break;
+    uint wrapper = *(uint *)(node + 8);
+    uint length = *(uint *)(wrapper + 0xc);
+    uint combined = length + total;
+    if ((int)combined < byteLimit) {
+      total = combined;
+      ++selected;
+    } else {
+      if (total == 0) {
+        total = length;
+        ++selected;
+      }
+      stopped = true;
+    }
+    node = *(uint *)node;
+  } while (node != head);
+  scratch.selectedCount = selected;
+  if (total == 0) {
+    *copiedByteCount = 0;
+    return nullptr;
+  }
+  using AllocateABI = void * (__stdcall *)(uint);
+  uint allocated = (uint)((AllocateABI)R6GameServiceAddresses::AllocateGameServiceBytes)(total);
+  uint sizingOwner = scratch.savedOwner;
+  scratch.allocation = allocated;
+  uint offset = 0;
+  head = *(uint *)(sizingOwner + 4);
+  byteLimit = 0;
+  node = *(uint *)head;
+  uint selectedForComparison = selected;
+  while (node != head) {
+    if ((short)(ushort)byteLimit >= (short)(ushort)selectedForComparison) break;
+    uint wrapper = *(uint *)(node + 8);
+    uint allocation = scratch.allocation;
+    uint length = *(uint *)(wrapper + 0xc);
+    uint first = *(uint *)(wrapper + 8);
+    uint destination = offset + allocation;
+    uint currentOwner = CopyCompactPayloadForward(destination,first,length,&scratch.savedOwner);
+    wrapper = *(uint *)(node + 8);
+    uint counter = (uint)byteLimit;
+    uint next = *(uint *)node;
+    uint currentLength = *(uint *)(wrapper + 0xc);
+    uint currentHead = *(uint *)(currentOwner + 4);
+    offset += currentLength;
+    ++counter;
+    byteLimit = (int)counter;
+    node = next;
+    if (node == currentHead) break;
+    head = currentHead;
+    selectedForComparison = scratch.selectedCount;
+  }
+  int *output = copiedByteCount;
+  uint result = scratch.allocation;
+  *output = (int)total;
+  return (void *)result;
 }
 
 // Cache signed consumed count, accumulate wrapped current payload sizes and erase complete records through current slot14.
 // Original consumed argument becomes next-iterator output; decrement CURRENT WORD+c after erase, retain current head stop.
 // Overshoot keeps the same node until next signed cumulative gate; return current node upper24/AL1, RET4, no local EH.
-// R6GameService.dll @ 1005ce90 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall DiscardConsumedCompactPayloads(void *owner,int consumedByteCount)
+// R6GameService.dll @ 1005ce90 : inferred iterator view; current virtual slot, output dereference and WORD decrement.
+uint __thiscall DiscardConsumedCompactPayloads(void *owner,int consumedByteCount)
 {
-  __asm {
-    push    ebx
-    push    esi
-    mov    esi,ecx
-    push    edi
-    xor    edi,edi
-    mov    ecx,DWORD PTR [esi+0x4]
-    mov    eax,DWORD PTR [ecx]
-    cmp    eax,ecx
-    je    Branch30
-    mov    ebx,DWORD PTR [esp+0x10]
-  Branch28:
-    cmp    edi,ebx
-    jg    Branch30
-    mov    ecx,DWORD PTR [eax+0x8]
-    add    edi,DWORD PTR [ecx+0xc]
-    cmp    edi,ebx
-    jg    Branch29
-    push    ecx
-    mov    ecx,esp
-    mov    DWORD PTR [ecx],eax
-    mov    edx,DWORD PTR [esi]
-    lea    eax,[esp+0x14]
-    mov    ecx,esi
-    push    eax
-    call    DWORD PTR [edx+0x14]
-    mov    eax,DWORD PTR [eax]
-    dec    WORD PTR [esi+0xc]
-  Branch29:
-    cmp    eax,DWORD PTR [esi+0x4]
-    jne    Branch28
-  Branch30:
-    pop    edi
-    pop    esi
-    mov    al,0x1
-    pop    ebx
-    ret    0x4
+  uint base = (uint)owner;
+  uint total = 0;
+  uint head = *(uint *)(base + 4);
+  uint node = *(uint *)head;
+  if (node != head) {
+    int limit = consumedByteCount;
+    do {
+      if ((int)total > limit) break;
+      uint wrapper = *(uint *)(node + 8);
+      total += *(uint *)(wrapper + 0xc);
+      if ((int)total <= limit) {
+        uint iterator = node;
+        uint table = *(uint *)base;
+        using EraseABI = uint * (__thiscall *)(void *,uint *,void *);
+        EraseABI erase = *(EraseABI *)(table + 0x14);
+        uint *returned = erase(owner,(uint *)&consumedByteCount,(void *)iterator);
+        node = *returned;
+        ushort count = *(ushort *)(base + 0xc);
+        *(ushort *)(base + 0xc) = (ushort)(count - 1);
+      }
+      head = *(uint *)(base + 4);
+    } while (node != head);
   }
+  return (node & 0xffffff00) | 1;
 }
 
 // Native virtual-table prefix: clSendMsgQueueVTable

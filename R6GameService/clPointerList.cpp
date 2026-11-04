@@ -16,34 +16,18 @@ struct ClDataPointerListDestructionFrame {
   uint state;
 };
 
-// Constructs the clData-pointer list with an unchecked sentinel and optional +8 virtual-base table.
-// R6GameService.dll @ 10027170 : native accesses, callback ordering and raw register results retained.
-__declspec(naked) void * __thiscall ConstructClDataPointerList(void *list,uint initializeVirtualBaseWord)
+// Create the self-linked sentinel before publishing clData pointer-list identity; leave its payload untouched.
+// R6GameService.dll @ 10027170 : selected PE32 operations; helper/type names remain descriptive.
+void * __thiscall ConstructClDataPointerList(void *list,uint initializeVirtualBaseWord)
 {
-  __asm {
-    push   ecx
-    push   esi
-    mov    esi,ecx
-    mov    ecx,DWORD PTR [esp+0xc]
-    xor    eax,eax
-    cmp    ecx,eax
-    // Return ECX is zero; do not install the primary vtable before allocation succeeds.
-    mov    DWORD PTR [esp+0x4],eax
-    je Branch1
-    mov    DWORD PTR [esi+0x8],0x10076aa8
-  Branch1:
-    push   0xc
-    mov    DWORD PTR [esi+0x4],eax
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    DWORD PTR [eax],eax
-    mov    DWORD PTR [eax+0x4],eax
-    mov    DWORD PTR [esi+0x4],eax
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clDataListPTR_FUN2
-    mov    eax,esi
-    pop    esi
-    pop    ecx
-    ret    0x4
-  }
+  if (initializeVirtualBaseWord != 0) *(uint *)((byte *)list + 8) = 0x10076aa8;
+  *(uint *)((byte *)list + 4) = 0;
+  uint sentinel = (uint)AllocateGameServiceBytes(0xc);
+  *(uint *)sentinel = sentinel;
+  *(uint *)(sentinel + 4) = sentinel;
+  *(uint *)((byte *)list + 4) = sentinel;
+  *(uint *)list = R6GameServiceAddresses::clDataListPTR_FUN2;
+  return list;
 }
 
 // Runs the list's range callback, frees remaining nodes and the sentinel, and returns final allocator EAX.
@@ -128,66 +112,55 @@ __declspec(naked) void * __thiscall DeleteClDataPointerList(void *list,uint dele
   }
 }
 
-// Reinstalls clPointerList<clMemoryElement*> table, erases payload range virtually, then drains nodes/sentinel.
-// Current head reloads and one-state exceptional sentinel cleanup retain native retry/leak behavior.
-// R6GameService.dll @ 1002ee90 : native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall DestroyCircularList(void *list)
-{
-  __asm {
-    push   0xffffffff
-    push   R6GameServiceAddresses::DestroyCircularListSelectExceptionInfo
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x8
-    push   ebx
-    push   esi
-    push   edi
-    mov    edi,ecx
-    mov    DWORD PTR [esp+0xc],edi
-    mov    DWORD PTR [edi],R6GameServiceAddresses::clPointerList_PAVclMemoryElementVTable
-    push   ecx
-    mov    ecx,DWORD PTR [edi+0x4]
-    lea    esi,[edi+0x4]
-    mov    eax,esp
-    push   ecx
-    push   esp
-    mov    DWORD PTR [eax],ecx
-    mov    ebx,DWORD PTR [edi]
-    mov    ecx,esi
-    mov    DWORD PTR [esp+0x28],0x0
-    call   R6GameServiceAddresses::ReadListFirstNodeFromHeadSlot
-    lea    edx,[esp+0x18]
-    mov    ecx,edi
-    push   edx
-    call   DWORD PTR [ebx+0x10]
-    mov    eax,DWORD PTR [esi]
-    mov    edi,DWORD PTR [eax]
-    cmp    edi,eax
-    je     Branch4
-  Branch3:
-    mov    eax,edi
-    mov    edi,DWORD PTR [edi]
-    push   eax
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    cmp    edi,DWORD PTR [esi]
-    jne    Branch3
-  Branch4:
-    mov    eax,DWORD PTR [esi]
-    mov    DWORD PTR [eax],eax
-    mov    eax,DWORD PTR [esi]
-    mov    DWORD PTR [eax+0x4],eax
-    mov    eax,DWORD PTR [esi]
-    push   eax
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    ecx,DWORD PTR [esp+0x14]
-    pop    edi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    add    esp,0x14
-    ret
+namespace {
+// Inferred one-state guard for typed pointer-list storage, independent of payload ownership.
+struct TypedPointerListStorageCleanup {
+  void *savedList;
+  bool armed;
+  // Drain the current nodes and sentinel without retrying payload release, preserving null-adjusted contexts.
+  ~TypedPointerListStorageCleanup() noexcept(false) {
+    if (armed) {
+      void *headSlot = savedList == nullptr ? nullptr : (byte *)savedList + 4;
+      using ReleaseABI = uint (__thiscall *)(void *);
+      ((ReleaseABI)R6GameServiceAddresses::ReleaseNodesAndSentinel)(headSlot);
+    }
   }
+};
+}
+
+// Virtually release the payload range, then drain remaining nodes and the current sentinel without repairing the owner.
+// R6GameService.dll @ 1002ee90 : storage cleanup stays armed through final free; native EAX retains allocator residue.
+uint __fastcall DestroyCircularList(void *list)
+{
+  using FirstABI = uint * (__thiscall *)(void *,uint *);
+  using RangeABI = uint * (__thiscall *)(void *,uint *,uint,uint);
+  TypedPointerListStorageCleanup cleanup{list, false};
+  *(uint *)list = R6GameServiceAddresses::clPointerList_PAVclMemoryElementVTable;
+  uint end = *(uint *)((byte *)list + 4);
+  uint *headSlot = (uint *)((byte *)list + 4);
+  uint begin = end;
+  byte *table = *(byte **)list;
+  cleanup.armed = true;
+  ((FirstABI)R6GameServiceAddresses::ReadListFirstNodeFromHeadSlot)(headSlot,&begin);
+  uint resultWord;
+  (*(RangeABI *)(table + 0x10))(list,&resultWord,begin,end);
+  uint head = *headSlot;
+  uint node = *(uint *)head;
+  if (node != head) {
+    do {
+      uint detached = node;
+      node = *(uint *)node;
+      TailFreeThroughGlobalAllocator((void *)detached);
+    } while (node != *headSlot);
+  }
+  head = *headSlot;
+  *(uint *)head = head;
+  head = *headSlot;
+  *(uint *)(head + 4) = head;
+  head = *headSlot;
+  uint result = TailFreeThroughGlobalAllocator((void *)head);
+  cleanup.armed = false;
+  return result;
 }
 
 // Runs the shared typed-list destructor, reloads low deletion flag and optionally frees cached list receiver.
@@ -209,90 +182,49 @@ __declspec(naked) void * __thiscall DeleteCircularList(void *list,uint flags)
   }
 }
 
-// Shared clMemoryElement*/clParentGroup* body releases payloads, unlinks nodes and publishes cached end.
-// Payload traversal reloads next after free; node phase starts from late first and reuses last argument as scratch.
-// R6GameService.dll @ 10031f00 : native control/access order and raw ABI retained.
-__declspec(naked) uint * __thiscall EraseOwningPointerListRange(
-    void *list,uint *out,uint first,uint last)
+// Free payloads before unlinking nodes; restart from the current first argument and use last as node-pass scratch.
+// R6GameService.dll @ 10031f00 : cached end bounds both passes; only payload traversal stops at the current sentinel.
+uint * __thiscall EraseOwningPointerListRange(void *list,uint *out,uint first,uint last)
 {
-  __asm {
-    push   ebx
-    push   esi
-    mov    esi,DWORD PTR [esp+0x10]
-    push   edi
-    mov    edi,DWORD PTR [esp+0x18]
-    mov    ebx,ecx
-    cmp    esi,edi
-    je     Branch8
-  Branch6:
-    cmp    esi,DWORD PTR [ebx+0x4]
-    je     Branch8
-    mov    eax,DWORD PTR [esi+0x8]
-    test   eax,eax
-    je     Branch7
-    push   eax
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch7:
-    mov    esi,DWORD PTR [esi]
-    cmp    esi,edi
-    jne    Branch6
-  Branch8:
-    lea    eax,[esp+0x14]
-    lea    ecx,[esp+0x18]
-    push   eax
-    call   R6GameServiceAddresses::CopyFirstWord
-    mov    eax,DWORD PTR [esp+0x18]
-    cmp    eax,edi
-    je     Branch10
-  Branch9:
-    mov    ecx,DWORD PTR [eax]
-    push   eax
-    mov    DWORD PTR [esp+0x1c],ecx
-    mov    edx,DWORD PTR [eax+0x4]
-    mov    ecx,DWORD PTR [eax]
-    mov    DWORD PTR [edx],ecx
-    mov    DWORD PTR [ecx+0x4],edx
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    eax,DWORD PTR [esp+0x18]
-    cmp    eax,edi
-    jne    Branch9
-  Branch10:
-    mov    eax,DWORD PTR [esp+0x10]
-    mov    DWORD PTR [eax],edi
-    pop    edi
-    pop    esi
-    pop    ebx
-    ret    0xc
+  uint cursor = first;
+  uint stop = last;
+  while (cursor != stop) {
+    if (cursor == *(uint *)((byte *)list + 4)) break;
+    uint payload = *(uint *)(cursor + 8);
+    if (payload != 0) TailFreeThroughGlobalAllocator((void *)payload);
+    cursor = *(uint *)cursor;
   }
+  using CopyABI = void * (__thiscall *)(void *,const void *);
+  ((CopyABI)R6GameServiceAddresses::CopyFirstWord)(&last,&first);
+  uint current = last;
+  while (current != stop) {
+    uint next = *(uint *)current;
+    last = next;
+    uint previous = *(uint *)(current + 4);
+    uint currentNext = *(uint *)current;
+    *(uint *)previous = currentNext;
+    *(uint *)(currentNext + 4) = previous;
+    TailFreeThroughGlobalAllocator((void *)current);
+    current = last;
+  }
+  uint *result = out;
+  *result = stop;
+  return result;
 }
 
-// Captures sentinel/end and table, reads first link and invokes virtual range erase with native stacked iterators.
-// R6GameService.dll @ 10062920 : native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall InvokePointerListClearRange(void *list)
+// Invoke the captured virtual range eraser with the current first node and cached sentinel, forwarding its raw result.
+// R6GameService.dll @ 10062920 : native iterator output reuses the saved entry-ECX word.
+uint __fastcall InvokePointerListClearRange(void *list)
 {
-  __asm {
-    push   ecx
-    push   esi
-    mov    esi,ecx
-    push   edi
-    push   ecx
-    mov    edx,DWORD PTR [esi+0x4]
-    lea    ecx,[esi+0x4]
-    mov    eax,esp
-    push   ecx
-    push   esp
-    mov    DWORD PTR [eax],edx
-    mov    edi,DWORD PTR [esi]
-    call   R6GameServiceAddresses::ReadListFirstNodeFromHeadSlot
-    lea    eax,[esp+0x10]
-    mov    ecx,esi
-    push   eax
-    call   DWORD PTR [edi+0x10]
-    pop    edi
-    pop    esi
-    pop    ecx
-    ret
-  }
+  using FirstABI = uint * (__thiscall *)(void *,uint *);
+  using RangeABI = uint * (__thiscall *)(void *,uint *,uint,uint);
+  uint resultWord = (uint)list;
+  uint end = *(uint *)((byte *)list + 4);
+  void *headSlot = (byte *)list + 4;
+  uint begin = (uint)headSlot;
+  byte *table = *(byte **)list;
+  ((FirstABI)R6GameServiceAddresses::ReadListFirstNodeFromHeadSlot)(headSlot,&begin);
+  return (uint)(*(RangeABI *)(table + 0x10))(list,&resultWord,begin,end);
 }
 
 // Forwards current saved owner+4 or NULL to node/sentinel release during typed-list unwind.
@@ -411,117 +343,68 @@ __declspec(naked) uint __fastcall RemoveLastBlockFromQueue(void *list)
   }
 }
 
-// Frees a nonsentinel payload, unlinks/frees the cached node and writes its cached successor through late out.
-// Shared slot14 skips only sentinel payload release: a sentinel argument itself is still unlinked and freed.
-// R6GameService.dll @ 10031ec0 : native control/access order and raw ABI retained.
-__declspec(naked) uint * __thiscall EraseOwningPointerListNode(void *list,uint *out,uint node)
+// Free a nonsentinel payload, unlink/free the cached node and publish its successor through the late output.
+// R6GameService.dll @ 10031ec0 : sentinel input still unlinks/frees the node; the list count is untouched.
+uint * __thiscall EraseOwningPointerListNode(void *list,uint *out,uint node)
 {
-  __asm {
-    mov    eax,DWORD PTR [ecx+0x4]
-    push   esi
-    push   edi
-    mov    edi,DWORD PTR [esp+0x10]
-    cmp    edi,eax
-    je     Branch17
-    mov    eax,DWORD PTR [edi+0x8]
-    test   eax,eax
-    je     Branch17
-    push   eax
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch17:
-    mov    eax,DWORD PTR [edi+0x4]
-    mov    esi,DWORD PTR [edi]
-    push   edi
-    mov    DWORD PTR [eax],esi
-    mov    DWORD PTR [esi+0x4],eax
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    eax,DWORD PTR [esp+0xc]
-    pop    edi
-    mov    DWORD PTR [eax],esi
-    pop    esi
-    ret    0x8
+  uint head = *(uint *)((byte *)list + 4);
+  uint current = node;
+  if (current != head) {
+    uint payload = *(uint *)(current + 8);
+    if (payload != 0) TailFreeThroughGlobalAllocator((void *)payload);
   }
+  uint previous = *(uint *)(current + 4);
+  uint next = *(uint *)current;
+  *(uint *)previous = next;
+  *(uint *)(next + 4) = previous;
+  TailFreeThroughGlobalAllocator((void *)current);
+  uint *result = out;
+  *result = next;
+  return result;
 }
 
-// Installs destruction table, virtually clears owning payloads/nodes, then drains residual nodes and frees current sentinel.
-// Current head reloads, cached next, dangling head and armed EH through final free remain native.
-// R6GameService.dll @ 10031d90 : native control/access order and raw ABI retained.
-__declspec(naked) void __fastcall DestroyParsedServiceRecordList(void *list)
+// Virtually release the payload range, then drain remaining nodes and the current sentinel without repairing the owner.
+// R6GameService.dll @ 10031d90 : storage cleanup stays armed through final free; native EAX retains allocator residue.
+void __fastcall DestroyParsedServiceRecordList(void *list)
 {
-  __asm {
-    push   0xffffffff
-    push   R6GameServiceAddresses::SelectParsedListDestructionLifetime
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x8
-    push   ebx
-    push   esi
-    push   edi
-    mov    edi,ecx
-    mov    DWORD PTR [esp+0xc],edi
-    mov    DWORD PTR [edi],R6GameServiceAddresses::clPointerList_PAVclParentGroupVTable
-    push   ecx
-    mov    ecx,DWORD PTR [edi+0x4]
-    lea    esi,[edi+0x4]
-    mov    eax,esp
-    push   ecx
-    push   esp
-    mov    DWORD PTR [eax],ecx
-    mov    ebx,DWORD PTR [edi]
-    mov    ecx,esi
-    mov    DWORD PTR [esp+0x28],0x0
-    call   R6GameServiceAddresses::ReadListFirstNodeFromHeadSlot
-    lea    edx,[esp+0x18]
-    mov    ecx,edi
-    push   edx
-    call   DWORD PTR [ebx+0x10]
-    mov    eax,DWORD PTR [esi]
-    mov    edi,DWORD PTR [eax]
-    cmp    edi,eax
-    je     Branch19
-  Branch18:
-    mov    eax,edi
-    mov    edi,DWORD PTR [edi]
-    push   eax
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    cmp    edi,DWORD PTR [esi]
-    jne    Branch18
-  Branch19:
-    mov    eax,DWORD PTR [esi]
-    mov    DWORD PTR [eax],eax
-    mov    eax,DWORD PTR [esi]
-    mov    DWORD PTR [eax+0x4],eax
-    mov    eax,DWORD PTR [esi]
-    push   eax
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    ecx,DWORD PTR [esp+0x14]
-    pop    edi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    add    esp,0x14
-    ret
+  using FirstABI = uint * (__thiscall *)(void *,uint *);
+  using RangeABI = uint * (__thiscall *)(void *,uint *,uint,uint);
+  TypedPointerListStorageCleanup cleanup{list, false};
+  *(uint *)list = R6GameServiceAddresses::clPointerList_PAVclParentGroupVTable;
+  uint end = *(uint *)((byte *)list + 4);
+  uint *headSlot = (uint *)((byte *)list + 4);
+  uint begin = end;
+  byte *table = *(byte **)list;
+  cleanup.armed = true;
+  ((FirstABI)R6GameServiceAddresses::ReadListFirstNodeFromHeadSlot)(headSlot,&begin);
+  uint resultWord;
+  (*(RangeABI *)(table + 0x10))(list,&resultWord,begin,end);
+  uint head = *headSlot;
+  uint node = *(uint *)head;
+  if (node != head) {
+    do {
+      uint detached = node;
+      node = *(uint *)node;
+      TailFreeThroughGlobalAllocator((void *)detached);
+    } while (node != *headSlot);
   }
+  head = *headSlot;
+  *(uint *)head = head;
+  head = *headSlot;
+  *(uint *)(head + 4) = head;
+  head = *headSlot;
+  TailFreeThroughGlobalAllocator((void *)head);
+  cleanup.armed = false;
 }
 
-// Runs list destruction, tests late low deletion bit, optionally frees owner and returns saved list.
-// R6GameService.dll @ 10031e20 : native control/access order and raw ABI retained.
-__declspec(naked) void * __thiscall DestroyParsedServiceRecordListObject(void *list,uint deleteFlags)
+// Destroy the list before sampling the current deletion flag, optionally free its allocation and return the receiver.
+// R6GameService.dll @ 10031e20 : only bit 0 controls storage release; full flags word remains the physical argument.
+void * __thiscall DestroyParsedServiceRecordListObject(void *list,uint deleteFlags)
 {
-  __asm {
-    push   esi
-    mov    esi,ecx
-    call   R6GameServiceAddresses::DestroyParsedServiceRecordList
-    test   BYTE PTR [esp+0x8],0x1
-    je     Branch20
-    push   esi
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch20:
-    mov    eax,esi
-    pop    esi
-    ret    0x4
-  }
+  using DestroyABI = void (__fastcall *)(void *);
+  ((DestroyABI)R6GameServiceAddresses::DestroyParsedServiceRecordList)(list);
+  if ((deleteFlags & 1) != 0) TailFreeThroughGlobalAllocator(list);
+  return list;
 }
 
 // Publishes saved list+4 or NULL in inherited scratch then tail-releases nodes/sentinel without payload retries.
@@ -981,61 +864,37 @@ __declspec(naked) uint __fastcall DestroyFirstPayloadListNode(void *owner)
 // Payload pass stops at CURRENT sentinel; node pass stops only at cached last and may free a sentinel.
 // Reload caller first before node pass, reuse caller last as cursor, and reload final output pointer. RETc/no own guard.
 // R6GameService.dll @ 10062a20 : complete native control/access order and raw ABI retained.
-__declspec(naked) void * __thiscall ErasePayloadListRange(void *owner,void *outputIterator,void *first,void *last)
+void *__thiscall ErasePayloadListRange(void *owner,void *outputIterator,void *first,void *last)
 {
-  __asm {
-    push    ebx
-    push    ebp
-    push    esi
-    mov    esi,DWORD PTR [esp+0x14]
-    push    edi
-    mov    edi,DWORD PTR [esp+0x1c]
-    cmp    esi,edi
-    mov    ebp,ecx
-    je    Branch39
-  Branch37:
-    cmp    esi,DWORD PTR [ebp+0x4]
-    je    Branch39
-    mov    ebx,DWORD PTR [esi+0x8]
-    test    ebx,ebx
-    je    Branch38
-    mov    ecx,ebx
-    call    R6GameServiceAddresses::DestroyPerNodeLinkedListContainer
-    push    ebx
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch38:
-    mov    esi,DWORD PTR [esi]
-    cmp    esi,edi
-    jne    Branch37
-  Branch39:
-    lea    eax,[esp+0x18]
-    lea    ecx,[esp+0x1c]
-    push    eax
-    call    R6GameServiceAddresses::CopyFirstWord
-    mov    eax,DWORD PTR [esp+0x1c]
-    cmp    eax,edi
-    je    Branch41
-  Branch40:
-    mov    ecx,DWORD PTR [eax]
-    push    eax
-    mov    DWORD PTR [esp+0x20],ecx
-    mov    edx,DWORD PTR [eax+0x4]
-    mov    ecx,DWORD PTR [eax]
-    mov    DWORD PTR [edx],ecx
-    mov    DWORD PTR [ecx+0x4],edx
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    eax,DWORD PTR [esp+0x1c]
-    cmp    eax,edi
-    jne    Branch40
-  Branch41:
-    mov    eax,DWORD PTR [esp+0x14]
-    mov    DWORD PTR [eax],edi
-    pop    edi
-    pop    esi
-    pop    ebp
-    pop    ebx
-    ret    0xc
+  uint current = (uint)first;
+  uint terminal = (uint)last;
+  uint base = (uint)owner;
+  while (current != terminal) {
+    if (current == *(uint *)(base + 4)) break;
+    void *payload = *(void **)(current + 8);
+    if (payload != 0) {
+      using DestroyABI = uint (__fastcall *)(void *);
+      ((DestroyABI)R6GameServiceAddresses::DestroyPerNodeLinkedListContainer)(payload);
+      TailFreeThroughGlobalAllocator(payload);
+    }
+    current = *(uint *)current;
   }
+  using CopyABI = uint *(__thiscall *)(uint *,const uint *);
+  ((CopyABI)R6GameServiceAddresses::CopyFirstWord)((uint *)&last,(const uint *)&first);
+  current = (uint)last;
+  while (current != terminal) {
+    uint next = *(uint *)current;
+    last = (void *)next;
+    uint previous = *(uint *)(current + 4);
+    uint reloadedNext = *(uint *)current;
+    *(uint *)previous = reloadedNext;
+    *(uint *)(reloadedNext + 4) = previous;
+    TailFreeThroughGlobalAllocator((void *)current);
+    current = (uint)last;
+  }
+  void *result = outputIterator;
+  *(uint *)result = terminal;
+  return result;
 }
 
 // Read CURRENT saved owner twice at inherited EBP-14; preserve null or add4 into EBP-24, then release list/head.

@@ -6,35 +6,22 @@
 // clSRPSegment scalar deleting destructor: destroy owned bytes, then test CURRENT original flag lowBYTE bit0.
 // Optional cached receiver free follows member destruction; return original receiver/RET4 without clearing fields.
 // R6GameService.dll @ 1005e400 : complete native control/access order and raw ABI retained.
-__declspec(naked) void * __thiscall DeleteClSRPSegment(void *segment,uint deleteWord)
+void *__thiscall DeleteClSRPSegment(void *segment,uint deleteWord)
 {
-  __asm {
-    push    esi
-    mov    esi,ecx
-    call    R6GameServiceAddresses::DestroyClSRPSegment
-    test    BYTE PTR [esp+0x8],0x1
-    je    Branch1
-    push    esi
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch1:
-    mov    eax,esi
-    pop    esi
-    ret    0x4
-  }
+  using DestroyABI = uint (__fastcall *)(void *);
+  ((DestroyABI)R6GameServiceAddresses::DestroyClSRPSegment)(segment);
+  if ((*(byte *)&deleteWord & 1) != 0) TailFreeThroughGlobalAllocator(segment);
+  return segment;
 }
 
 // clSRPSegment destructor caches buffer10, installs clSegment vptr782d8, then frees cached buffer even if NULL.
 // Keep stale buffer/mirror fields and raw allocator EAX; no local EH or derived-table installation.
 // R6GameService.dll @ 1005e420 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall DestroyClSRPSegment(void *segment)
+uint __fastcall DestroyClSRPSegment(void *segment)
 {
-  __asm {
-    mov    eax,DWORD PTR [ecx+0x10]
-    mov    DWORD PTR [ecx],R6GameServiceAddresses::clSegmentVTable
-    push    eax
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    ret
-  }
+  void *buffer = *(void **)((uint)segment + 0x10);
+  *(uint *)segment = R6GameServiceAddresses::clSegmentVTable;
+  return TailFreeThroughGlobalAllocator(buffer);
 }
 
 // Native virtual-table prefix: clSRPSegmentVTable

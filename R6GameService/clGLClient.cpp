@@ -108,32 +108,23 @@ __declspec(naked) void * __thiscall DeleteGLClient(void *owner,uint flags)
   }
 }
 
-// Restores callback tables, clears the lifetime flag and destroys/frees the child without clearing its slot.
-// R6GameService.dll @ 1003f010 : ECX receiver; native stack words and raw registers retained.
-__declspec(naked) uint __fastcall DestroyGLClient(void *owner)
+// Restore five callback tables, clear a nonzero lifetime flag, then destroy/free the captured child without clearing14.
+// Ordinary callers discard native lifetime/allocator EAX residue through their pointer-returning deleting wrappers.
+// R6GameService.dll @ 1003f010 : inferred void cleanup; ECX receiver, RET0, no local guard or child retry.
+void __fastcall DestroyGLClient(void *owner)
 {
-  __asm {
-    mov    DWORD PTR [ecx],R6GameServiceAddresses::clGLClientVTable
-    mov    DWORD PTR [ecx+0x4],R6GameServiceAddresses::clGLClientVTableAdjusted4
-    mov    DWORD PTR [ecx+0x8],R6GameServiceAddresses::clGLClientVTableAdjusted8
-    mov    DWORD PTR [ecx+0xc],R6GameServiceAddresses::clGLClientVTableAdjusted12
-    mov    DWORD PTR [ecx+0x10],R6GameServiceAddresses::clGLClientVTableAdjusted16
-    mov    al,BYTE PTR [GGLClientLifetimeFlag]
-    test   al,al
-    je Branch5
-    mov    BYTE PTR [GGLClientLifetimeFlag],0x0
-  Branch5:
-    push   esi
-    mov    esi,DWORD PTR [ecx+0x14]
-    test   esi,esi
-    je Branch6
-    mov    ecx,esi
-    call   R6GameServiceAddresses::DestroyServiceState
-    push   esi
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch6:
-    pop    esi
-    ret
+  uint base = (uint)owner;
+  *(uint *)base = R6GameServiceAddresses::clGLClientVTable;
+  *(uint *)(base + 4) = R6GameServiceAddresses::clGLClientVTableAdjusted4;
+  *(uint *)(base + 8) = R6GameServiceAddresses::clGLClientVTableAdjusted8;
+  *(uint *)(base + 0xc) = R6GameServiceAddresses::clGLClientVTableAdjusted12;
+  *(uint *)(base + 0x10) = R6GameServiceAddresses::clGLClientVTableAdjusted16;
+  byte lifetime = GGLClientLifetimeFlag;
+  if (lifetime != 0) GGLClientLifetimeFlag = 0;
+  void *child = *(void **)(base + 0x14);
+  if (child != nullptr) {
+    DestroyServiceState(child);
+    TailFreeThroughGlobalAllocator(child);
   }
 }
 
@@ -212,14 +203,14 @@ __declspec(naked) uint __fastcall SendSelector5cViaNestedOffsets(void *this)
   }
 }
 
-// Tail-forwards the service receiver at +0x14 and preserves the target raw return and native argument words.
-// R6GameService.dll @ 1003f100 : ECX receiver; native stack words and raw registers retained.
-__declspec(naked) uint __thiscall SendBytePairSelector4eViaOffset14(void *this,uint firstByte, uint secondByte)
+// Tail-forward the service receiver+14 with both original whole-word arguments shared with the target.
+// The request-publication caller discards the sender result before returning AL1; byte is an inferred AL view.
+// R6GameService.dll @ 1003f100 : ECX receiver, RET8, no argument copy or local guard in the native tail.
+byte __thiscall SendBytePairSelector4eViaOffset14(void *owner,uint firstByte,uint secondByte)
 {
-  __asm {
-    mov    ecx,DWORD PTR [ecx+0x14]
-    jmp    R6GameServiceAddresses::SendWordPairSelector4e
-  }
+  void *service = *(void **)((uint)owner + 0x14);
+  using SendABI = byte (__thiscall *)(void *,uint,uint);
+  return ((SendABI)R6GameServiceAddresses::SendWordPairSelector4e)(service,firstByte,secondByte);
 }
 
 // Tail-forwards the service receiver at +0x14 and preserves the target raw return and native argument words.
@@ -233,29 +224,29 @@ __declspec(naked) uint __thiscall ProcessPendingCallbackEventsThroughSubobject(
   }
 }
 
-// Tail-forwards the service receiver at +0x14 and preserves the target raw return and native argument words.
-// R6GameService.dll @ 1003f120 : ECX receiver; native stack words and raw registers retained.
-__declspec(naked) uint __thiscall PrepareAndSendTransportRequestThroughSubobject(
-     void *this,char *requestText,undefined4 byteFieldValue,uint wordValue)
+// Capture/rewrite word3 then word2 around the service+14 load, then tail-forward the three shared argument words.
+// Request text remains a late target formal; the enable caller consumes only AL and keeps no upper EAX result.
+// R6GameService.dll @ 1003f120 : inferred AL thiscall RET12 view, with native argument read/store order retained.
+byte __thiscall PrepareAndSendTransportRequestThroughSubobject(
+    void *owner,char *requestText,uint byteFieldValue,uint wordValue)
 {
-  __asm {
-    mov    eax,DWORD PTR [esp+0xc]
-    mov    edx,DWORD PTR [esp+0x8]
-    mov    ecx,DWORD PTR [ecx+0x14]
-    mov    DWORD PTR [esp+0xc],eax
-    mov    DWORD PTR [esp+0x8],edx
-    jmp    R6GameServiceAddresses::PrepareAndSendTransportRequest
-  }
+  uint capturedWord = wordValue;
+  uint capturedByteField = byteFieldValue;
+  void *service = *(void **)((uint)owner + 0x14);
+  wordValue = capturedWord;
+  byteFieldValue = capturedByteField;
+  using PrepareABI = byte (__thiscall *)(void *,char *,uint,uint);
+  return ((PrepareABI)R6GameServiceAddresses::PrepareAndSendTransportRequest)(
+      service,requestText,byteFieldValue,wordValue);
 }
 
-// Tail-forwards the service receiver at +0x14 and preserves the target raw return and native argument words.
-// R6GameService.dll @ 1003f140 : ECX receiver; native stack words and raw registers retained.
-__declspec(naked) uint __fastcall ProcessTransportRecordsViaNestedOffsets(void *this)
+// Tail-forward current service14 and incoming EAX through the dispatcher158/owner10 processing chain.
+// R6GameService.dll @ 1003f140 : ECX/EAX register-input view; native RET0, no stack arguments.
+uint ProcessTransportRecordsViaNestedOffsets(
+    [[r6abi::register_input("ecx")]] void *owner,[[r6abi::register_input("eax")]] uint eaxAtEntry)
 {
-  __asm {
-    mov    ecx,DWORD PTR [ecx+0x14]
-    jmp    R6GameServiceAddresses::ProcessTransportRecordsViaOffset158
-  }
+  void *service = *(void **)((uint)owner + 0x14);
+  return ProcessTransportRecordsViaOffset158(service,eaxAtEntry);
 }
 
 // Tail-forwards the service receiver at +0x14 and preserves the target raw return and native argument words.
@@ -283,26 +274,23 @@ __declspec(naked) uint __thiscall ForwardTwoArgumentBooleanViaNestedOffsets(
   }
 }
 
-// Tail-forwards the service receiver at +0x14 and preserves the target raw return and native argument words.
+// Forward full scalar words through owner+0x14 and return the raw dispatcher result; parameter names are inferred.
 // R6GameService.dll @ 1003f170 : ECX receiver; native stack words and raw registers retained.
-__declspec(naked) uint __thiscall ForwardSelector9ThroughOptionalChannel(
-     void *this,undefined4 param_1,undefined ***param_2,undefined4 param_3)
+uint __thiscall ForwardSelector9ThroughOptionalChannel(void *owner,uint value,uint key,uint extraValue)
 {
-  __asm {
-    mov    ecx,DWORD PTR [ecx+0x14]
-    jmp    R6GameServiceAddresses::DispatchSelector9ThroughOptionalChannel
-  }
+  void *dispatcher = *(void **)((uint)owner + 0x14);
+  using DispatchABI = uint (__thiscall *)(void *,uint,uint,uint);
+  return ((DispatchABI)R6GameServiceAddresses::DispatchSelector9ThroughOptionalChannel)(
+      dispatcher,value,key,extraValue);
 }
 
-// Tail-forwards the service receiver at +0x14 and preserves the target raw return and native argument words.
+// Forward full scalar words through owner+0x14 and return the raw dispatcher result; parameter names are inferred.
 // R6GameService.dll @ 1003f180 : ECX receiver; native stack words and raw registers retained.
-__declspec(naked) uint __thiscall ForwardSelector2eThroughOptionalChannel(
-    void *this,undefined4 param_1,undefined ***param_2)
+uint __thiscall ForwardSelector2eThroughOptionalChannel(void *owner,uint value,uint key)
 {
-  __asm {
-    mov    ecx,DWORD PTR [ecx+0x14]
-    jmp    R6GameServiceAddresses::DispatchSelector2eThroughOptionalChannel
-  }
+  void *dispatcher = *(void **)((uint)owner + 0x14);
+  using DispatchABI = uint (__thiscall *)(void *,uint,uint);
+  return ((DispatchABI)R6GameServiceAddresses::DispatchSelector2eThroughOptionalChannel)(dispatcher,value,key);
 }
 
 // Tail-forwards the service receiver at +0x14 and preserves the target raw return and native argument words.
@@ -427,14 +415,13 @@ __declspec(naked) uint __thiscall OpenPrimaryConnectionThroughSubobject(
   }
 }
 
-// Tail-forward service receiver+14 to conditional primary disconnect, preserving full raw result.
-// R6GameService.dll @ 1003f090 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall DisconnectPrimaryConnectionViaOffset14(void *owner)
+// Tail-forward the current service+14 receiver with incoming EAX unchanged, retaining the complete target word.
+// R6GameService.dll @ 1003f090 : raw register view; ECX owner/EAX input, native RET0, no stack arguments.
+uint DisconnectPrimaryConnectionViaOffset14(
+    [[r6abi::register_input("ecx")]] void *owner,[[r6abi::register_input("eax")]] uint eaxAtEntry)
 {
-  __asm {
-    mov    ecx,DWORD PTR [ecx+0x14]
-    jmp    R6GameServiceAddresses::DisconnectPrimaryConnectionIfActive
-  }
+  void *service = *(void **)((uint)owner + 0x14);
+  return DisconnectPrimaryConnectionIfActive(service,eaxAtEntry);
 }
 
 // Native virtual-table prefix: clGLClientVTableAdjusted16

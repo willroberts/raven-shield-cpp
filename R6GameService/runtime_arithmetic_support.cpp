@@ -1,4 +1,5 @@
 #include "native_addresses.h"
+#include "native_import_bindings.h"
 
 // Divides signed64 operands toward zero, retaining normalization, correction, stack mutations and native DIV faults.
 // R6GameService.dll @ 10033cd0 : complete native access/register/control flow and raw ABI retained.
@@ -147,11 +148,8 @@ __declspec(naked) ulonglong __fastcall __aullshr(byte shiftCount,uint highWord)
   }
 }
 
-// Forwards native register, stack and x87 state unchanged through the imported MSVCR71 _ftol slot.
-// R6GameService.dll @ 100622a2 : six-byte import tail, external conversion implementation remains delegated.
-__declspec(naked) void __cdecl ftol(void)
-{
-  __asm {
-    jmp    DWORD PTR ds:R6GameServiceAddresses::MSVCR71__ftolSlot
-  }
+namespace R6GameServiceImports {
+// Bind the current conversion entry; its input remains in ST(0), with no added stack operand or wrapper frame.
+// R6GameService.dll @ 100622a2 : six-byte compiler import tail; live x87 ABI entry reference.
+Ftol &ftol{*reinterpret_cast<Ftol *>(R6GameServiceAddresses::MSVCR71__ftolSlot)};
 }

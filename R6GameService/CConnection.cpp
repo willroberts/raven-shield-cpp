@@ -2,25 +2,19 @@
 
 // CConnection payload identity follows clPointerList<CConnection*> RTTI77ed0 and its typed payload lifecycle.
 
-// Delete the initially loaded provider at+4 when nonnull, then unconditionally clear the CURRENT receiver slot.
-// Preserve raw incoming/deleting-call EAX; failure skips the clear and there is no own guard.
-// R6GameService.dll @ 1004c430 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall CConnectionDestroyProvider(void *connection)
+// Delete the initially loaded provider, then unconditionally clear the current receiver's slot after normal return.
+// Native empty-path/child EAX residue is dead at every selected-image caller, which immediately frees the receiver.
+// R6GameService.dll @ 1004c430 : inferred void cleanup ABI; ECX receiver, RET0, no local guard.
+void __fastcall CConnectionDestroyProvider(void *connection)
 {
-  __asm {
-    push   esi
-    mov    esi,ecx
-    mov    ecx,DWORD PTR [esi+0x4]
-    test   ecx,ecx
-    je     Branch1
-    mov    eax,DWORD PTR [ecx]
-    push   0x1
-    call   DWORD PTR [eax]
-  Branch1:
-    mov    DWORD PTR [esi+0x4],0x0
-    pop    esi
-    ret
+  uint owner = (uint)connection;
+  void *provider = *(void **)(owner + 4);
+  if (provider != nullptr) {
+    uint table = *(uint *)provider;
+    using DeleteABI = void (__thiscall *)(void *,uint);
+    (*(DeleteABI *)table)(provider,1);
   }
+  *(uint *)(owner + 4) = 0;
 }
 
 // Initialize optional offset table, clear provider, copy global text including NUL, then clear port/key/context words.
@@ -155,26 +149,22 @@ __declspec(naked) uint __thiscall CConnectionReplaceAndStartProvider(void *conne
   }
 }
 
-// Delete initially loaded provider when present, clear its slot only after return, then set AL1 on raw EAX.
-// Null provider preserves incoming upper EAX; no own guard or replacement-provider deletion.
-// R6GameService.dll @ 1004c520 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall CConnectionCloseProvider(void *connection)
+// Delete the captured provider if present, clear its slot only after return, then replace only AL with1.
+// Keep incoming upper EAX on the empty path; a throwing deletion skips both the slot clear and success byte.
+// R6GameService.dll @ 1004c520 : raw register view; ECX receiver/EAX input, native RET0, no added stack words.
+uint CConnectionCloseProvider(
+    [[r6abi::register_input("ecx")]] void *connection,[[r6abi::register_input("eax")]] uint eaxAtEntry)
 {
-  __asm {
-    push   esi
-    mov    esi,ecx
-    mov    ecx,DWORD PTR [esi+0x4]
-    test   ecx,ecx
-    je     Branch10
-    mov    eax,DWORD PTR [ecx]
-    push   0x1
-    call   DWORD PTR [eax]
-    mov    DWORD PTR [esi+0x4],0x0
-  Branch10:
-    mov    al,0x1
-    pop    esi
-    ret
+  uint owner = (uint)connection;
+  uint result = eaxAtEntry;
+  void *provider = *(void **)(owner + 4);
+  if (provider != nullptr) {
+    uint table = *(uint *)provider;
+    using DeleteABI = uint (__thiscall *)(void *,uint);
+    result = (*(DeleteABI *)table)(provider,1);
+    *(uint *)(owner + 4) = 0;
   }
+  return (result & 0xffffff00) | 1;
 }
 
 // Pop one provider message, allocate28-byte output and construct its copied payload before deleting popped message.

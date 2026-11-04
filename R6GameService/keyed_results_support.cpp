@@ -1,6 +1,20 @@
 #include "native_addresses.h"
 #include "native_records.h"
 
+// Inferred pair cleanup states retain separate current-header and current-string ownership.
+struct ServiceTreePairCleanup {
+  void *savedRecord;
+  void *savedTree;
+  int state;
+  // Release the header only while its member is active, then release the current key buffer.
+  ~ServiceTreePairCleanup() noexcept(false)
+  {
+    using ReleaseABI = uint (__fastcall *)(void *);
+    if (state >= 1) ((ReleaseABI)R6GameServiceAddresses::ReleaseFirstWordBuffer)(savedTree);
+    if (state >= 0) ((ReleaseABI)R6GameServiceAddresses::ReleaseFirstWordBuffer)(savedRecord);
+  }
+};
+
 // Borrowed/owning keyed-result pair helpers; concrete whole-pair class identities remain unresolved.
 
 // Construct borrowed raw-key plus clPlayerResults pair; original output argument becomes tree-slot scratch.
@@ -127,39 +141,25 @@ __declspec(naked) void * __cdecl ConstructIndexedRecordCopy(void *output,const c
 // Destroy owning-string/clPlayerResults pair: class table+c, tree slot14/count18, clear nodes, free header,
 // then free CURRENT string at0. State1 header->state0 string cleanup; slots stay dangling, raw free EAX/RET0.
 // R6GameService.dll @ 100415a0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall DestroyServiceTreeRecord(void *record)
+uint __fastcall DestroyServiceTreeRecord(void *record)
 {
-  __asm {
-    push   0xffffffff
-    push   R6GameServiceAddresses::SelectKeyedResultsEH
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x8
-    push   esi
-    mov    esi,ecx
-    push   edi
-    mov    DWORD PTR [esp+0x8],esi
-    lea    edi,[esi+0x14]
-    mov    DWORD PTR [esp+0x18],0x0
-    mov    DWORD PTR [esi+0xc],R6GameServiceAddresses::clPlayerResultsVTable
-    mov    DWORD PTR [esp+0xc],edi
-    mov    ecx,edi
-    mov    BYTE PTR [esp+0x18],0x1
-    call   R6GameServiceAddresses::ReleaseNestedServiceLinkedEntries
-    mov    ecx,edi
-    mov    BYTE PTR [esp+0x18],0x0
-    call   R6GameServiceAddresses::ReleaseFirstWordBuffer
-    mov    eax,DWORD PTR [esi]
-    push   eax
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    ecx,DWORD PTR [esp+0x10]
-    pop    edi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x14
-    ret
-  }
+  ServiceTreePairCleanup cleanup{record, 0, -1};
+  uint base = (uint)record;
+  void *tree = (void *)(base + 0x14);
+  cleanup.state = 0;
+  *(uint *)(base + 0xc) = R6GameServiceAddresses::clPlayerResultsVTable;
+  cleanup.savedTree = tree;
+  cleanup.state = 1;
+  using ClearABI = uint (__fastcall *)(int *);
+  ((ClearABI)R6GameServiceAddresses::ReleaseNestedServiceLinkedEntries)((int *)tree);
+  cleanup.state = 0;
+  using ReleaseABI = uint (__fastcall *)(void *);
+  ((ReleaseABI)R6GameServiceAddresses::ReleaseFirstWordBuffer)(tree);
+  void *key = *(void **)record;
+  using FreeABI = uint (__stdcall *)(void *);
+  uint result = ((FreeABI)R6GameServiceAddresses::TailFreeThroughGlobalAllocator)(key);
+  cleanup.state = -1;
+  return result;
 }
 
 // Apply exact inherited ENTRY ESP local-address/current-slot cleanup for associated keyed-result/pair state.
@@ -252,22 +252,17 @@ const R6GameServiceNative::FuncInfo DestroyServiceTreeRecordExceptionInfo = {
 // Destroy owning string/class pair, then test CURRENT deleting flag low byte before optional cdecl allocator free.
 // Whole pair identity unresolved; original receiver EAX/RET4, no own exception registration.
 // R6GameService.dll @ 10041580 : complete native control/access order and raw ABI retained.
-__declspec(naked) void *__thiscall DestroyServiceTreeRecordDeletingDestructor(void *pair,uint deletingFlags)
+void *__thiscall DestroyServiceTreeRecordDeletingDestructor(void *pair,uint deletingFlags)
 {
-  __asm {
-    push   esi
-    mov    esi,ecx
-    call   R6GameServiceAddresses::DestroyServiceTreeRecord
-    test   BYTE PTR [esp+0x8],0x1
-    je     Branch7
-    push   esi
-    call   R6GameServiceAddresses::FreeThroughGlobalAllocator
-    add    esp,0x4
-  Branch7:
-    mov    eax,esi
-    pop    esi
-    ret    0x4
+  void *savedPair = pair;
+  using DestroyABI = uint (__fastcall *)(void *);
+  ((DestroyABI)R6GameServiceAddresses::DestroyServiceTreeRecord)(savedPair);
+  byte flags = *(byte *)&deletingFlags;
+  if ((flags & 1) != 0) {
+    using FreeABI = uint (__cdecl *)(void *);
+    ((FreeABI)R6GameServiceAddresses::FreeThroughGlobalAllocator)(savedPair);
   }
+  return savedPair;
 }
 
 // If list160 is absent, allocate32-byte container and unchecked80-byte tree head; publish late caller value and owner slot.
@@ -514,41 +509,29 @@ void __fastcall SetServiceTreeStorageVtable(undefined4 *storage)
   return;
 }
 
-// Release the record payload and conditionally notify its stored owner.
-// Release captured payload4 and its child, then read CURRENT ownershipBYTE14/owner10 for virtual-base-adjusted delete1.
-// Leave slots unchanged and preserve native return/register residue; no own EH or stronger ownership guarantee.
+// Release the captured payload and child, then check the current ownership flag and owner for adjusted deletion.
+// The virtual base displacement wraps at 32 bits; record fields remain unchanged.
 // R6GameService.dll @ 100414f0 : complete native control/access order and raw ABI retained.
-__declspec(naked) void __fastcall ReleaseServiceTreeRecord(void *record)
+void __fastcall ReleaseServiceTreeRecord(void *record)
 {
-  __asm {
-    push   esi
-    push   edi
-    mov    edi,ecx
-    mov    esi,DWORD PTR [edi+0x4]
-    test   esi,esi
-    je    Branch18
-    mov    ecx,esi
-    call   R6GameServiceAddresses::DeleteOwnedObjectAtOffset8
-    push   esi
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch18:
-    mov    al,BYTE PTR [edi+0x14]
-    test   al,al
-    jne    Branch19
-    mov    eax,DWORD PTR [edi+0x10]
-    test   eax,eax
-    je    Branch19
-    mov    ecx,DWORD PTR [eax+0x4]
-    push   0x1
-    mov    edx,DWORD PTR [ecx+0x8]
-    lea    ecx,[edx+eax*1+0x4]
-    mov    eax,DWORD PTR [edx+eax*1+0x4]
-    call   DWORD PTR [eax]
-  Branch19:
-    pop    edi
-    pop    esi
-    ret
+  uint base = (uint)record;
+  void *payload = *(void **)(base + 4);
+  if (payload != 0) {
+    using DeleteABI = void (__fastcall *)(void *);
+    ((DeleteABI)R6GameServiceAddresses::DeleteOwnedObjectAtOffset8)(payload);
+    using FreeABI = uint (__stdcall *)(void *);
+    ((FreeABI)R6GameServiceAddresses::TailFreeThroughGlobalAllocator)(payload);
   }
+  byte borrowed = *(byte *)(base + 0x14);
+  if (borrowed != 0) return;
+  uint owner = *(uint *)(base + 0x10);
+  if (owner == 0) return;
+  uint baseTable = *(uint *)(owner + 4);
+  uint displacement = *(uint *)(baseTable + 8);
+  uint adjusted = owner + displacement + 4;
+  uint vtable = *(uint *)adjusted;
+  using DeleteABI = void * (__thiscall *)(void *,uint);
+  ((DeleteABI)*(uint *)vtable)((void *)adjusted,1);
 }
 
 // Destroy/free captured cache14, clear only after return, then use CURRENT queue10/full selector and publish pointer.

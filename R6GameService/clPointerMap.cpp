@@ -1230,456 +1230,289 @@ __declspec(naked) uint __fastcall thunk_DestroyServiceTreeContainerVariant(void 
   }
 }
 
-// Install RTTI map table, visit/delete values through native range method, then clear CURRENT nodes/head.
-// Entry S: ownerS-14/treeS-10/stateS-4. State0 drains nodes without value retry; state1 releases only head.
-// Preserve captured table/owner, late count/header loads, partial effects and full raw final free EAX.
-// RTTI specialization: clPointerMap<unsigned int, CLadderResults *>.
-// R6GameService.dll @ 100426e0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall clPointerMap_DestroyServiceTreeContainer(void *owner)
-{
-  __asm {
-    push    0xffffffff
-    push    R6GameServiceAddresses::SelectLadderPointerMapDestroyEH
-    mov    eax,fs:0x0
-    push    eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x8
-    push    ebx
-    push    esi
-    push    edi
-    mov    edi,ecx
-    mov    DWORD PTR [esp+0xc],edi
-    mov    DWORD PTR [edi],R6GameServiceAddresses::clPointerMap_IPAVCLadderResultsVTable
-    push    ecx
-    mov    ecx,DWORD PTR [edi+0x4]
-    lea    esi,[edi+0x4]
-    mov    eax,esp
-    push    ecx
-    push    esp
-    mov    DWORD PTR [eax],ecx
-    mov    ebx,DWORD PTR [edi]
-    mov    ecx,esi
-    mov    DWORD PTR [esp+0x28],0x0
-    call    R6GameServiceAddresses::ReadOrderedTreeLeftmostLink
-    mov    ecx,edi
-    call    DWORD PTR [ebx+0xc]
-    mov    DWORD PTR [esp+0x10],esi
-    mov    eax,DWORD PTR [esi+0x4]
-    mov    DWORD PTR [esp+0x1c],0x1
-    test    eax,eax
-    je    Branch24
-    mov    eax,DWORD PTR [esi]
-    mov    edi,DWORD PTR [eax+0x4]
-    test    edi,edi
-    je    Branch23
-  Branch22:
-    mov    ecx,DWORD PTR [edi+0xc]
-    push    ecx
-    mov    ecx,esi
-    call    R6GameServiceAddresses::ordered_tree_support_ReleaseTreeNodes
-    mov    ebx,DWORD PTR [edi+0x8]
-    push    edi
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    test    ebx,ebx
-    mov    edi,ebx
-    jne    Branch22
-  Branch23:
-    mov    eax,DWORD PTR [esi]
-    mov    DWORD PTR [eax+0x8],eax
-    mov    edx,DWORD PTR [esi]
-    mov    DWORD PTR [edx+0x4],0x0
-    mov    eax,DWORD PTR [esi]
-    mov    DWORD PTR [eax+0xc],eax
-    mov    DWORD PTR [esi+0x4],0x0
-  Branch24:
-    mov    eax,DWORD PTR [esi]
-    push    eax
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    ecx,DWORD PTR [esp+0x14]
-    pop    edi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    add    esp,0x14
-    ret
+namespace {
+// Inferred scope guard for the two pointer-map destruction states; saved contexts are live unwind inputs.
+struct ServicePointerMapDestructionCleanup {
+  void *savedOwner;
+  void *savedTree;
+  uint storageCleanup;
+  int state;
+  // Drain storage without retrying values, or release only the current header once structural teardown has started.
+  ~ServicePointerMapDestructionCleanup() noexcept(false) {
+    using CleanupABI = uint (__fastcall *)(void *);
+    if (state == 0) {
+      state = -1;
+      savedTree = savedOwner == nullptr ? nullptr : (byte *)savedOwner + 4;
+      ((CleanupABI)storageCleanup)(savedTree);
+    } else if (state == 1) {
+      state = -1;
+      ((CleanupABI)R6GameServiceAddresses::ReleaseFirstWordBuffer)(savedTree);
+    }
   }
+};
 }
 
-// Install RTTI map table, visit/delete values through native range method, then clear CURRENT nodes/head.
-// Entry S: ownerS-14/treeS-10/stateS-4. State0 drains nodes without value retry; state1 releases only head.
-// Preserve captured table/owner, late count/header loads, partial effects and full raw final free EAX.
-// RTTI specialization: clPointerMap<unsigned int, clDataList *>.
-// R6GameService.dll @ 10042970 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall DestroyServiceTreeContainerVariant(void *owner)
+// Destroy values through the captured range slot, then release current structural nodes and header with staged cleanup.
+// R6GameService.dll @ 100426e0 : values are not retried after failure; member slots remain dangling.
+uint __fastcall clPointerMap_DestroyServiceTreeContainer(void *owner)
 {
-  __asm {
-    push    0xffffffff
-    push    R6GameServiceAddresses::SelectDataListPointerMapDestroyEH
-    mov    eax,fs:0x0
-    push    eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x8
-    push    ebx
-    push    esi
-    push    edi
-    mov    edi,ecx
-    mov    DWORD PTR [esp+0xc],edi
-    mov    DWORD PTR [edi],R6GameServiceAddresses::clPointerMap_IPAVclDataListVTable
-    push    ecx
-    mov    ecx,DWORD PTR [edi+0x4]
-    lea    esi,[edi+0x4]
-    mov    eax,esp
-    push    ecx
-    push    esp
-    mov    DWORD PTR [eax],ecx
-    mov    ebx,DWORD PTR [edi]
-    mov    ecx,esi
-    mov    DWORD PTR [esp+0x28],0x0
-    call    R6GameServiceAddresses::ReadOrderedTreeLeftmostLink
-    mov    ecx,edi
-    call    DWORD PTR [ebx+0xc]
-    mov    DWORD PTR [esp+0x10],esi
-    mov    eax,DWORD PTR [esi+0x4]
-    mov    DWORD PTR [esp+0x1c],0x1
-    test    eax,eax
-    je    Branch27
-    mov    eax,DWORD PTR [esi]
-    mov    edi,DWORD PTR [eax+0x4]
-    test    edi,edi
-    je    Branch26
-  Branch25:
-    mov    ecx,DWORD PTR [edi+0xc]
-    push    ecx
-    mov    ecx,esi
-    call    R6GameServiceAddresses::ordered_tree_support_ReleaseTreeNodes2
-    mov    ebx,DWORD PTR [edi+0x8]
-    push    edi
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    test    ebx,ebx
-    mov    edi,ebx
-    jne    Branch25
-  Branch26:
-    mov    eax,DWORD PTR [esi]
-    mov    DWORD PTR [eax+0x8],eax
-    mov    edx,DWORD PTR [esi]
-    mov    DWORD PTR [edx+0x4],0x0
-    mov    eax,DWORD PTR [esi]
-    mov    DWORD PTR [eax+0xc],eax
-    mov    DWORD PTR [esi+0x4],0x0
-  Branch27:
-    mov    eax,DWORD PTR [esi]
-    push    eax
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    ecx,DWORD PTR [esp+0x14]
-    pop    edi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    add    esp,0x14
-    ret
+  using LeftmostABI = uint * (__thiscall *)(void *,uint *);
+  using RangeABI = uint (__thiscall *)(void *,uint,uint);
+  ServicePointerMapDestructionCleanup cleanup{owner, nullptr, R6GameServiceAddresses::ClearOrderedTreeStorage, -1};
+  *(uint *)owner = R6GameServiceAddresses::clPointerMap_IPAVCLadderResultsVTable;
+  uint end = *(uint *)((byte *)owner + 4);
+  byte *tree = (byte *)owner + 4;
+  uint begin = end;
+  byte *table = *(byte **)owner;
+  cleanup.state = 0;
+  ((LeftmostABI)R6GameServiceAddresses::ReadOrderedTreeLeftmostLink)(tree,&begin);
+  (*(RangeABI *)(table + 0xc))(owner,begin,end);
+  cleanup.savedTree = tree;
+  uint count = *(uint *)(tree + 4);
+  cleanup.state = 1;
+  if (count != 0) {
+    uint head = *(uint *)tree;
+    uint node = *(uint *)(head + 4);
+    while (node != 0) {
+      uint right = *(uint *)(node + 0xc);
+      ordered_tree_support_ReleaseTreeNodes(tree,(int)right);
+      uint left = *(uint *)(node + 8);
+      TailFreeThroughGlobalAllocator((void *)node);
+      node = left;
+    }
+    head = *(uint *)tree;
+    *(uint *)(head + 8) = head;
+    uint rootHead = *(uint *)tree;
+    *(uint *)(rootHead + 4) = 0;
+    head = *(uint *)tree;
+    *(uint *)(head + 0xc) = head;
+    *(uint *)(tree + 4) = 0;
   }
+  uint head = *(uint *)tree;
+  uint result = TailFreeThroughGlobalAllocator((void *)head);
+  cleanup.state = -1;
+  return result;
 }
 
-// Delete each visited nonNULL node value, then clear that value slot and advance with native successor.
-// Erase original range via full-tree or native RB path; preserve current-header checks/count/raw effects. RET8.
-// RTTI specialization: clPointerMap<unsigned int, CLadderResults *>.
-// R6GameService.dll @ 100427a0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall EraseOrderedTreeRangeAndDetachValues(
-    void *owner,void *firstNode,void *pastLast)
+// Destroy values through the captured range slot, then release current structural nodes and header with staged cleanup.
+// R6GameService.dll @ 10042970 : values are not retried after failure; member slots remain dangling.
+uint __fastcall DestroyServiceTreeContainerVariant(void *owner)
 {
-  __asm {
-    sub    esp,0x8
-    push    ebx
-    mov    ebx,DWORD PTR [esp+0x14]
-    push    ebp
-    push    esi
-    mov    esi,DWORD PTR [esp+0x18]
-    xor    ebp,ebp
-    push    edi
-    cmp    esi,ebx
-    mov    edi,ecx
-    mov    DWORD PTR [esp+0x10],ebp
-    je    Branch30
-  Branch28:
-    cmp    esi,DWORD PTR [edi+0x4]
-    je    Branch30
-    mov    ecx,DWORD PTR [esi+0x14]
-    cmp    ecx,ebp
-    je    Branch29
-    mov    eax,DWORD PTR [ecx]
-    push    0x1
-    call    DWORD PTR [eax]
-  Branch29:
-    mov    eax,DWORD PTR [esp+0x10]
-    push    esi
-    inc    eax
-    mov    DWORD PTR [esi+0x14],ebp
-    mov    DWORD PTR [esp+0x14],eax
-    call    R6GameServiceAddresses::OrderedTreeSuccessor
-    mov    esi,eax
-    add    esp,0x4
-    cmp    esi,ebx
-    jne    Branch28
-  Branch30:
-    lea    ecx,[esp+0x1c]
-    push    ecx
-    lea    ecx,[esp+0x18]
-    call    R6GameServiceAddresses::CopyFirstWord
-    lea    edx,[esp+0x14]
-    lea    ecx,[esp+0x20]
-    push    edx
-    lea    esi,[edi+0x4]
-    call    R6GameServiceAddresses::CopyFirstWord
-    mov    ecx,DWORD PTR [esi]
-    mov    eax,DWORD PTR [esp+0x20]
-    cmp    eax,DWORD PTR [ecx+0x8]
-    jne    Branch33
-    cmp    ebx,ecx
-    jne    Branch33
-    cmp    DWORD PTR [esi+0x4],ebp
-    je    Branch40
-    mov    edi,DWORD PTR [ecx+0x4]
-    cmp    edi,ebp
-    je    Branch32
-  Branch31:
-    mov    eax,DWORD PTR [edi+0xc]
-    mov    ecx,esi
-    push    eax
-    call    R6GameServiceAddresses::ordered_tree_support_ReleaseTreeNodes
-    mov    ebx,DWORD PTR [edi+0x8]
-    push    0x1
-    push    edi
-    mov    ecx,esi
-    call    R6GameServiceAddresses::ReleaseMemoryIgnoringSize
-    cmp    ebx,ebp
-    mov    edi,ebx
-    jne    Branch31
-  Branch32:
-    mov    eax,DWORD PTR [esi]
-    pop    edi
-    mov    DWORD PTR [eax+0x8],eax
-    mov    ecx,DWORD PTR [esi]
-    mov    DWORD PTR [ecx+0x4],ebp
-    mov    eax,DWORD PTR [esi]
-    mov    DWORD PTR [eax+0xc],eax
-    mov    eax,DWORD PTR [esp+0xc]
-    mov    DWORD PTR [esi+0x4],ebp
-    pop    esi
-    pop    ebp
-    pop    ebx
-    add    esp,0x8
-    ret    0x8
-  Branch33:
-    cmp    eax,ebx
-    je    Branch40
-  Branch34:
-    mov    ecx,DWORD PTR [eax+0xc]
-    mov    edx,eax
-    cmp    ecx,ebp
-    je    Branch36
-    mov    eax,ecx
-    mov    ecx,DWORD PTR [eax+0x8]
-    cmp    ecx,ebp
-    je    Branch39
-  Branch35:
-    mov    eax,ecx
-    mov    ecx,DWORD PTR [eax+0x8]
-    cmp    ecx,ebp
-    jne    Branch35
-    jmp    Branch39
-  Branch36:
-    mov    ecx,DWORD PTR [eax+0x4]
-    cmp    eax,DWORD PTR [ecx+0xc]
-    jne    Branch38
-  Branch37:
-    mov    eax,ecx
-    mov    ecx,DWORD PTR [ecx+0x4]
-    cmp    eax,DWORD PTR [ecx+0xc]
-    je    Branch37
-  Branch38:
-    cmp    DWORD PTR [eax+0xc],ecx
-    je    Branch39
-    mov    eax,ecx
-  Branch39:
-    mov    DWORD PTR [esp+0x20],eax
-    mov    eax,DWORD PTR [esi]
-    lea    ecx,[eax+0xc]
-    push    ecx
-    lea    ecx,[eax+0x8]
-    add    eax,0x4
-    push    ecx
-    push    eax
-    push    edx
-    call    R6GameServiceAddresses::RemoveOrderedTreeNode
-    add    esp,0x10
-    push    eax
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    edx,DWORD PTR [esi+0x4]
-    mov    eax,DWORD PTR [esp+0x20]
-    dec    edx
-    cmp    eax,ebx
-    mov    DWORD PTR [esi+0x4],edx
-    jne    Branch34
-  Branch40:
-    mov    eax,DWORD PTR [esp+0x10]
-    pop    edi
-    pop    esi
-    pop    ebp
-    pop    ebx
-    add    esp,0x8
-    ret    0x8
+  using LeftmostABI = uint * (__thiscall *)(void *,uint *);
+  using RangeABI = uint (__thiscall *)(void *,uint,uint);
+  ServicePointerMapDestructionCleanup cleanup{
+      owner, nullptr, R6GameServiceAddresses::DestroyServiceSubtreeContainer, -1};
+  *(uint *)owner = R6GameServiceAddresses::clPointerMap_IPAVclDataListVTable;
+  uint end = *(uint *)((byte *)owner + 4);
+  byte *tree = (byte *)owner + 4;
+  uint begin = end;
+  byte *table = *(byte **)owner;
+  cleanup.state = 0;
+  ((LeftmostABI)R6GameServiceAddresses::ReadOrderedTreeLeftmostLink)(tree,&begin);
+  (*(RangeABI *)(table + 0xc))(owner,begin,end);
+  cleanup.savedTree = tree;
+  uint count = *(uint *)(tree + 4);
+  cleanup.state = 1;
+  if (count != 0) {
+    uint head = *(uint *)tree;
+    uint node = *(uint *)(head + 4);
+    while (node != 0) {
+      uint right = *(uint *)(node + 0xc);
+      ordered_tree_support_ReleaseTreeNodes2(tree,(int)right);
+      uint left = *(uint *)(node + 8);
+      TailFreeThroughGlobalAllocator((void *)node);
+      node = left;
+    }
+    head = *(uint *)tree;
+    *(uint *)(head + 8) = head;
+    uint rootHead = *(uint *)tree;
+    *(uint *)(rootHead + 4) = 0;
+    head = *(uint *)tree;
+    *(uint *)(head + 0xc) = head;
+    *(uint *)(tree + 4) = 0;
   }
+  uint head = *(uint *)tree;
+  uint result = TailFreeThroughGlobalAllocator((void *)head);
+  cleanup.state = -1;
+  return result;
 }
 
-// Delete each visited nonNULL node value, then clear that value slot and advance with native successor.
-// Erase original range via full-tree or native RB path; preserve current-header checks/count/raw effects. RET8.
-// RTTI specialization: clPointerMap<unsigned int, clDataList *>.
-// R6GameService.dll @ 10042a30 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall EraseAlternateOrderedTreeRangeAndDetachValues(
-    void *owner,void *firstNode,void *pastLast)
+// Delete visited values, clear their slots and erase the live original range through full-tree or red-black paths.
+// R6GameService.dll @ 100427a0 : pastLast becomes iterator scratch; returns the number visited in the value pass.
+uint __thiscall EraseOrderedTreeRangeAndDetachValues(void *owner,void *firstNode,void *pastLast)
 {
-  __asm {
-    sub    esp,0x8
-    push    ebx
-    mov    ebx,DWORD PTR [esp+0x14]
-    push    ebp
-    push    esi
-    mov    esi,DWORD PTR [esp+0x18]
-    xor    ebp,ebp
-    push    edi
-    cmp    esi,ebx
-    mov    edi,ecx
-    mov    DWORD PTR [esp+0x10],ebp
-    je    Branch43
-  Branch41:
-    cmp    esi,DWORD PTR [edi+0x4]
-    je    Branch43
-    mov    ecx,DWORD PTR [esi+0x14]
-    cmp    ecx,ebp
-    je    Branch42
-    mov    eax,DWORD PTR [ecx]
-    push    0x1
-    call    DWORD PTR [eax]
-  Branch42:
-    mov    eax,DWORD PTR [esp+0x10]
-    push    esi
-    inc    eax
-    mov    DWORD PTR [esi+0x14],ebp
-    mov    DWORD PTR [esp+0x14],eax
-    call    R6GameServiceAddresses::OrderedTreeSuccessor
-    mov    esi,eax
-    add    esp,0x4
-    cmp    esi,ebx
-    jne    Branch41
-  Branch43:
-    lea    ecx,[esp+0x1c]
-    push    ecx
-    lea    ecx,[esp+0x18]
-    call    R6GameServiceAddresses::CopyFirstWord
-    lea    edx,[esp+0x14]
-    lea    ecx,[esp+0x20]
-    push    edx
-    lea    esi,[edi+0x4]
-    call    R6GameServiceAddresses::CopyFirstWord
-    mov    ecx,DWORD PTR [esi]
-    mov    eax,DWORD PTR [esp+0x20]
-    cmp    eax,DWORD PTR [ecx+0x8]
-    jne    Branch46
-    cmp    ebx,ecx
-    jne    Branch46
-    cmp    DWORD PTR [esi+0x4],ebp
-    je    Branch53
-    mov    edi,DWORD PTR [ecx+0x4]
-    cmp    edi,ebp
-    je    Branch45
-  Branch44:
-    mov    eax,DWORD PTR [edi+0xc]
-    mov    ecx,esi
-    push    eax
-    call    R6GameServiceAddresses::ordered_tree_support_ReleaseTreeNodes2
-    mov    ebx,DWORD PTR [edi+0x8]
-    push    0x1
-    push    edi
-    mov    ecx,esi
-    call    R6GameServiceAddresses::ReleaseMemoryIgnoringSize
-    cmp    ebx,ebp
-    mov    edi,ebx
-    jne    Branch44
-  Branch45:
-    mov    eax,DWORD PTR [esi]
-    pop    edi
-    mov    DWORD PTR [eax+0x8],eax
-    mov    ecx,DWORD PTR [esi]
-    mov    DWORD PTR [ecx+0x4],ebp
-    mov    eax,DWORD PTR [esi]
-    mov    DWORD PTR [eax+0xc],eax
-    mov    eax,DWORD PTR [esp+0xc]
-    mov    DWORD PTR [esi+0x4],ebp
-    pop    esi
-    pop    ebp
-    pop    ebx
-    add    esp,0x8
-    ret    0x8
-  Branch46:
-    cmp    eax,ebx
-    je    Branch53
-  Branch47:
-    mov    ecx,DWORD PTR [eax+0xc]
-    mov    edx,eax
-    cmp    ecx,ebp
-    je    Branch49
-    mov    eax,ecx
-    mov    ecx,DWORD PTR [eax+0x8]
-    cmp    ecx,ebp
-    je    Branch52
-  Branch48:
-    mov    eax,ecx
-    mov    ecx,DWORD PTR [eax+0x8]
-    cmp    ecx,ebp
-    jne    Branch48
-    jmp    Branch52
-  Branch49:
-    mov    ecx,DWORD PTR [eax+0x4]
-    cmp    eax,DWORD PTR [ecx+0xc]
-    jne    Branch51
-  Branch50:
-    mov    eax,ecx
-    mov    ecx,DWORD PTR [ecx+0x4]
-    cmp    eax,DWORD PTR [ecx+0xc]
-    je    Branch50
-  Branch51:
-    cmp    DWORD PTR [eax+0xc],ecx
-    je    Branch52
-    mov    eax,ecx
-  Branch52:
-    mov    DWORD PTR [esp+0x20],eax
-    mov    eax,DWORD PTR [esi]
-    lea    ecx,[eax+0xc]
-    push    ecx
-    lea    ecx,[eax+0x8]
-    add    eax,0x4
-    push    ecx
-    push    eax
-    push    edx
-    call    R6GameServiceAddresses::RemoveOrderedTreeNode
-    add    esp,0x10
-    push    eax
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    edx,DWORD PTR [esi+0x4]
-    mov    eax,DWORD PTR [esp+0x20]
-    dec    edx
-    cmp    eax,ebx
-    mov    DWORD PTR [esi+0x4],edx
-    jne    Branch47
-  Branch53:
-    mov    eax,DWORD PTR [esp+0x10]
-    pop    edi
-    pop    esi
-    pop    ebp
-    pop    ebx
-    add    esp,0x8
-    ret    0x8
+  using DeleteABI = uint (__thiscall *)(void *,uint);
+  using SuccessorABI = int (__cdecl *)(int);
+  using CopyABI = void * (__thiscall *)(void *,const void *);
+  using FreeABI = uint (__stdcall *)(void *,uint);
+  using DetachABI = char * (__cdecl *)(char *,int *,uint *,uint *);
+  uint stop = (uint)pastLast;
+  uint cursor = (uint)firstNode;
+  uint visited = 0;
+  while (cursor != stop) {
+    if (cursor == *(uint *)((byte *)owner + 4)) break;
+    void *value = *(void **)(cursor + 0x14);
+    if (value != nullptr) {
+      byte *table = *(byte **)value;
+      (*(DeleteABI *)table)(value,1);
+    }
+    uint nextVisited = visited + 1;
+    *(uint *)(cursor + 0x14) = 0;
+    visited = nextVisited;
+    cursor = (uint)((SuccessorABI)R6GameServiceAddresses::OrderedTreeSuccessor)((int)cursor);
   }
+  uint copiedFirst;
+  ((CopyABI)R6GameServiceAddresses::CopyFirstWord)(&copiedFirst,&firstNode);
+  byte *tree = (byte *)owner + 4;
+  ((CopyABI)R6GameServiceAddresses::CopyFirstWord)(&pastLast,&copiedFirst);
+  uint head = *(uint *)tree;
+  uint current = (uint)pastLast;
+  if (current == *(uint *)(head + 8) && stop == head) {
+    if (*(uint *)(tree + 4) != 0) {
+      uint node = *(uint *)(head + 4);
+      while (node != 0) {
+        uint right = *(uint *)(node + 0xc);
+        ordered_tree_support_ReleaseTreeNodes(tree,(int)right);
+        uint left = *(uint *)(node + 8);
+        ((FreeABI)R6GameServiceAddresses::ReleaseMemoryIgnoringSize)((void *)node,1);
+        node = left;
+      }
+      head = *(uint *)tree;
+      *(uint *)(head + 8) = head;
+      uint rootHead = *(uint *)tree;
+      *(uint *)(rootHead + 4) = 0;
+      head = *(uint *)tree;
+      *(uint *)(head + 0xc) = head;
+      uint result = visited;
+      *(uint *)(tree + 4) = 0;
+      return result;
+    }
+    return visited;
+  }
+  while (current != stop) {
+    uint eraseNode = current;
+    uint next = current;
+    uint child = *(uint *)(next + 0xc);
+    if (child != 0) {
+      next = child;
+      child = *(uint *)(next + 8);
+      while (child != 0) {
+        next = child;
+        child = *(uint *)(next + 8);
+      }
+    } else {
+      uint parent = *(uint *)(next + 4);
+      while (next == *(uint *)(parent + 0xc)) {
+        next = parent;
+        parent = *(uint *)(parent + 4);
+      }
+      if (*(uint *)(next + 0xc) != parent) next = parent;
+    }
+    pastLast = (void *)next;
+    head = *(uint *)tree;
+    uint *rightmost = (uint *)(head + 0xc);
+    uint *leftmost = (uint *)(head + 8);
+    int *root = (int *)(head + 4);
+    char *detached = ((DetachABI)R6GameServiceAddresses::RemoveOrderedTreeNode)(
+        (char *)eraseNode,root,leftmost,rightmost);
+    TailFreeThroughGlobalAllocator(detached);
+    uint count = *(uint *)(tree + 4);
+    current = (uint)pastLast;
+    --count;
+    bool finished = current == stop;
+    *(uint *)(tree + 4) = count;
+    if (finished) break;
+  }
+  return visited;
+}
+
+// Delete visited values, clear their slots and erase the live original range through full-tree or red-black paths.
+// R6GameService.dll @ 10042a30 : pastLast becomes iterator scratch; returns the number visited in the value pass.
+uint __thiscall EraseAlternateOrderedTreeRangeAndDetachValues(void *owner,void *firstNode,void *pastLast)
+{
+  using DeleteABI = uint (__thiscall *)(void *,uint);
+  using SuccessorABI = int (__cdecl *)(int);
+  using CopyABI = void * (__thiscall *)(void *,const void *);
+  using FreeABI = uint (__stdcall *)(void *,uint);
+  using DetachABI = char * (__cdecl *)(char *,int *,uint *,uint *);
+  uint stop = (uint)pastLast;
+  uint cursor = (uint)firstNode;
+  uint visited = 0;
+  while (cursor != stop) {
+    if (cursor == *(uint *)((byte *)owner + 4)) break;
+    void *value = *(void **)(cursor + 0x14);
+    if (value != nullptr) {
+      byte *table = *(byte **)value;
+      (*(DeleteABI *)table)(value,1);
+    }
+    uint nextVisited = visited + 1;
+    *(uint *)(cursor + 0x14) = 0;
+    visited = nextVisited;
+    cursor = (uint)((SuccessorABI)R6GameServiceAddresses::OrderedTreeSuccessor)((int)cursor);
+  }
+  uint copiedFirst;
+  ((CopyABI)R6GameServiceAddresses::CopyFirstWord)(&copiedFirst,&firstNode);
+  byte *tree = (byte *)owner + 4;
+  ((CopyABI)R6GameServiceAddresses::CopyFirstWord)(&pastLast,&copiedFirst);
+  uint head = *(uint *)tree;
+  uint current = (uint)pastLast;
+  if (current == *(uint *)(head + 8) && stop == head) {
+    if (*(uint *)(tree + 4) != 0) {
+      uint node = *(uint *)(head + 4);
+      while (node != 0) {
+        uint right = *(uint *)(node + 0xc);
+        ordered_tree_support_ReleaseTreeNodes2(tree,(int)right);
+        uint left = *(uint *)(node + 8);
+        ((FreeABI)R6GameServiceAddresses::ReleaseMemoryIgnoringSize)((void *)node,1);
+        node = left;
+      }
+      head = *(uint *)tree;
+      *(uint *)(head + 8) = head;
+      uint rootHead = *(uint *)tree;
+      *(uint *)(rootHead + 4) = 0;
+      head = *(uint *)tree;
+      *(uint *)(head + 0xc) = head;
+      uint result = visited;
+      *(uint *)(tree + 4) = 0;
+      return result;
+    }
+    return visited;
+  }
+  while (current != stop) {
+    uint eraseNode = current;
+    uint next = current;
+    uint child = *(uint *)(next + 0xc);
+    if (child != 0) {
+      next = child;
+      child = *(uint *)(next + 8);
+      while (child != 0) {
+        next = child;
+        child = *(uint *)(next + 8);
+      }
+    } else {
+      uint parent = *(uint *)(next + 4);
+      while (next == *(uint *)(parent + 0xc)) {
+        next = parent;
+        parent = *(uint *)(parent + 4);
+      }
+      if (*(uint *)(next + 0xc) != parent) next = parent;
+    }
+    pastLast = (void *)next;
+    head = *(uint *)tree;
+    uint *rightmost = (uint *)(head + 0xc);
+    uint *leftmost = (uint *)(head + 8);
+    int *root = (int *)(head + 4);
+    char *detached = ((DetachABI)R6GameServiceAddresses::RemoveOrderedTreeNode)(
+        (char *)eraseNode,root,leftmost,rightmost);
+    TailFreeThroughGlobalAllocator(detached);
+    uint count = *(uint *)(tree + 4);
+    current = (uint)pastLast;
+    --count;
+    bool finished = current == stop;
+    *(uint *)(tree + 4) = count;
+    if (finished) break;
+  }
+  return visited;
 }
 
 // Drain nodes through CURRENT saved owner+4 or free CURRENT saved tree first word; preserve NULL/scratch.

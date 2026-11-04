@@ -3,32 +3,22 @@
 
 // Native primary75bbc/COL785a8/type8c428 names clTCPClient; original destructor spellings are descriptive.
 
-// Runs the shared base destructor, reloads the low deletion flag, optionally frees storage and returns the owner.
-// R6GameService.dll @ 10017010 : complete native control/access order and raw ABI retained.
-__declspec(naked) void * __thiscall DestroyHttpClient(void *owner,uint deletionFlags)
+// Destroy the shared client base, then conditionally free the cached owner using the current low deletion bit.
+// R6GameService.dll @ 10017010 : selected PE32 operations; helper/type names remain descriptive.
+void * __thiscall DestroyHttpClient(void *owner,uint deletionFlags)
 {
-  __asm {
-    push   esi
-    mov    esi,ecx
-    call   R6GameServiceAddresses::DestroyHttpClientBase
-    test   BYTE PTR [esp+0x8],0x1
-    je     Branch1
-    push   esi
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch1:
-    mov    eax,esi
-    pop    esi
-    ret    0x4
-  }
+  using DestroyABI = void (__thiscall *)(void *);
+  ((DestroyABI)R6GameServiceAddresses::DestroyHttpClientBase)(owner);
+  if ((deletionFlags & 1) != 0) TailFreeThroughGlobalAllocator(owner);
+  return owner;
 }
 
-// Tail-forwards the unchanged receiver to the separately represented shared base destructor, retaining its EAX.
-// R6GameService.dll @ 10017030 : JMP1002e620 only; no duplicate expanded base body or local EH frame.
-__declspec(naked) uint __fastcall DestroyHttpClientBase(void *owner)
+// Forward the receiver to the canonical queued-connection destructor, retaining its raw result-word view.
+// R6GameService.dll @ 10017030 : selected PE32 operations; helper/type names remain descriptive.
+uint __fastcall DestroyHttpClientBase(void *owner)
 {
-  __asm {
-    jmp    R6GameServiceAddresses::DestroyQueuedConnectionMembers
-  }
+  using DestroyABI = uint (__thiscall *)(void *);
+  return ((DestroyABI)R6GameServiceAddresses::DestroyQueuedConnectionMembers)(owner);
 }
 
 // Native virtual-table prefix: clTCPClientVTable

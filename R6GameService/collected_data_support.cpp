@@ -1,4 +1,5 @@
 #include "native_addresses.h"
+#include "native_import_bindings.h"
 #include "native_records.h"
 
 // R6GameService.dll data @ 10080920 : completed result, collected strings and temporary bytes.
@@ -23,56 +24,64 @@ const R6GameServiceNative::FuncInfo AdapterAddressCollectorExceptionHandlerFunct
 
 // Collected-data byte construction; original free/helper identifiers and concrete vector templates remain inferred.
 
-// Prints each collected string and copies its unterminated bytes into a separately owned result vector.
-// R6GameService.dll @ 10034890 : C++ concatenation/lifetimes with native descriptor, result guard and scratch slots.
-__declspec(naked) void * __cdecl BuildByteVectorFromCollectedStrings(void *outputVector)
-{
-  byte *nativeFrame;
-  __asm {
-    // ESP-based EH: result flag entryESP-30, strings-2c, temporary bytes-1c; opaque prefixes stay untouched.
-    push   0xffffffff
-    push   R6GameServiceAddresses::CollectedByteBuilderExceptionHandler
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x28
-    push   ebx
-    push   ebp
-    push   esi
-    push   edi
-    mov    nativeFrame,esp
+// Inferred guard for temporary bytes, strings and the conditional hidden result, in native unwind order.
+struct CollectedByteBuilderCleanup {
+  uint *bytes;
+  uint *strings;
+  uint *resultFlags;
+  void **outputSlot;
+  int state;
+  ~CollectedByteBuilderCleanup() noexcept(false) {
+    if (state >= 2) {
+      state = 1;
+      ReleaseAndResetStorageAt04((int)bytes);
+    }
+    if (state >= 1) {
+      state = 0;
+      DestroyStringVector(strings);
+    }
+    if (state < 0) return;
+    state = -1;
+    if ((*resultFlags & 1) != 0) {
+      *resultFlags &= ~1u;
+      void *output = *outputSlot;
+      ReleaseAndResetStorageAt04((int)output);
+    }
   }
+};
+
+// Prints each collected string and copies its unterminated bytes into a separately owned result vector.
+// R6GameService.dll @ 10034890 : cdecl hidden result word; ownership follows three native cleanup states.
+void *__cdecl BuildByteVectorFromCollectedStrings(void *outputVector)
+{
+  uint resultFlags = 0;
+  uint strings[4],bytes[4];
+  strings[1] = 0;
+  strings[2] = 0;
+  strings[3] = 0;
+  CollectedByteBuilderCleanup cleanup{bytes, strings, &resultFlags, &outputVector, 1};
   using CollectABI = uint (__cdecl *)(void *);
+  ((CollectABI)R6GameServiceAddresses::CollectNetworkAdapterMacAddresses)(strings);
+  uint cachedByteBegin = 0;
+  bytes[1] = 0;
+  bytes[2] = 0;
+  bytes[3] = 0;
+  uint stringsBegin = strings[1];
+  cleanup.state = 2;
+  uint stringIndex = 0;
+  uint stringOffset = 0;
   using PrintABI = int (__cdecl *)(const char *,...);
   using RangeErrorABI = void (__thiscall *)(const void *);
-  using InsertABI = void (__thiscall *)(void *,uint,uint,const byte *);
-  using CopyABI = void * (__thiscall *)(void *,const void *);
   using DestroyABI = void (__thiscall *)(void *);
-  using FreeABI = void (__cdecl *)(void *);
-  *(uint *)(nativeFrame + 0x14) = 0;
-  *(uint *)(nativeFrame + 0x1c) = 0;
-  *(uint *)(nativeFrame + 0x20) = 0;
-  *(uint *)(nativeFrame + 0x24) = 0;
-  *(uint *)(nativeFrame + 0x40) = 1;
-  ((CollectABI)R6GameServiceAddresses::CollectNetworkAdapterMacAddresses)(nativeFrame + 0x18);
-  uint cachedByteBegin = 0;
-  *(uint *)(nativeFrame + 0x2c) = 0;
-  *(uint *)(nativeFrame + 0x30) = 0;
-  *(uint *)(nativeFrame + 0x34) = 0;
-  uint stringsBegin = *(uint *)(nativeFrame + 0x1c);
-  *(byte *)(nativeFrame + 0x40) = 2;
-  *(uint *)(nativeFrame + 0x10) = 0;
-  uint stringOffset = 0;
   for (;;) {
     if (stringsBegin == 0) break;
-    int span = (int)(*(uint *)(nativeFrame + 0x20) - stringsBegin);
+    int span = (int)(strings[2] - stringsBegin);
     uint stringCount = (uint)(span / 0x1c);
-    if (*(uint *)(nativeFrame + 0x10) >= stringCount) break;
+    if (stringIndex >= stringCount) break;
     byte *string = (byte *)(stringsBegin + stringOffset);
     const char *text = *(uint *)(string + 0x18) < 16 ? (const char *)(string + 4) : *(const char **)(string + 4);
-    (*(PrintABI *)R6GameServiceAddresses::MSVCR71_printfSlot)
-        ((const char *)R6GameServiceAddresses::TextS,text);
-    stringsBegin = *(uint *)(nativeFrame + 0x1c);
+    (*(PrintABI *)R6GameServiceAddresses::MSVCR71_printfSlot)((const char *)R6GameServiceAddresses::TextS,text);
+    stringsBegin = strings[1];
     uint length = *(uint *)(stringsBegin + stringOffset + 0x14);
     uint characterIndex = 0;
     if (length != 0) {
@@ -83,58 +92,47 @@ __declspec(naked) void * __cdecl BuildByteVectorFromCollectedStrings(void *outpu
           (*(RangeErrorABI *)R6GameServiceAddresses::MSVCP71__String_base__XranSlot)(string);
         const byte *data = *(uint *)(string + 0x18) < 16 ? string + 4 : *(const byte **)(string + 4);
         const byte *source = (const byte *)((uint)data + characterIndex);
-        uint end = *(uint *)(nativeFrame + 0x30);
+        uint end = bytes[2];
         bool direct = false;
         if (cachedByteBegin != 0) {
-          uint capacity = *(uint *)(nativeFrame + 0x34);
+          uint capacity = bytes[3];
           direct = end - cachedByteBegin < capacity - cachedByteBegin;
         }
         if (direct) {
           *(byte *)end = *source;
-          *(uint *)(nativeFrame + 0x30) = end + 1;
+          bytes[2] = end + 1;
         } else {
-          ((InsertABI)R6GameServiceAddresses::InsertRepeatedByte)(nativeFrame + 0x28,end,1,source);
-          cachedByteBegin = *(uint *)(nativeFrame + 0x2c);
+          InsertRepeatedByte(bytes,(byte *)end,1,source);
+          cachedByteBegin = bytes[1];
         }
-        stringsBegin = *(uint *)(nativeFrame + 0x1c);
+        stringsBegin = strings[1];
         length = *(uint *)(stringsBegin + stringOffset + 0x14);
         ++characterIndex;
       } while (characterIndex < length);
     }
-    uint nextIndex = *(uint *)(nativeFrame + 0x10) + 1;
+    uint nextIndex = stringIndex + 1;
     stringOffset += 0x1c;
-    *(uint *)(nativeFrame + 0x10) = nextIndex;
+    stringIndex = nextIndex;
   }
-  void *output = *(void **)(nativeFrame + 0x48);
-  ((CopyABI)R6GameServiceAddresses::CopyByteVector)(output,nativeFrame + 0x28);
-  *(uint *)(nativeFrame + 0x14) = 1;
-  // A throwing normal free leaves state2 live; unwind may release temporary storage again.
-  if (cachedByteBegin != 0) ((FreeABI)R6GameServiceAddresses::FreeThroughGlobalAllocator)((void *)cachedByteBegin);
-  uint stringCursor = *(uint *)(nativeFrame + 0x1c);
-  *(byte *)(nativeFrame + 0x40) = 0;
+  void *output = outputVector;
+  CopyByteVector(output,bytes);
+  resultFlags = 1;
+  if (cachedByteBegin != 0) FreeThroughGlobalAllocator((void *)cachedByteBegin);
+  uint stringCursor = strings[1];
+  cleanup.state = 0;
   if (stringCursor != 0) {
-    uint stringEnd = *(uint *)(nativeFrame + 0x20);
+    uint stringEnd = strings[2];
     if (stringCursor != stringEnd) {
       do {
         (*(DestroyABI *)R6GameServiceAddresses::MSVCP71_DU_char_traits_Destroy_basic_stringSlot)((void *)stringCursor);
         stringCursor += 0x1c;
       } while (stringCursor != stringEnd);
-      stringCursor = *(uint *)(nativeFrame + 0x1c);
+      stringCursor = strings[1];
     }
-    ((FreeABI)R6GameServiceAddresses::FreeThroughGlobalAllocator)((void *)stringCursor);
+    FreeThroughGlobalAllocator((void *)stringCursor);
   }
-  __asm {
-    mov    ebp,output
-    mov    ecx,DWORD PTR [esp+0x38]
-    pop    edi
-    pop    esi
-    mov    eax,ebp
-    pop    ebp
-    pop    ebx
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x34
-    ret
-  }
+  cleanup.state = -1;
+  return output;
 }
 
 // Destroys the builder parent-frame narrow-string vector through its shared cleanup thunk.
@@ -186,50 +184,66 @@ __declspec(naked) void CollectedByteBuilderExceptionHandler(void)
   }
 }
 
-// Appends uppercase adapter hardware-address strings and returns success only in AL, preserving upper EAX residue.
-// R6GameService.dll @ 10036420 : C++ adapter formatting with aligned frame, unchecked text and raw AL result.
-__declspec(naked) uint __cdecl CollectNetworkAdapterMacAddresses(void *stringVector)
-{
-  byte *nativeFrame;
-  byte *originalFrame;
-  __asm {
-    // Keep original EBP for arguments and align ESP to 8. Unwind parent A is aligned pre-EH ESP, not original EBP.
-    push   ebp
-    mov    ebp,esp
-    and    esp,0xfffffff8
-    push   0xffffffff
-    push   R6GameServiceAddresses::AdapterAddressCollectorExceptionHandler
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x150
-    mov    eax,ds:R6GameServiceAddresses::GSecurityCookie
-    push   ebx
-    push   esi
-    push   edi
-    // Cookie at A-14; query size A-150, zero fill A-155, vector A-14c, string A-13c, text A-118.
-    mov    DWORD PTR [esp+0x154],eax
-    mov    nativeFrame,esp
-    mov    originalFrame,ebp
+// Inferred aligned-parent slots from A-158 through A-14; formatting scratch leaves its last two bytes untouched.
+struct alignas(8) AdapterCollectionLocals {
+  byte padding[3];
+  byte zeroFill;
+  uint index;
+  uint required;
+  uint bytes[4];
+  uint addressString[7];
+  byte scratch[8];
+  byte text[256];
+  uint opaque;
+  uint cookie;
+};
+
+// Retain current vector storage and the completed address string; entered temporary destruction is never retried.
+struct AdapterCollectionCleanup {
+  AdapterCollectionLocals *frame;
+  int state;
+  bool armed;
+  // The query buffer stays owned through normal free, allowing native current-storage cleanup if that free raises.
+  ~AdapterCollectionCleanup() noexcept(false)
+  {
+    if (!armed) return;
+    if (state == 1) {
+      state = 0;
+      using DestroyABI = void (__thiscall *)(void *);
+      (*(DestroyABI *)R6GameServiceAddresses::MSVCP71_DU_char_traits_Destroy_basic_stringSlot)(frame->addressString);
+    }
+    if (state == 0) {
+      state = -1;
+      ReleaseAndResetStorageAt04((int)frame->bytes);
+    }
   }
+};
+
+// Query adapter storage, append each uppercase hardware-address string, then release the captured buffer.
+// Preserve unchecked concatenation, live length/Next/output reads, selective begin reloads and raw result lanes.
+// R6GameService.dll @ 10036420 : cdecl RET0; aligned physical local view, two-state ownership and current cookie exit.
+uint __cdecl CollectNetworkAdapterMacAddresses(void *stringVector)
+{
+  AdapterCollectionLocals locals;
+  locals.cookie = *(uint *)R6GameServiceAddresses::GSecurityCookie;
+  AdapterCollectionCleanup cleanup{&locals,-1,true};
   using QueryABI = uint (__stdcall *)(void *,uint *);
   using FilledVectorABI = void (__thiscall *)(void *,uint,const byte *);
   using FormatABI = int (__cdecl *)(char *,const char *,...);
   using ConstructABI = void * (__thiscall *)(void *,const char *);
   using AppendABI = void (__thiscall *)(void *,const void *);
   using DestroyABI = void (__thiscall *)(void *);
-  using FreeABI = uint (__cdecl *)(void *); // Preserve the void free boundary's raw EAX residue.
-  *(uint *)(nativeFrame + 0x18) = 0;
-  uint residue = ((QueryABI)R6GameServiceAddresses::GetAdaptersInfo)(nullptr,(uint *)(nativeFrame + 0x18));
+  using FreeABI = uint (__cdecl *)(void *);
+  locals.required = 0;
+  uint residue = ((QueryABI)R6GameServiceAddresses::GetAdaptersInfo)(nullptr,&locals.required);
   bool success = false;
   if (residue == 0 || residue == 0x6f) {
-    uint required = *(uint *)(nativeFrame + 0x18);
-    *(byte *)(nativeFrame + 0x13) = 0;
-    ((FilledVectorABI)R6GameServiceAddresses::InitializeFilledByteVector)
-        (nativeFrame + 0x1c,required,nativeFrame + 0x13);
-    uint retainedBegin = *(uint *)(nativeFrame + 0x20);
-    *(uint *)(nativeFrame + 0x164) = 0;
-    residue = ((QueryABI)R6GameServiceAddresses::GetAdaptersInfo)((void *)retainedBegin,(uint *)(nativeFrame + 0x18));
+    uint required = locals.required;
+    locals.zeroFill = 0;
+    ((FilledVectorABI)R6GameServiceAddresses::InitializeFilledByteVector)(locals.bytes,required,&locals.zeroFill);
+    uint retainedBegin = locals.bytes[1];
+    cleanup.state = 0;
+    residue = ((QueryABI)R6GameServiceAddresses::GetAdaptersInfo)((void *)retainedBegin,&locals.required);
     if (residue != 0) {
       if (retainedBegin != 0)
         residue = ((FreeABI)R6GameServiceAddresses::FreeThroughGlobalAllocator)((void *)retainedBegin);
@@ -237,37 +251,35 @@ __declspec(naked) uint __cdecl CollectNetworkAdapterMacAddresses(void *stringVec
       uint adapter = retainedBegin;
       if (adapter != 0) {
         do {
-          // Native unaligned zero stores preserve the scratch/text boundary and leave bytes +0x4e/+0x4f untouched.
-          *(uint *)(nativeFrame + 0x49) = 0;
-          *(byte *)(nativeFrame + 0x50) = 0;
-          *(byte *)(nativeFrame + 0x4d) = 0;
-          for (uint word = 0; word < 0x3f; ++word) *(uint *)(nativeFrame + 0x51 + word * 4) = 0;
-          *(ushort *)(nativeFrame + 0x14d) = 0;
-          *(byte *)(nativeFrame + 0x48) = 0;
-          *(byte *)(nativeFrame + 0x14f) = 0;
+          *(uint *)(locals.scratch + 1) = 0;
+          locals.text[0] = 0;
+          locals.scratch[5] = 0;
+          for (uint word = 0; word < 0x3f; ++word) *(uint *)(locals.text + 1 + word * 4) = 0;
+          *(ushort *)(locals.text + 253) = 0;
+          locals.scratch[0] = 0;
+          locals.text[255] = 0;
           uint addressLength = *(uint *)(adapter + 0x190);
-          *(uint *)(nativeFrame + 0x14) = 0;
+          locals.index = 0;
           if (addressLength != 0) {
             for (;;) {
-              uint index = *(uint *)(nativeFrame + 0x14);
+              uint index = locals.index;
               uint value = *(byte *)(adapter + index + 0x194);
-              (*(FormatABI *)R6GameServiceAddresses::MSVCR71_sprintfSlot)
-                  ((char *)(nativeFrame + 0x48),(const char *)R6GameServiceAddresses::Text2X,value);
-              uint source = (uint)(nativeFrame + 0x48);
+              (*(FormatABI *)R6GameServiceAddresses::MSVCR71_sprintfSlot)(
+                  (char *)locals.scratch,(const char *)R6GameServiceAddresses::Text2X,value);
+              uint source = (uint)locals.scratch;
               uint scan = source;
               byte unit;
               do { unit = *(byte *)scan; ++scan; } while (unit != 0);
               uint count = scan - source;
-              uint destination = (uint)(nativeFrame + 0x4f);
+              uint destination = (uint)locals.text - 1;
               do { unit = *(byte *)(destination + 1); ++destination; } while (unit != 0);
-              // Copy forwards in native DWORD/byte groups, including the terminator; do not bound or repair overlap.
               for (uint words = count >> 2; words != 0; --words) {
                 uint copied = *(uint *)source;
                 *(uint *)destination = copied;
                 source += 4;
                 destination += 4;
               }
-              index = *(uint *)(nativeFrame + 0x14);
+              index = locals.index;
               for (uint bytes = count & 3; bytes != 0; --bytes) {
                 *(byte *)destination = *(byte *)source;
                 ++source;
@@ -275,19 +287,19 @@ __declspec(naked) uint __cdecl CollectNetworkAdapterMacAddresses(void *stringVec
               }
               addressLength = *(uint *)(adapter + 0x190);
               ++index;
-              *(uint *)(nativeFrame + 0x14) = index;
+              locals.index = index;
               if (index >= addressLength) break;
             }
-            // Empty addresses retain the earlier allocation pointer; only a completed formatting loop reloads it.
-            retainedBegin = *(uint *)(nativeFrame + 0x20);
+            retainedBegin = locals.bytes[1];
           }
-          (*(ConstructABI *)R6GameServiceAddresses::MSVCP71_DU_char_traits_Construct_basic_stringSlot)
-              (nativeFrame + 0x2c,(const char *)(nativeFrame + 0x50));
-          void *currentOutput = *(void **)(originalFrame + 8);
-          *(byte *)(nativeFrame + 0x164) = 1;
-          ((AppendABI)R6GameServiceAddresses::AppendStdStringToVector)(currentOutput,nativeFrame + 0x2c);
-          *(byte *)(nativeFrame + 0x164) = 0;
-          (*(DestroyABI *)R6GameServiceAddresses::MSVCP71_DU_char_traits_Destroy_basic_stringSlot)(nativeFrame + 0x2c);
+          (*(ConstructABI *)R6GameServiceAddresses::MSVCP71_DU_char_traits_Construct_basic_stringSlot)(
+              locals.addressString,(const char *)locals.text);
+          void *currentOutput = stringVector;
+          cleanup.state = 1;
+          ((AppendABI)R6GameServiceAddresses::AppendStdStringToVector)(currentOutput,locals.addressString);
+          cleanup.state = 0;
+          (*(DestroyABI *)R6GameServiceAddresses::MSVCP71_DU_char_traits_Destroy_basic_stringSlot)(
+              locals.addressString);
           adapter = *(uint *)adapter;
         } while (adapter != 0);
         residue = ((FreeABI)R6GameServiceAddresses::FreeThroughGlobalAllocator)((void *)retainedBegin);
@@ -296,28 +308,18 @@ __declspec(naked) uint __cdecl CollectNetworkAdapterMacAddresses(void *stringVec
     }
   }
   uint output = (residue & 0xffffff00) | (success ? 1u : 0u);
-  __asm {
-    mov    eax,output
-    mov    ecx,DWORD PTR [esp+0x15c]
-    mov    DWORD PTR fs:0x0,ecx
-    mov    ecx,DWORD PTR [esp+0x154]
-    call   R6GameServiceAddresses::__security_check_cookie
-    pop    edi
-    pop    esi
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
-    ret
-  }
+  cleanup.armed = false;
+  using CookieABI = void (__fastcall *)(uint);
+  ((CookieABI)R6GameServiceAddresses::__security_check_cookie)(locals.cookie);
+  return output;
 }
 
-// Tail-forwards the adapter buffer and size pointer through the selected GetAdaptersInfo import.
-// R6GameService.dll @ 100371f4 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __stdcall GetAdaptersInfo(void *adapterInfo,uint *bufferSize)
-{
-  __asm {
-    jmp    DWORD PTR ds:R6GameServiceAddresses::iphlpapi_GetAdaptersInfoSlot
-  }
+namespace R6GameServiceImports {
+// Bind the current import pointer directly; the native entry only jumps through this IAT cell.
+// R6GameService.dll @ 100371f4 : six-byte compiler import tail; typed live-IAT representation.
+GetAdaptersInfoFunction &GetAdaptersInfo{
+  *reinterpret_cast<GetAdaptersInfoFunction *>(R6GameServiceAddresses::iphlpapi_GetAdaptersInfoSlot)
+};
 }
 
 // Releases the collector aligned parent-frame byte-vector storage through shared cleanup.

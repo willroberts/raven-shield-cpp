@@ -1,64 +1,64 @@
 #include "native_addresses.h"
 #include "native_records.h"
 
+// Inferred two-state guard releases pending embedded list storage, then resets the descriptor base.
+struct ProxyMessageDestructionCleanup {
+  void *savedDescriptor;
+  void *savedList;
+  int state;
+  // Entered list cleanup is not retried; base-table reset uses the current saved descriptor.
+  ~ProxyMessageDestructionCleanup() noexcept(false)
+  {
+    using MethodABI = uint (__fastcall *)(void *);
+    using ResetABI = void (__fastcall *)(void *);
+    if (state == 1) {
+      state = 0;
+      void *slot = savedList == 0 ? 0 : (void *)((uint)savedList + 4);
+      ((MethodABI)R6GameServiceAddresses::ReleaseNodesAndSentinel)(slot);
+    }
+    if (state == 0) {
+      state = -1;
+      ((ResetABI)R6GameServiceAddresses::ResetClDataVtable)(savedDescriptor);
+    }
+  }
+};
+
 // clProxyMessage payload role follows proxy-message-list RTTI and all four typed destruction callers.
 // The original destructor spelling/layout remains inferred; only embedded descriptor8 and its actual operations are represented.
 
 // Destroy embedded descriptor at+8 via captured generic range, CURRENT links/head, then reset only its base table.
 // Preserve prefix bytes, outer allocation and state1 head-only/state0 base-only cleanup. Raw final free EAX.
 // R6GameService.dll @ 10062aa0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall DestroyPerNodeLinkedListContainer(void *owner)
+uint __fastcall DestroyPerNodeLinkedListContainer(void *owner)
 {
-  __asm {
-    push    0xffffffff
-    push    R6GameServiceAddresses::SelectProxyMessageEH
-    mov    eax,fs:0x0
-    push    eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0xc
-    push    ebx
-    push    ebp
-    lea    ebp,[ecx+0x8]
-    push    esi
-    push    edi
-    mov    DWORD PTR [esp+0x10],ebp
-    lea    esi,[ebp+0xc]
-    mov    DWORD PTR [ebp+0x0],R6GameServiceAddresses::clDataListPTR_FUN
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clDataListPTR_LAB
-    mov    DWORD PTR [esp+0x24],0x0
-    mov    DWORD PTR [esp+0x14],esi
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clDataListPTR_FUN2
-    push    ecx
-    mov    ecx,DWORD PTR [esi+0x4]
-    lea    edi,[esi+0x4]
-    mov    eax,esp
-    push    ecx
-    push    esp
-    mov    DWORD PTR [eax],ecx
-    mov    ebx,DWORD PTR [esi]
-    mov    ecx,edi
-    mov    BYTE PTR [esp+0x30],0x1
-    call    R6GameServiceAddresses::ReadListFirstNodeFromHeadSlot
-    lea    eax,[esp+0x20]
-    mov    ecx,esi
-    push    eax
-    call    DWORD PTR [ebx+0x10]
-    mov    ecx,edi
-    mov    BYTE PTR [esp+0x24],0x0
-    call    R6GameServiceAddresses::ReleaseListNodesRetainHeader
-    mov    ecx,DWORD PTR [edi]
-    push    ecx
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    ecx,DWORD PTR [esp+0x1c]
-    pop    edi
-    mov    DWORD PTR [ebp+0x0],R6GameServiceAddresses::PTR_LAB
-    pop    esi
-    pop    ebp
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    add    esp,0x18
-    ret
-  }
+  uint descriptor = (uint)owner + 8;
+  ProxyMessageDestructionCleanup cleanup;
+  cleanup.savedDescriptor = (void *)descriptor;
+  cleanup.state = -1;
+  uint list = descriptor + 0xc;
+  *(uint *)descriptor = R6GameServiceAddresses::clDataListPTR_FUN;
+  *(uint *)list = R6GameServiceAddresses::clDataListPTR_LAB;
+  cleanup.state = 0;
+  cleanup.savedList = (void *)list;
+  *(uint *)list = R6GameServiceAddresses::clDataListPTR_FUN2;
+  uint end = *(uint *)(list + 4);
+  void *headSlot = (void *)(list + 4);
+  uint begin = end;
+  uint table = *(uint *)list;
+  cleanup.state = 1;
+  using FirstABI = uint *(__thiscall *)(void *,uint *);
+  ((FirstABI)R6GameServiceAddresses::ReadListFirstNodeFromHeadSlot)(headSlot,&begin);
+  uint ignored;
+  using RangeABI = uint *(__thiscall *)(void *,uint *,uint,uint);
+  (*(RangeABI *)(table + 0x10))((void *)list,&ignored,begin,end);
+  cleanup.state = 0;
+  using MethodABI = uint (__fastcall *)(void *);
+  ((MethodABI)R6GameServiceAddresses::ReleaseListNodesRetainHeader)(headSlot);
+  void *head = *(void **)headSlot;
+  uint result = TailFreeThroughGlobalAllocator(head);
+  *(uint *)descriptor = R6GameServiceAddresses::PTR_LAB;
+  cleanup.state = -1;
+  return result;
 }
 
 // Reset only the embedded descriptor base at CURRENT saved descriptor pointer; do not retry list release.

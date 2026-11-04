@@ -1,6 +1,45 @@
 #include "native_addresses.h"
 #include "native_records.h"
 
+// Inferred destruction guard: unwind remaining members through their enclosing owners, then base storage.
+struct SRProtocolDestructionCleanup {
+  void *savedOwner;
+  int state;
+  // Advance before each cleanup so a failing member is not retried by this owner.
+  ~SRProtocolDestructionCleanup() noexcept(false)
+  {
+    using MethodABI = uint (__fastcall *)(void *);
+    while (state >= 0) {
+      switch (state) {
+      case 5:
+        state = 4;
+        ((MethodABI)R6GameServiceAddresses::ForwardSegmentedWordDestroy)((void *)((uint)savedOwner + 0x218));
+        break;
+      case 4:
+        state = 3;
+        ((MethodABI)R6GameServiceAddresses::thunk_DestroyEmbeddedOwnedRecords)((void *)((uint)savedOwner + 0x1f8));
+        break;
+      case 3:
+        state = 2;
+        ((MethodABI)R6GameServiceAddresses::thunk_DestroyEmbeddedOwnedRecords)((void *)((uint)savedOwner + 0x1d8));
+        break;
+      case 2:
+        state = 1;
+        ((MethodABI)R6GameServiceAddresses::ForwardToCircularListDestructor)((void *)((uint)savedOwner + 0x19c));
+        break;
+      case 1:
+        state = 0;
+        ((MethodABI)R6GameServiceAddresses::ForwardToCircularListDestructor)((void *)((uint)savedOwner + 0x188));
+        break;
+      case 0:
+        state = -1;
+        ((MethodABI)R6GameServiceAddresses::DestroyRecordOwnerStorage)(savedOwner);
+        break;
+      }
+    }
+  }
+};
+
 // clSRProtocol: RTTI-backed native class; original declarations and member spellings remain inferred.
 
 // Build base storage, byte queues, two record vectors and segmented words; install protocol table and seed defaults.
@@ -150,60 +189,38 @@ __declspec(naked) void *__thiscall DeleteObject(void *owner,uint deleteFlags)
 // Signed states2..5 inclusive invoke current adjusted member callback, then destroy segmented/vector/queue/base storage.
 // ENTRY ESP S: savedownerS-10/stateS-4; disarm each member before its cleanup, keep native raw EAX/no field clearing.
 // R6GameService.dll @ 1005d200 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall DestroyLargeRecordOwner(void *owner)
+uint __fastcall DestroyLargeRecordOwner(void *owner)
 {
-  __asm {
-    push    0xffffffff
-    push    R6GameServiceAddresses::SelectSRProtocolDestroyEH
-    mov    eax,fs:0x0
-    push    eax
-    mov    DWORD PTR fs:0x0,esp
-    push    ecx
-    push    esi
-    mov    esi,ecx
-    mov    DWORD PTR [esp+0x4],esi
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clSRProtocolVTable
-    mov    eax,DWORD PTR [esi+0x134]
-    mov    DWORD PTR [esp+0x10],0x5
-    cmp    eax,0x2
-    jl    Branch3
-    cmp    eax,0x5
-    jg    Branch3
-    mov    eax,DWORD PTR [esi+0x14c]
-    mov    ecx,DWORD PTR [esi+0x4]
-    mov    edx,DWORD PTR [eax+ecx*1]
-    mov    eax,DWORD PTR [esi+0x148]
-    add    edx,eax
-    lea    ecx,[edx+esi*1+0x4]
-    call    DWORD PTR [esi+0x144]
-  Branch3:
-    push    R6GameServiceAddresses::TextDeleteSRProtocol
-    call    R6GameServiceAddresses::list_node_support_NoOp
-    add    esp,0x4
-    lea    ecx,[esi+0x218]
-    mov    BYTE PTR [esp+0x10],0x4
-    call    R6GameServiceAddresses::ReleaseSegmentedWordStorage
-    lea    ecx,[esi+0x208]
-    mov    BYTE PTR [esp+0x10],0x3
-    call    R6GameServiceAddresses::DestroyOwnedRecordVector
-    lea    ecx,[esi+0x1e8]
-    mov    BYTE PTR [esp+0x10],0x2
-    call    R6GameServiceAddresses::DestroyOwnedRecordVector
-    lea    ecx,[esi+0x19c]
-    mov    BYTE PTR [esp+0x10],0x1
-    call    R6GameServiceAddresses::DestroyCircularList
-    lea    ecx,[esi+0x188]
-    mov    BYTE PTR [esp+0x10],0x0
-    call    R6GameServiceAddresses::DestroyCircularList
-    mov    ecx,esi
-    mov    DWORD PTR [esp+0x10],0xffffffff
-    call    R6GameServiceAddresses::DestroyRecordOwnerStorage
-    mov    ecx,DWORD PTR [esp+0x8]
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x10
-    ret
+  uint base = (uint)owner;
+  SRProtocolDestructionCleanup cleanup = {owner,-1};
+  *(uint *)base = R6GameServiceAddresses::clSRProtocolVTable;
+  int state = *(int *)(base + 0x134);
+  cleanup.state = 5;
+  if (state >= 2 && state <= 5) {
+    uint displacement = *(uint *)(base + 0x14c);
+    uint table = *(uint *)(base + 4);
+    uint adjustment = *(uint *)(table + displacement);
+    uint fixedAdjustment = *(uint *)(base + 0x148);
+    void *receiver = (void *)(adjustment + fixedAdjustment + base + 4);
+    using CallbackABI = uint (__fastcall *)(void *);
+    (*(CallbackABI *)(base + 0x144))(receiver);
   }
+  using EmptyABI = void (__cdecl *)(const char *);
+  ((EmptyABI)R6GameServiceAddresses::list_node_support_NoOp)(
+      (const char *)R6GameServiceAddresses::TextDeleteSRProtocol);
+  using MethodABI = uint (__fastcall *)(void *);
+  cleanup.state = 4;
+  ((MethodABI)R6GameServiceAddresses::ReleaseSegmentedWordStorage)((void *)(base + 0x218));
+  cleanup.state = 3;
+  ((MethodABI)R6GameServiceAddresses::DestroyOwnedRecordVector)((void *)(base + 0x208));
+  cleanup.state = 2;
+  ((MethodABI)R6GameServiceAddresses::DestroyOwnedRecordVector)((void *)(base + 0x1e8));
+  cleanup.state = 1;
+  ((MethodABI)R6GameServiceAddresses::DestroyCircularList)((void *)(base + 0x19c));
+  cleanup.state = 0;
+  ((MethodABI)R6GameServiceAddresses::DestroyCircularList)((void *)(base + 0x188));
+  cleanup.state = -1;
+  return ((MethodABI)R6GameServiceAddresses::DestroyRecordOwnerStorage)(owner);
 }
 
 // Release only map-selected construction context from inherited frame; preserve saved member pointers and bit gates.
@@ -532,7 +549,7 @@ const R6GameServiceNative::UnwindEntry DestroyLargeRecordOwnerUnwindMap[6] = {
 };
 
 // Literal native exception map/FuncInfo preserves exact parent cleanup states.
-// R6GameService.dll data @ 100845a8 : native storage identity retained.
+// R6GameService.dll data @ 100845d8 : native storage identity retained.
 const R6GameServiceNative::FuncInfo DestroyLargeRecordOwnerExceptionInfo = {
   0x19930520,
   0x6,
@@ -576,108 +593,70 @@ __declspec(naked) uint __thiscall clSRProtocol_RejectSRProtocolCall2(void *owner
 // Set state0, clear FIFO19c/188, delete/reset vector1e8/208 record pointers, resize both rings, then clear base members.
 // Preserve cached slot versus CURRENT end/count fields, physical resize argument upper bits and partial effects; no own EH.
 // Install inactive member-pointer triplets only after base clear returns. No stack words; raw EAX is1005d380.
-// R6GameService.dll @ 1005e890 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall ClearOwnerQueuesAndReset(void *owner)
+// R6GameService.dll @ 1005e890 : ECX receiver, RET0; post-resize ECX snapshot retains the raw count upper word.
+uint __fastcall ClearOwnerQueuesAndReset(void *owner)
 {
-  __asm {
-    push    ebx
-    push    ebp
-    push    esi
-    mov    esi,ecx
-    xor    ebp,ebp
-    push    edi
-    lea    ecx,[esi+0x19c]
-    mov    DWORD PTR [esi+0x134],ebp
-    call    R6GameServiceAddresses::ClearBlockQueue
-    lea    ecx,[esi+0x188]
-    call    R6GameServiceAddresses::ClearBlockQueue
-    mov    ebx,DWORD PTR [esi+0x1e8]
-    mov    eax,DWORD PTR [esi+0x1ec]
-    lea    edi,[esi+0x1d8]
-    cmp    ebx,eax
-    mov    WORD PTR [edi+0x8],bp
-    mov    WORD PTR [edi+0xa],bp
-    mov    WORD PTR [edi+0xc],bp
-    je    Branch12
-  Branch10:
-    mov    ecx,DWORD PTR [ebx]
-    cmp    ecx,ebp
-    je    Branch11
-    mov    eax,DWORD PTR [ecx]
-    push    0x1
-    call    DWORD PTR [eax]
-  Branch11:
-    mov    DWORD PTR [ebx],ebp
-    mov    eax,DWORD PTR [edi+0x14]
-    add    ebx,0xc
-    cmp    ebx,eax
-    jne    Branch10
-  Branch12:
-    mov    eax,DWORD PTR [esi+0x20c]
-    lea    ebx,[esi+0x1f8]
-    mov    WORD PTR [ebx+0x8],bp
-    mov    WORD PTR [ebx+0xa],bp
-    mov    WORD PTR [ebx+0xc],bp
-    mov    ebp,DWORD PTR [ebx+0x10]
-    cmp    ebp,eax
-    je    Branch15
-  Branch13:
-    mov    ecx,DWORD PTR [ebp+0x0]
-    test    ecx,ecx
-    je    Branch14
-    mov    edx,DWORD PTR [ecx]
-    push    0x1
-    call    DWORD PTR [edx]
-  Branch14:
-    mov    DWORD PTR [ebp+0x0],0x0
-    mov    eax,DWORD PTR [ebx+0x14]
-    add    ebp,0xc
-    cmp    ebp,eax
-    jne    Branch13
-  Branch15:
-    mov    ax,WORD PTR [esi+0x1b0]
-    mov    ecx,edi
-    push    eax
-    call    R6GameServiceAddresses::ResizeOwnedRecordArray
-    mov    cx,WORD PTR [esi+0x1b0]
-    push    ecx
-    mov    ecx,ebx
-    call    R6GameServiceAddresses::ResetOwnedRecordRing
-    mov    dx,WORD PTR [esi+0x1d0]
-    xor    edi,edi
-    mov    ecx,esi
-    mov    WORD PTR [esi+0x90],di
-    mov    WORD PTR [esi+0x1b4],di
-    mov    WORD PTR [esi+0x1c0],dx
-    call    R6GameServiceAddresses::ClearRecordOwnerMembers
-    lea    ebx,[esi+0x15c]
-    mov    eax,R6GameServiceAddresses::RejectOwnerPendingBytes
-    xor    ecx,ecx
-    xor    edx,edx
-    mov    DWORD PTR [ebx],eax
-    mov    eax,R6GameServiceAddresses::list_node_support_NoOp
-    pop    edi
-    mov    DWORD PTR [ebx+0x4],ecx
-    mov    DWORD PTR [ebx+0x8],edx
-    lea    ebx,[esi+0x138]
-    mov    DWORD PTR [esi+0x138],eax
-    mov    eax,R6GameServiceAddresses::ResetProtocolCallback
-    mov    DWORD PTR [ebx+0x4],ecx
-    mov    DWORD PTR [ebx+0x8],edx
-    lea    ebx,[esi+0x144]
-    add    esi,0x150
-    mov    DWORD PTR [ebx],eax
-    mov    eax,R6GameServiceAddresses::ReturnOwnerInactive
-    mov    DWORD PTR [esi],eax
-    mov    DWORD PTR [ebx+0x4],ecx
-    mov    DWORD PTR [esi+0x4],ecx
-    mov    DWORD PTR [ebx+0x8],edx
-    mov    DWORD PTR [esi+0x8],edx
-    pop    esi
-    pop    ebp
-    pop    ebx
-    ret
+  uint base = (uint)owner;
+  *(uint *)(base + 0x134) = 0;
+  using ClearABI = uint (__fastcall *)(void *);
+  ((ClearABI)R6GameServiceAddresses::ClearBlockQueue)((void *)(base + 0x19c));
+  ((ClearABI)R6GameServiceAddresses::ClearBlockQueue)((void *)(base + 0x188));
+  uint cursor = *(uint *)(base + 0x1e8);
+  uint currentEnd = *(uint *)(base + 0x1ec);
+  uint firstRing = base + 0x1d8;
+  *(ushort *)(firstRing + 8) = 0;
+  *(ushort *)(firstRing + 0xa) = 0;
+  *(ushort *)(firstRing + 0xc) = 0;
+  using DeleteABI = uint (__thiscall *)(void *,uint);
+  while (cursor != currentEnd) {
+    void *object = *(void **)cursor;
+    if (object != nullptr) {
+      uint table = *(uint *)object;
+      (*(DeleteABI *)table)(object,1);
+    }
+    *(uint *)cursor = 0;
+    currentEnd = *(uint *)(firstRing + 0x14);
+    cursor += 12;
   }
+  currentEnd = *(uint *)(base + 0x20c);
+  uint secondRing = base + 0x1f8;
+  *(ushort *)(secondRing + 8) = 0;
+  *(ushort *)(secondRing + 0xa) = 0;
+  *(ushort *)(secondRing + 0xc) = 0;
+  cursor = *(uint *)(secondRing + 0x10);
+  while (cursor != currentEnd) {
+    void *object = *(void **)cursor;
+    if (object != nullptr) {
+      uint table = *(uint *)object;
+      (*(DeleteABI *)table)(object,1);
+    }
+    *(uint *)cursor = 0;
+    currentEnd = *(uint *)(secondRing + 0x14);
+    cursor += 12;
+  }
+  uint firstCount = (currentEnd & 0xffff0000) | *(ushort *)(base + 0x1b0);
+  ResizeOwnedRecordArray((void *)firstRing,firstCount);
+  [[r6abi::register_snapshot("ecx")]] uint ecxAfterResize;
+  uint secondCount = (ecxAfterResize & 0xffff0000) | *(ushort *)(base + 0x1b0);
+  ResetOwnedRecordRing((void *)secondRing,secondCount);
+  ushort savedWord = *(ushort *)(base + 0x1d0);
+  *(ushort *)(base + 0x90) = 0;
+  *(ushort *)(base + 0x1b4) = 0;
+  *(ushort *)(base + 0x1c0) = savedWord;
+  ClearRecordOwnerMembers(owner);
+  *(uint *)(base + 0x15c) = R6GameServiceAddresses::RejectOwnerPendingBytes;
+  *(uint *)(base + 0x160) = 0;
+  *(uint *)(base + 0x164) = 0;
+  *(uint *)(base + 0x138) = R6GameServiceAddresses::list_node_support_NoOp;
+  *(uint *)(base + 0x13c) = 0;
+  *(uint *)(base + 0x140) = 0;
+  *(uint *)(base + 0x144) = R6GameServiceAddresses::ResetProtocolCallback;
+  *(uint *)(base + 0x150) = R6GameServiceAddresses::ReturnOwnerInactive;
+  *(uint *)(base + 0x148) = 0;
+  *(uint *)(base + 0x154) = 0;
+  *(uint *)(base + 0x14c) = 0;
+  *(uint *)(base + 0x158) = 0;
+  return R6GameServiceAddresses::ReturnOwnerInactive;
 }
 
 // Publish state4/deadline168=0, sample time twice and add CURRENT178/170 intervals modulo32, then install active callbacks.
@@ -784,11 +763,10 @@ __declspec(naked) uint __fastcall BeginOwnerStateTwo(void *owner)
 
 // Inactive callback tail-forwards the original registers/stack into protocol reset.
 // R6GameService.dll @ 1005e5c0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall ResetProtocolCallback(void *owner)
+uint __fastcall ResetProtocolCallback(void *owner)
 {
-  __asm {
-    jmp    R6GameServiceAddresses::ClearOwnerQueuesAndReset
-  }
+  using ResetABI = uint (__fastcall *)(void *);
+  return ((ResetABI)R6GameServiceAddresses::ClearOwnerQueuesAndReset)(owner);
 }
 
 // Build owned record28/payload12: owner8/WORD8e, payload WORD90/0/3049/ffff, with WORD1b4 as checksum seed.
@@ -796,158 +774,103 @@ __declspec(naked) uint __fastcall ResetProtocolCallback(void *owner)
 // Send same record THREE times through CURRENT120, ignore statuses, delete through CURRENT table, call e810, then clear168.
 // No local EH or payload NULL guard; initial record NULL returns0 immediately. Return helper raw EAX; saved ECX slot is0.
 // R6GameService.dll @ 1005e5d0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall SendTripleControlRecordAndResetDeadline(void *owner)
+uint __fastcall SendTripleControlRecordAndResetDeadline(void *owner)
 {
-  __asm {
-    push    ecx
-    push    esi
-    push    edi
-    push    0x1c
-    mov    edi,ecx
-    mov    DWORD PTR [esp+0xc],0x0
-    call    R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    esi,eax
-    test    esi,esi
-    je    Branch22
-    push    ebx
-    push    0xc
-    mov    DWORD PTR [esi+0x4],R6GameServiceAddresses::ClSRPSegmentVTable
-    mov    DWORD PTR [esi+0x14],0xc
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clSegmentVTable
-    call    R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    DWORD PTR [esi+0x10],eax
-    mov    DWORD PTR [esi+0x18],eax
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clSRPSegmentVTable
-    mov    ax,WORD PTR [edi+0x8e]
-    mov    cx,WORD PTR [edi+0x90]
-    mov    edx,DWORD PTR [edi+0x8]
-    mov    WORD PTR [esi+0xc],ax
-    mov    eax,DWORD PTR [esi+0x18]
-    mov    DWORD PTR [esi+0x8],edx
-    mov    WORD PTR [eax+0x2],cx
-    mov    WORD PTR [eax+0x6],0x3049
-    mov    eax,DWORD PTR [esi+0x18]
-    mov    WORD PTR [eax+0x4],0x0
-    mov    ecx,DWORD PTR [esi+0x18]
-    xor    eax,eax
-    mov    WORD PTR [ecx+0x8],0xffff
-    mov    edx,DWORD PTR [esi+0x18]
-    mov    bx,WORD PTR [edi+0x1b4]
-    mov    ecx,DWORD PTR [esi+0x14]
-    mov    WORD PTR [edx],bx
-    mov    edx,DWORD PTR [esi+0x14]
-    sar    ecx,1
-    and    edx,0x80000001
-    jns    Branch17
-    dec    edx
-    or    edx,0xfffffffe
-    inc    edx
-  Branch17:
-    mov    edx,DWORD PTR [esi+0x10]
-    je    Branch18
-    movsx    eax,BYTE PTR [edx]
-    inc    edx
-  Branch18:
-    test    ecx,ecx
-    jle    Branch20
-  Branch19:
-    xor    ebx,ebx
-    mov    bx,WORD PTR [edx]
-    add    edx,0x2
-    add    eax,ebx
-    dec    ecx
-    jne    Branch19
-  Branch20:
-    mov    ecx,eax
-    and    eax,0xffff
-    shr    ecx,0x10
-    add    ecx,eax
-    mov    ebx,0x3
-    mov    eax,ecx
-    shr    eax,0x10
-    add    eax,ecx
-    mov    ecx,DWORD PTR [esi+0x18]
-    not    eax
-    mov    WORD PTR [ecx],ax
-  Branch21:
-    mov    ecx,DWORD PTR [edi+0x120]
-    push    esi
-    call    R6GameServiceAddresses::SendKeyedRecordPayload
-    dec    ebx
-    jne    Branch21
-    mov    edx,DWORD PTR [esi]
-    push    0x1
-    mov    ecx,esi
-    call    DWORD PTR [edx]
-    mov    ecx,edi
-    call    R6GameServiceAddresses::ConfigureOwnerStateFive
-    mov    DWORD PTR [edi+0x168],0x0
-    pop    ebx
-  Branch22:
-    pop    edi
-    pop    esi
-    pop    ecx
-    ret
+  uint base = (uint)owner;
+  uint record = (uint)AllocateGameServiceBytes(0x1c);
+  if (record == 0) return 0;
+  *(uint *)(record + 4) = R6GameServiceAddresses::ClSRPSegmentVTable;
+  *(uint *)(record + 0x14) = 0xc;
+  *(uint *)record = R6GameServiceAddresses::clSegmentVTable;
+  uint buffer = (uint)AllocateGameServiceBytes(0xc);
+  *(uint *)(record + 0x10) = buffer;
+  *(uint *)(record + 0x18) = buffer;
+  *(uint *)record = R6GameServiceAddresses::clSRPSegmentVTable;
+  ushort identifier = *(ushort *)(base + 0x8e);
+  ushort protocolWord = *(ushort *)(base + 0x90);
+  uint context = *(uint *)(base + 8);
+  *(ushort *)(record + 0xc) = identifier;
+  uint payload = *(uint *)(record + 0x18);
+  *(uint *)(record + 8) = context;
+  *(ushort *)(payload + 2) = protocolWord;
+  *(ushort *)(payload + 6) = 0x3049;
+  payload = *(uint *)(record + 0x18);
+  *(ushort *)(payload + 4) = 0;
+  payload = *(uint *)(record + 0x18);
+  *(ushort *)(payload + 8) = 0xffff;
+  payload = *(uint *)(record + 0x18);
+  ushort seed = *(ushort *)(base + 0x1b4);
+  int byteCount = *(int *)(record + 0x14);
+  *(ushort *)payload = seed;
+  uint paritySize = *(uint *)(record + 0x14);
+  int wordCount = byteCount >> 1;
+  uint cursor = *(uint *)(record + 0x10);
+  uint sum = 0;
+  if ((paritySize & 1) != 0) {
+    sum = (uint)(int)*(signed char *)cursor;
+    ++cursor;
   }
+  while (wordCount > 0) {
+    ushort word = *(ushort *)cursor;
+    cursor += 2;
+    sum += word;
+    --wordCount;
+  }
+  uint folded = (sum >> 16) + (sum & 0xffff);
+  uint checksum = ~(folded + (folded >> 16));
+  payload = *(uint *)(record + 0x18);
+  *(ushort *)payload = (ushort)checksum;
+  using SendABI = uint (__thiscall *)(void *,void *);
+  int remaining = 3;
+  do {
+    void *association = *(void **)(base + 0x120);
+    ((SendABI)R6GameServiceAddresses::SendKeyedRecordPayload)(association,(void *)record);
+    --remaining;
+  } while (remaining != 0);
+  using DeleteABI = void *(__thiscall *)(void *,uint);
+  uint table = *(uint *)record;
+  (*(DeleteABI *)table)((void *)record,1);
+  using RestartABI = uint (__fastcall *)(void *);
+  uint result = ((RestartABI)R6GameServiceAddresses::ConfigureOwnerStateFive)(owner);
+  *(uint *)(base + 0x168) = 0;
+  return result;
 }
 
 // Sample time(0), add CURRENT full interval16c modulo32 and publish deadline168 before state5/callback triplets.
 // Install15c=5d340,138=59130,144=5e5d0,150=5d3e0 with zero context words; return raw EAX5d3e0. No gate or EH.
 // R6GameService.dll @ 1005e810 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall ConfigureOwnerStateFive(void *owner)
+uint __fastcall ConfigureOwnerStateFive(void *owner)
 {
-  __asm {
-    push    esi
-    push    edi
-    push    0x0
-    mov    esi,ecx
-    call    R6GameServiceAddresses::time
-    mov    ecx,DWORD PTR [esi+0x16c]
-    lea    edi,[esi+0x15c]
-    add    eax,ecx
-    xor    ecx,ecx
-    mov    DWORD PTR [esi+0x168],eax
-    mov    eax,R6GameServiceAddresses::RejectOwnerPendingBytes
-    mov    DWORD PTR [edi],eax
-    xor    edx,edx
-    mov    eax,R6GameServiceAddresses::list_node_support_NoOp
-    mov    DWORD PTR [esi+0x134],0x5
-    mov    DWORD PTR [edi+0x4],ecx
-    add    esp,0x4
-    mov    DWORD PTR [edi+0x8],edx
-    lea    edi,[esi+0x138]
-    mov    DWORD PTR [esi+0x138],eax
-    mov    eax,R6GameServiceAddresses::SendTripleControlRecordAndResetDeadline
-    mov    DWORD PTR [edi+0x4],ecx
-    mov    DWORD PTR [edi+0x8],edx
-    lea    edi,[esi+0x144]
-    add    esi,0x150
-    mov    DWORD PTR [edi],eax
-    mov    eax,R6GameServiceAddresses::ProcessOwnerConditionalQueues
-    mov    DWORD PTR [esi],eax
-    mov    DWORD PTR [edi+0x4],ecx
-    mov    DWORD PTR [esi+0x4],ecx
-    mov    DWORD PTR [edi+0x8],edx
-    pop    edi
-    mov    DWORD PTR [esi+0x8],edx
-    pop    esi
-    ret
-  }
+  using TimeABI = uint (__cdecl *)(uint *);
+  uint sampled = ((TimeABI)R6GameServiceAddresses::time)(0);
+  uint base = (uint)owner;
+  uint interval = *(uint *)(base + 0x16c);
+  *(uint *)(base + 0x168) = sampled + interval;
+  *(uint *)(base + 0x15c) = R6GameServiceAddresses::RejectOwnerPendingBytes;
+  *(uint *)(base + 0x134) = 5;
+  *(uint *)(base + 0x160) = 0;
+  *(uint *)(base + 0x164) = 0;
+  *(uint *)(base + 0x138) = R6GameServiceAddresses::list_node_support_NoOp;
+  *(uint *)(base + 0x13c) = 0;
+  *(uint *)(base + 0x140) = 0;
+  *(uint *)(base + 0x144) = R6GameServiceAddresses::SendTripleControlRecordAndResetDeadline;
+  uint callback = R6GameServiceAddresses::ProcessOwnerConditionalQueues;
+  *(uint *)(base + 0x150) = callback;
+  *(uint *)(base + 0x148) = 0;
+  *(uint *)(base + 0x154) = 0;
+  *(uint *)(base + 0x14c) = 0;
+  *(uint *)(base + 0x158) = 0;
+  return callback;
 }
 
 // Enter state5, then set current recovery byte1d4=1 and tail to status-record queue; retain queue raw EAX/no local EH.
 // R6GameService.dll @ 1005e5a0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall RestartOwnerProcessing(void *owner)
+uint __fastcall RestartOwnerProcessing(void *owner)
 {
-  __asm {
-    push    esi
-    mov    esi,ecx
-    call    R6GameServiceAddresses::ConfigureOwnerStateFive
-    mov    BYTE PTR [esi+0x1d4],0x1
-    mov    ecx,esi
-    pop    esi
-    jmp    R6GameServiceAddresses::QueueOwnerStatusRecord
-  }
+  using MethodABI = uint (__fastcall *)(void *);
+  ((MethodABI)R6GameServiceAddresses::ConfigureOwnerStateFive)(owner);
+  *(byte *)((uint)owner + 0x1d4) = 1;
+  return ((MethodABI)R6GameServiceAddresses::QueueOwnerStatusRecord)(owner);
 }
 
 // Read record18 payload BYTE6 bit3 BEFORE restarting. Set deadline168=0 if set, otherwise queue status record.
@@ -982,78 +905,52 @@ __declspec(naked) uint __thiscall HandleOwnerRecordStatus(void *owner,void *reco
 // Otherwise cache slot, delete old segment, publish record/zero words, then use CURRENT index/modulus/count for WORD advance.
 // Preserve partial constructor publication, untouched payload/padding, zero saved ECX, raw quotient EAX and no local EH.
 // R6GameService.dll @ 1005e720 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall QueueOwnerStatusRecord(void *owner)
+uint __fastcall QueueOwnerStatusRecord(void *owner)
 {
-  __asm {
-    push    ecx
-    push    ebp
-    push    esi
-    push    edi
-    xor    ebp,ebp
-    push    0x1c
-    mov    edi,ecx
-    mov    DWORD PTR [esp+0x10],ebp
-    call    R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    esi,eax
-    cmp    esi,ebp
-    je    Branch25
-    push    0xc
-    mov    DWORD PTR [esi+0x4],R6GameServiceAddresses::ClSRPSegmentVTable
-    mov    DWORD PTR [esi+0x14],0xc
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clSegmentVTable
-    call    R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    DWORD PTR [esi+0x10],eax
-    mov    DWORD PTR [esi+0x18],eax
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clSRPSegmentVTable
-    mov    ax,WORD PTR [edi+0x8e]
-    mov    cx,WORD PTR [edi+0x90]
-    mov    edx,DWORD PTR [edi+0x8]
-    mov    WORD PTR [esi+0xc],ax
-    mov    eax,DWORD PTR [esi+0x18]
-    mov    DWORD PTR [esi+0x8],edx
-    mov    WORD PTR [eax+0x2],cx
-    mov    WORD PTR [eax+0x6],0x3041
-    mov    eax,DWORD PTR [esi+0x18]
-    mov    WORD PTR [eax+0x4],bp
-    mov    cx,WORD PTR [edi+0x1e0]
-    cmp    cx,WORD PTR [edi+0x1dc]
-    jae    Branch25
-    mov    edx,DWORD PTR [esi+0x18]
-    mov    ax,WORD PTR [edi+0x1e2]
-    push    ebx
-    mov    WORD PTR [edx+0x8],ax
-    mov    edx,DWORD PTR [edi+0x1e8]
-    xor    eax,eax
-    mov    ax,WORD PTR [edi+0x1e2]
-    lea    ecx,[eax+eax*2]
-    lea    ebx,[edx+ecx*4]
-    mov    ecx,DWORD PTR [edx+ecx*4]
-    cmp    ecx,ebp
-    je    Branch24
-    mov    eax,DWORD PTR [ecx]
-    push    0x1
-    call    DWORD PTR [eax]
-  Branch24:
-    mov    DWORD PTR [ebx],esi
-    mov    DWORD PTR [ebx+0x4],ebp
-    mov    DWORD PTR [ebx+0x8],ebp
-    mov    ax,WORD PTR [edi+0x1e2]
-    xor    ecx,ecx
-    inc    ax
-    mov    cx,WORD PTR [edi+0x1de]
-    and    eax,0xffff
-    cdq
-    idiv    ecx
-    inc    WORD PTR [edi+0x1e0]
-    pop    ebx
-    mov    WORD PTR [edi+0x1e2],dx
-  Branch25:
-    pop    edi
-    pop    esi
-    pop    ebp
-    pop    ecx
-    ret
+  uint base = (uint)owner;
+  uint record = (uint)AllocateGameServiceBytes(0x1c);
+  if (record == 0) return 0;
+  *(uint *)(record + 4) = R6GameServiceAddresses::ClSRPSegmentVTable;
+  *(uint *)(record + 0x14) = 0xc;
+  *(uint *)record = R6GameServiceAddresses::clSegmentVTable;
+  uint buffer = (uint)AllocateGameServiceBytes(0xc);
+  *(uint *)(record + 0x10) = buffer;
+  *(uint *)(record + 0x18) = buffer;
+  *(uint *)record = R6GameServiceAddresses::clSRPSegmentVTable;
+  ushort identifier = *(ushort *)(base + 0x8e);
+  ushort protocolWord = *(ushort *)(base + 0x90);
+  uint context = *(uint *)(base + 8);
+  *(ushort *)(record + 0xc) = identifier;
+  uint payload = *(uint *)(record + 0x18);
+  *(uint *)(record + 8) = context;
+  *(ushort *)(payload + 2) = protocolWord;
+  *(ushort *)(payload + 6) = 0x3041;
+  payload = *(uint *)(record + 0x18);
+  *(ushort *)(payload + 4) = 0;
+  ushort count = *(ushort *)(base + 0x1e0);
+  if (count >= *(ushort *)(base + 0x1dc)) return payload;
+  payload = *(uint *)(record + 0x18);
+  ushort index = *(ushort *)(base + 0x1e2);
+  *(ushort *)(payload + 8) = index;
+  uint slots = *(uint *)(base + 0x1e8);
+  uint slotIndex = *(ushort *)(base + 0x1e2);
+  uint slot = slots + slotIndex * 12;
+  void *oldRecord = *(void **)slot;
+  if (oldRecord != 0) {
+    using DeleteABI = void *(__thiscall *)(void *,uint);
+    uint table = *(uint *)oldRecord;
+    (*(DeleteABI *)table)(oldRecord,1);
   }
+  *(uint *)slot = record;
+  *(uint *)(slot + 4) = 0;
+  *(uint *)(slot + 8) = 0;
+  int next = (ushort)(*(ushort *)(base + 0x1e2) + 1);
+  int modulus = *(ushort *)(base + 0x1de);
+  uint quotient = next / modulus;
+  ushort remainder = next % modulus;
+  ++*(ushort *)(base + 0x1e0);
+  *(ushort *)(base + 0x1e2) = remainder;
+  return quotient;
 }
 
 // Signed compare requested count with CURRENT194; failure clears only AL of request. Low preserve BYTE selects copy/consume.

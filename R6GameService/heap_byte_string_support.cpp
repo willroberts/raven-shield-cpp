@@ -415,54 +415,30 @@ const R6GameServiceNative::FuncInfo ConstructHeapByteStringExceptionInfo = {
   0x0,
 };
 
-// Allocate a nonzero count and publish begin/end/capacity without a character write; return wrapped capacity end.
-// R6GameService.dll @ 100184a0 : complete native operations/raw ABI; descriptive shared helper name.
-__declspec(naked) uint __thiscall InitializeHeapByteString(void *triplet,uint byteCount)
+// Reject a zero size, allocate the captured count and publish begin/end/capacity without writing a character.
+// R6GameService.dll @ 100184a0 : selected PE32 operations; helper/type names remain descriptive.
+uint __thiscall InitializeHeapByteString(void *triplet,uint byteCount)
 {
-  __asm {
-    push   esi
-    push   edi
-    mov    edi,DWORD PTR [esp+0xc]
-    mov    esi,ecx
-    cmp    edi,0xffffffff
-    ja     Branch9
-    test   edi,edi
-    jbe    Branch9
-    push   edi
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    DWORD PTR [esi],eax
-    mov    DWORD PTR [esi+0x4],eax
-    add    eax,edi
-    pop    edi
-    mov    DWORD PTR [esi+0x8],eax
-    pop    esi
-    ret    0x4
-  Branch9:
-    push   R6GameServiceAddresses::s_basic_string
-    call   R6GameServiceAddresses::ThrowByteStringLengthError
-    add    esp,0x4
-    pop    edi
-    pop    esi
-    ret    0x4
+  uint count = byteCount;
+  if (count == 0) {
+    using ThrowABI = uint (__cdecl *)(const char *);
+    return ((ThrowABI)R6GameServiceAddresses::ThrowByteStringLengthError)
+        ((const char *)R6GameServiceAddresses::s_basic_string);
   }
+  uint allocation = (uint)AllocateGameServiceBytes(count);
+  *(uint *)triplet = allocation;
+  *(uint *)((byte *)triplet + 4) = allocation;
+  uint capacityEnd = allocation + count;
+  *(uint *)((byte *)triplet + 8) = capacityEnd;
+  return capacityEnd;
 }
 
-// Free the current first-word buffer, then reload the low deleting flag and optionally free cached owner; return owner.
-// R6GameService.dll @ 100283c0 : complete native operations/raw ABI; descriptive shared helper name.
-__declspec(naked) void * __thiscall ReleaseHeapByteStringAndMaybeOwner(void *owner,uint deletingFlags)
+// Release the first-word buffer, then conditionally free the cached owner using the current deletion flag.
+// R6GameService.dll @ 100283c0 : selected PE32 operations; helper/type names remain descriptive.
+void * __thiscall ReleaseHeapByteStringAndMaybeOwner(void *owner,uint deletingFlags)
 {
-  __asm {
-    push   esi
-    mov    esi,ecx
-    call   R6GameServiceAddresses::ReleaseFirstWordBuffer
-    test   BYTE PTR [esp+0x8],0x1
-    je     Branch10
-    push   esi
-    call   R6GameServiceAddresses::FreeThroughGlobalAllocator
-    add    esp,0x4
-  Branch10:
-    mov    eax,esi
-    pop    esi
-    ret    0x4
-  }
+  using ReleaseABI = void (__thiscall *)(void *);
+  ((ReleaseABI)R6GameServiceAddresses::ReleaseFirstWordBuffer)(owner);
+  if ((deletingFlags & 1) != 0) FreeThroughGlobalAllocator(owner);
+  return owner;
 }

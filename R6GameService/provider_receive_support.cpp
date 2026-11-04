@@ -351,69 +351,35 @@ __declspec(naked) uint __fastcall DispatchProviderReceiveState(void *owner)
 
 // Reject initial nonready connection; concatenate while current countWORD and saved sendAL permit, discard only success.
 // Reload connection/count output per batch; absent connection drops batch. Free captured bytes and return AL1 even after send failure.
-// R6GameService.dll @ 10057f00 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall DrainQueuedTransportPayloads(uint providerAddress)
+// R6GameService.dll @ 10057f00 : inferred provider fields; initial owner/count scratch maps to native saved ECX S-4.
+uint __fastcall DrainQueuedTransportPayloads(uint providerAddress)
 {
-  __asm {
-    push   ecx
-    push   esi
-    mov    esi,ecx
-    mov    eax,DWORD PTR [esi+0x14]
-    test   eax,eax
-    je    Branch19
-    mov    cl,BYTE PTR [eax+0x44]
-    test   cl,cl
-    jne    Branch19
-    xor    al,al
-    pop    esi
-    pop    ecx
-    ret
-  Branch19:
-    cmp    WORD PTR [esi+0x38],0x0
-    push   ebx
-    push   ebp
-    push   edi
-    mov    bl,0x1
-    je    Branch23
-  Branch20:
-    test   bl,bl
-    je    Branch23
-    lea    eax,[esp+0x10]
-    lea    edi,[esi+0x2c]
-    push   eax
-    push   0x3e8
-    mov    ecx,edi
-    call   R6GameServiceAddresses::ConcatenateCompactPayloadsThroughLimit
-    mov    ecx,DWORD PTR [esi+0x14]
-    mov    ebp,eax
-    test   ecx,ecx
-    je    Branch21
-    mov    edx,DWORD PTR [esp+0x10]
-    push   edx
-    push   ebp
-    call   R6GameServiceAddresses::SendOrQueueConnectionBytes
-    mov    bl,al
-  Branch21:
-    test   bl,bl
-    je    Branch22
-    mov    eax,DWORD PTR [esp+0x10]
-    mov    ecx,edi
-    push   eax
-    call   R6GameServiceAddresses::DiscardConsumedCompactPayloads
-  Branch22:
-    push   ebp
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    cmp    WORD PTR [esi+0x38],0x0
-    jne    Branch20
-  Branch23:
-    pop    edi
-    pop    ebp
-    pop    ebx
-    mov    al,0x1
-    pop    esi
-    pop    ecx
-    ret
+  uint base = providerAddress;
+  uint result = *(uint *)(base + 0x14);
+  if (result != 0 && *(byte *)(result + 0x44) == 0) return result & 0xffffff00;
+  uint batchByteCount = base;
+  byte sendStatus = 1;
+  using ConcatABI = uint (__thiscall *)(void *,uint,uint *);
+  using SendABI = char (__thiscall *)(void *,int,uint);
+  using DiscardABI = uint (__thiscall *)(void *,uint);
+  using FreeABI = uint (__stdcall *)(void *);
+  while (*(ushort *)(base + 0x38) != 0 && sendStatus != 0) {
+    void *queue = (void *)(base + 0x2c);
+    uint bytes = ((ConcatABI)R6GameServiceAddresses::ConcatenateCompactPayloadsThroughLimit)(
+        queue,1000,&batchByteCount);
+    void *connection = *(void **)(base + 0x14);
+    if (connection != 0) {
+      uint currentCount = batchByteCount;
+      sendStatus = (byte)((SendABI)R6GameServiceAddresses::SendOrQueueConnectionBytes)(
+          connection,(int)bytes,currentCount);
+    }
+    if (sendStatus != 0) {
+      uint currentCount = batchByteCount;
+      ((DiscardABI)R6GameServiceAddresses::DiscardConsumedCompactPayloads)(queue,currentCount);
+    }
+    result = ((FreeABI)R6GameServiceAddresses::TailFreeThroughGlobalAllocator)((void *)bytes);
   }
+  return (result & 0xffffff00) | 1;
 }
 
 // R6GameService.dll @ 10058460 : ReceiveMatchingTransportRecord

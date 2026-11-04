@@ -37,40 +37,31 @@ __declspec(naked) void * __thiscall InitializeExtendedVtableSubobject(void *owne
 // Restore clPersistentCB through adjusted receiver+18, restore allocator table, free complete owner if low bit1.
 // Load flag after restoration; return complete owner despite free EAX, with no own EH. RET4.
 // R6GameService.dll @ 1004fe60 : complete native control/access order and raw ABI retained.
-__declspec(naked) void * __thiscall DeleteclPersistentCB(void *adjustedReceiver,uint deleteFlags)
+void *__thiscall DeleteclPersistentCB(void *secondary,uint deletionFlags)
 {
-  __asm {
-    push    esi
-    lea    esi,[ecx-0x18]
-    push    edi
-    lea    edi,[esi+0x18]
-    mov    ecx,edi
-    call    R6GameServiceAddresses::RestoreExtendedVtableSubobject
-    mov    al,BYTE PTR [esp+0xc]
-    mov    DWORD PTR [edi],R6GameServiceAddresses::clExtalloc_Override_BaseclassVTable
-    test    al,0x1
-    je    Branch2
-    push    esi
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch2:
-    mov    eax,esi
-    pop    edi
-    pop    esi
-    ret    0x4
+  uint owner = (uint)secondary - 0x18;
+  void *fixedBase = (void *)(owner + 0x18);
+  using RestoreABI = uint (__fastcall *)(void *);
+  ((RestoreABI)R6GameServiceAddresses::RestoreExtendedVtableSubobject)(fixedBase);
+  byte flags = *(byte *)&deletionFlags;
+  *(uint *)fixedBase = R6GameServiceAddresses::clExtalloc_Override_BaseclassVTable;
+  if ((flags & 1) != 0) {
+    using FreeABI = uint (__stdcall *)(void *);
+    ((FreeABI)R6GameServiceAddresses::TailFreeThroughGlobalAllocator)((void *)owner);
   }
+  return (void *)owner;
 }
 
 // Restore clPersistentCB primary at receiver-18, then dynamic secondary; raw EAX=loaded vbptr.
 // R6GameService.dll @ 1004fe90 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall RestoreExtendedVtableSubobject(void *adjustedReceiver)
+uint __fastcall RestoreExtendedVtableSubobject(void *secondary)
 {
-  __asm {
-    mov    eax,DWORD PTR [ecx-0x14]
-    mov    DWORD PTR [ecx-0x18],R6GameServiceAddresses::clPersistentCBVTable
-    mov    edx,DWORD PTR [eax+0x8]
-    mov    DWORD PTR [edx+ecx*1-0x14],R6GameServiceAddresses::clPersistentCBVTableAdjusted24
-    ret
-  }
+  uint owner = (uint)secondary - 0x18;
+  uint offsetTable = *(uint *)(owner + 4);
+  *(uint *)owner = R6GameServiceAddresses::clPersistentCBVTable;
+  uint displacement = *(uint *)(offsetTable + 8);
+  *(uint *)(owner + 4 + displacement) = R6GameServiceAddresses::clPersistentCBVTableAdjusted24;
+  return offsetTable;
 }
 
 // Tail optional member+c with unchanged ECX/stack; NULL target returns EAX0 without arguments.

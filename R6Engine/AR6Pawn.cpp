@@ -6093,9 +6093,9 @@ __declspec(naked) void execR6GetViewRotationExceptionHandler(void)
     }
 }
 
-// R6Engine.dll @ 10024130 : AR6Pawn::GetRotationOffset (hidden FRotator result)
 // Copies the player's offset, or interpolates wrapping component differences using the retained x87 transition factor.
 // Native ABI view keeps the hidden result buffer and its returned EAX pointer explicit.
+// R6Engine.dll @ 10024130 : AR6Pawn::GetRotationOffset (hidden FRotator result)
 FRotator* __thiscall AR6Pawn::GetRotationOffset(FRotator* result)
 {
     byte* pawnBytes = (byte*)this;
@@ -6110,36 +6110,27 @@ FRotator* __thiscall AR6Pawn::GetRotationOffset(FRotator* result)
     const uint* previousOffset = (const uint*)(pawnBytes + 0x8a8); // m_rPrevRotationOffset.
     uint previousPitch = previousOffset[0];
     const float* transitionFactor = (const float*)(pawnBytes + 0x118); // m_fBoneRotationTransition.
-    __asm {
-        mov eax,transitionFactor
-        fld dword ptr [eax]
-    }
+    float10 factor = (float10)*transitionFactor; // Live x87 value, retained below each component product.
     uint currentPitch = currentOffset[0];
     uint currentRoll = currentOffset[2];
     int pitchDelta = (int)(currentPitch - previousPitch);
     uint currentYaw = currentOffset[1];
     int pitchDifference = pitchDelta; // Native scratch at entry ESP-0x0c.
-    __asm { fild dword ptr [pitchDifference] }
+    float10 pitchProduct = (float10)pitchDifference;
     uint previousYaw = previousOffset[1];
-    __asm { fmul st,st(1) }
+    pitchProduct *= factor;
     uint previousRoll = previousOffset[2];
     int yawDifference = (int)(currentYaw - previousYaw); // Entry ESP-0x08.
     int rollDifference = (int)(currentRoll - previousRoll); // Entry ESP-0x04.
-    uint pitchStep, yawStep, rollStep;
-    // The helper consumes each product, leaving the factor underneath; only its low EAX word contributes.
-    __asm {
-        call TruncateX87ToSigned64
-        fild dword ptr [yawDifference]
-        mov pitchStep,eax
-        fmul st,st(1)
-        call TruncateX87ToSigned64
-        fild dword ptr [rollDifference]
-        mov yawStep,eax
-        fmul st,st(1)
-        call TruncateX87ToSigned64
-        mov rollStep,eax
-        fstp st(0)
-    }
+    // These casts denote the native compiler's ST0 -> EDX:EAX helper at10042934, including its correction/faults.
+    // No stack operands or binary32/64 product spills are introduced; only the low returned words contribute.
+    uint pitchStep = (uint)(longlong)pitchProduct;
+    float10 yawProduct = (float10)yawDifference;
+    yawProduct *= factor;
+    uint yawStep = (uint)(longlong)yawProduct;
+    float10 rollProduct = (float10)rollDifference;
+    rollProduct *= factor;
+    uint rollStep = (uint)(longlong)rollProduct;
     uint baseRoll = previousOffset[2];
     uint baseYaw = previousOffset[1];
     uint basePitch = previousOffset[0];

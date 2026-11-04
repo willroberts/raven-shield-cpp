@@ -10,41 +10,28 @@ byte GForwardChecksumReady = 0;
 // R6GameService.dll data @ 10094529 : native storage identity retained.
 byte GReflectedChecksumReady = 0;
 
+// Inferred guard for the completed local vector; a throwing normal free leaves its storage eligible for cleanup again.
+struct CollectedChecksumVectorCleanup {
+  uint *vector;
+  bool armed;
+  ~CollectedChecksumVectorCleanup() noexcept(false) {
+    if (armed) ReleaseAndResetStorageAt04((int)vector);
+  }
+};
+
 // Checksums the builder returned vector, frees separately owned local storage and preserves the computed word.
-// R6GameService.dll @ 10034a30 : C++ hashing/cleanup with native pooled vector lifetime slots.
-__declspec(naked) uint __cdecl ComputeCollectedStringsChecksum()
+// R6GameService.dll @ 10034a30 : local storage cleanup is armed only after the builder returns.
+uint __cdecl ComputeCollectedStringsChecksum()
 {
-  byte *nativeFrame;
-  __asm {
-    // ESP-based pooled EH664c8: hidden local vector at entryESP-1c, distinct from builder returned EAX.
-    push   0xffffffff
-    push   R6GameServiceAddresses::LocalByteVectorExceptionHandler
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x10
-    lea    eax,[esp]
-    push   esi
-    mov    nativeFrame,esp
-  }
-  using BuildABI = void * (__cdecl *)(void *);
-  using ChecksumABI = uint (__cdecl *)(const void *);
-  using FreeABI = void (__cdecl *)(void *);
-  void *built = ((BuildABI)R6GameServiceAddresses::BuildByteVectorFromCollectedStrings)(nativeFrame + 4);
-  *(uint *)(nativeFrame + 0x1c) = 0;
-  uint output = ((ChecksumABI)R6GameServiceAddresses::checksum_support_UpdateChecksumFromBuffer)(built);
-  // The builder return is hashed; separately owned local begin is reloaded only after hashing completes.
-  void *localBegin = *(void **)(nativeFrame + 8);
-  if (localBegin != nullptr) ((FreeABI)R6GameServiceAddresses::FreeThroughGlobalAllocator)(localBegin);
-  __asm {
-    mov    esi,output
-    mov    ecx,DWORD PTR [esp+0x14]
-    mov    eax,esi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x1c
-    ret
-  }
+  uint localVector[4];
+  using BuildABI = void *(__cdecl *)(void *);
+  void *built = ((BuildABI)R6GameServiceAddresses::BuildByteVectorFromCollectedStrings)(localVector);
+  CollectedChecksumVectorCleanup cleanup{localVector, true};
+  uint computed = checksum_support_UpdateChecksumFromBuffer(built);
+  void *localBegin = (void *)localVector[1];
+  if (localBegin != 0) FreeThroughGlobalAllocator(localBegin);
+  cleanup.armed = false;
+  return computed;
 }
 
 // Appends the collected checksum most-significant byte first, retaining native argument-slot byte scratch.
@@ -286,72 +273,36 @@ void __cdecl InitializeReflectedChecksumTable()
 }
 
 // Initializes forward state to0xffff, updates the live byte range and stores/returns the destination.
-// R6GameService.dll @ 10036770 : C++ forward checksum with native destination, state scratch and RET4.
-__declspec(naked) uint * __thiscall UpdateChecksumFromBuffer(uint *destination,const void *byteVector)
+// R6GameService.dll @ 10036770 : thiscall destination, one vector word, RET4; returns the saved destination.
+uint *__thiscall UpdateChecksumFromBuffer(uint *destination,const void *byteVector)
 {
-  byte *nativeFrame;
-  uint *output;
-  __asm {
-    push   ecx
-    push   esi
-    mov    esi,ecx
-    mov    nativeFrame,esp
-    mov    output,esi
-  }
-  *(uint *)(nativeFrame + 4) = 0xffff;
+  uint *output = destination;
+  uint state = 0xffff;
   InitializeForwardChecksumTable();
-  byte *vector = *(byte **)(nativeFrame + 0xc);
+  uint vector = (uint)byteVector;
   uint begin = *(uint *)(vector + 4);
   uint length = begin == 0 ? 0 : *(uint *)(vector + 8) - begin;
-  using UpdateABI = void (__thiscall *)(uint *,const byte *,const byte *);
-  ((UpdateABI)R6GameServiceAddresses::UpdateForwardChecksumState)
-      ((uint *)(nativeFrame + 4),(const byte *)begin,(const byte *)(begin + length));
-  uint computed = *(uint *)(nativeFrame + 4);
+  UpdateForwardChecksumState(&state,(const byte *)begin,(const byte *)(begin + length));
+  uint computed = state;
   *output = computed;
-  __asm {
-    mov    esi,output
-    mov    eax,esi
-    pop    esi
-    pop    ecx
-    ret    0x4
-  }
+  return output;
 }
 
 // Initializes reflected state to0xffffffff, updates the unsigned byte range and returns it without final XOR.
-// R6GameService.dll @ 100367b0 : C++ reflected checksum with native state scratch and raw ECX result residue.
-__declspec(naked) uint __cdecl checksum_support_UpdateChecksumFromBuffer(const void *byteVector)
+// R6GameService.dll @ 100367b0 : one cdecl vector word; returns the full32 reflected state.
+uint __cdecl checksum_support_UpdateChecksumFromBuffer(const void *byteVector)
 {
-  byte *nativeFrame;
-  __asm {
-    push   ecx
-    push   ebx
-    or     ebx,0xffffffff
-    xor    edx,edx
-    push   esi
-    xor    eax,eax
-    mov    nativeFrame,esp
-  }
   uint sourceBits = 0xffffffff;
   uint reversed = 0;
   for (uint bit = 0; bit < 32; ++bit) {
     if ((sourceBits & 1) != 0) reversed |= 1u << (31 - bit);
     sourceBits >>= 1;
   }
-  *(uint *)(nativeFrame + 8) = reversed;
+  uint state = reversed;
   InitializeReflectedChecksumTable();
-  byte *vector = *(byte **)(nativeFrame + 0x10);
+  uint vector = (uint)byteVector;
   uint begin = *(uint *)(vector + 4);
-  __asm {
-    pop    esi
-    pop    ebx
-  }
   uint length = begin == 0 ? 0 : *(uint *)(vector + 8) - begin;
-  using UpdateABI = void (__thiscall *)(uint *,const byte *,const byte *);
-  ((UpdateABI)R6GameServiceAddresses::UpdateReflectedTableChecksum)
-      ((uint *)(nativeFrame + 8),(const byte *)begin,(const byte *)(begin + length));
-  __asm {
-    mov    eax,DWORD PTR [esp]
-    pop    ecx
-    ret
-  }
+  UpdateReflectedTableChecksum(&state,(const byte *)begin,(const byte *)(begin + length));
+  return state;
 }

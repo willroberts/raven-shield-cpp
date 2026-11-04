@@ -150,29 +150,18 @@ __declspec(naked) uint __thiscall IsTransportConnected(void *transport)
 
 // Existing provider/nonNULL payload forwards full words(opcode,4,mode,payload), raw helper EAX/RET12.
 // Missing provider clears incoming AL; NULL payload returns full0. No own guard or payload release.
-// R6GameService.dll @ 10032170 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall SendTransportPayload(
-    void *transport,uint opcodeWord,uint modeWord,const void *payload)
+// R6GameService.dll @ 10032170 : ECX/EAX view; three native stack words, RET12.
+uint SendTransportPayload([[r6abi::register_input("ecx")]] void *transport,
+    uint opcodeWord,uint modeWord,const void *payload,[[r6abi::register_input("eax")]] uint eaxAtEntry)
 {
-  __asm {
-    mov    ecx,DWORD PTR [ecx+0x4]
-    test   ecx,ecx
-    je     Branch8
-    mov    eax,DWORD PTR [esp+0xc]
-    test   eax,eax
-    je     Branch8
-    mov    edx,DWORD PTR [esp+0x4]
-    push   eax
-    mov    eax,DWORD PTR [esp+0xc]
-    push   eax
-    push   0x4
-    push   edx
-    call   R6GameServiceAddresses::QueueCopiedTransportRecord
-    ret    0xc
-  Branch8:
-    xor    al,al
-    ret    0xc
-  }
+  void *provider = *(void **)((uint)transport + 4);
+  if (provider == nullptr) return eaxAtEntry & 0xffffff00;
+  const void *currentPayload = payload;
+  if (currentPayload == nullptr) return 0;
+  uint opcode = opcodeWord;
+  uint mode = modeWord;
+  using QueueABI = uint (__thiscall *)(void *,uint,uint,uint,const void *);
+  return ((QueueABI)R6GameServiceAddresses::QueueCopiedTransportRecord)(provider,opcode,4,mode,currentPayload);
 }
 
 // Additional provider byte50 gate before full-word dispatch; preserve raw helper EAX/RET12.

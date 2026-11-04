@@ -4,205 +4,161 @@
 int __stdcall FormatWordAsDecimal(uint codeWord,char *output);
 uint __stdcall FormatByteLabel(uint codeWord,char *output);
 
+// Inferred serializer locals: sizeS-3c, flags/copyS-38, serializerS-34 and binaryS-2c.
+struct GSMessageSerializeLocals {
+  uint transformedBytes;
+  uint flagsOrCopy;
+  uint serializer[2];
+  uint binary[7];
+  uint binaryBaseContext;
+};
+
+// Owns descriptor construction only; header, copied bytes and transformed bytes have no exception cleanup.
+struct GSMessageSerializeCleanup {
+  GSMessageSerializeLocals *frame;
+  int state;
+  bool armed;
+  // Follow the active descriptor state without retrying an entered normal buffer release.
+  ~GSMessageSerializeCleanup() noexcept(false)
+  {
+    if (!armed) return;
+    using ContextABI = void (__fastcall *)(void *);
+    while (state >= 0) {
+      switch (state) {
+        case 0:
+          state = -1;
+          if ((frame->flagsOrCopy & 1) != 0)
+            ((ContextABI)R6GameServiceAddresses::list_node_support_NoOp)(&frame->binaryBaseContext);
+          break;
+        case 1:
+          state = 0;
+          ResetClDataVtable(frame->binary);
+          break;
+        case 2:
+          state = -1;
+          DestroyClDataBinAlias(frame->binary);
+          break;
+        case 3:
+          state = 2;
+          ResetClDataSerializeVtableAlias(frame->serializer);
+          break;
+        case 4: case 5:
+          state = -1;
+          ResetClDataVtable(frame->binary);
+          break;
+      }
+    }
+  }
+};
+
 // Serialize payload to temporary binary descriptor; build cleared six-byte header and optionally transform payload
 // through current slot14 twice.
 // Cache original serialized length before allocation, reload current descriptor range for copy, retain current
 // transform size after output.
-// Reuse output argument for final buffer, free header/output/copy in order, then release descriptor; only descriptors
-// have EH cleanup. RET4.
+// Size scratch remains uninitialized until written by the codec. Header helper argument high bits are unused.
+// Reuse output argument for the result; free header/output/current copy, then release the descriptor.
+// Only descriptors have exception cleanup. RET4.
 // R6GameService.dll @ 10059b00 : complete native control/access order and raw ABI retained.
-__declspec(naked) void *__thiscall SerializePayloadRecord(void *message,uint *outputSize)
+void * __thiscall SerializePayloadRecord(void *message,uint *outputSize)
 {
-  __asm {
-    push    0xffffffff
-    push    R6GameServiceAddresses::SelectMessageSerializerEH
-    mov    eax,fs:0x0
-    push    eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x30
-    push    ebx
-    push    ebp
-    push    esi
-    push    edi
-    mov    edi,0x1
-    mov    DWORD PTR [esp+0x14],0x0
-    mov    esi,ecx
-    mov    DWORD PTR [esp+0x24],R6GameServiceAddresses::ClDataBinOwnerBaseOffsets
-    mov    DWORD PTR [esp+0x38],R6GameServiceAddresses::ClDataBinBaseOffsets
-    mov    DWORD PTR [esp+0x14],edi
-    mov    ebp,0x2
-    mov    DWORD PTR [esp+0x20],R6GameServiceAddresses::PTR_LAB
-    mov    DWORD PTR [esp+0x28],ebp
-    push    0x0
-    lea    ecx,[esp+0x30]
-    mov    DWORD PTR [esp+0x4c],edi
-    call    R6GameServiceAddresses::InitializeEmptyByteBufferTriplet
-    mov    ebx,R6GameServiceAddresses::clDataBinPTR_FUN
-    mov    DWORD PTR [esp+0x20],ebx
-    push    edi
-    lea    ecx,[esp+0x1c]
-    mov    DWORD PTR [esp+0x4c],ebp
-    call    R6GameServiceAddresses::ConstructClDataSerialize
-    mov    ecx,DWORD PTR [esi+0x14]
-    lea    eax,[esp+0x20]
-    push    eax
-    push    ecx
-    lea    ecx,[esp+0x20]
-    mov    BYTE PTR [esp+0x50],0x3
-    call    R6GameServiceAddresses::WriteTaggedEntries
-    mov    edi,DWORD PTR [esp+0x30]
-    mov    edx,DWORD PTR [esp+0x2c]
-    push    0x6
-    sub    edi,edx
-    call    R6GameServiceAddresses::AllocateGameServiceBytes
-    xor    edx,edx
-    mov    ebp,eax
-    mov    DWORD PTR [eax],edx
-    test    edi,edi
-    mov    WORD PTR [eax+0x4],dx
-    jne    Branch1
-    push    0x6
-    push    ebp
-    call    R6GameServiceAddresses::WriteHeaderSize24
-    mov    cl,BYTE PTR [esi+0xc]
-    push    ecx
-    push    ebp
-    call    R6GameServiceAddresses::WriteHeaderByte3HighBits
-    mov    dl,BYTE PTR [esi+0xe]
-    push    edx
-    push    ebp
-    call    R6GameServiceAddresses::SetHeaderByte3Bit5
-    mov    al,BYTE PTR [esi+0xd]
-    push    eax
-    push    ebp
-    call    R6GameServiceAddresses::WriteHeaderByte4
-    mov    cl,BYTE PTR [esi+0x10]
-    push    ecx
-    push    ebp
-    call    R6GameServiceAddresses::WriteHeaderByte5HighNibble
-    mov    dl,BYTE PTR [esi+0x11]
-    push    edx
-    push    ebp
-    call    R6GameServiceAddresses::WriteHeaderByte5LowNibble
-    mov    eax,DWORD PTR [esp+0x50]
-    lea    ecx,[esp+0x18]
-    mov    BYTE PTR [esp+0x48],0x2
-    mov    DWORD PTR [eax],0x6
-    call    R6GameServiceAddresses::ResetClDataSerializeVtable
-    mov    DWORD PTR [esp+0x20],ebx
-    lea    ecx,[esp+0x2c]
-    mov    DWORD PTR [esp+0x48],0x4
-    call    R6GameServiceAddresses::ReleaseNonNullFirstWordBuffer
-    mov    eax,ebp
-    jmp    Branch3
-  Branch1:
-    push    edi
-    call    R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    ecx,DWORD PTR [esp+0x2c]
-    mov    ebx,eax
-    mov    eax,DWORD PTR [esp+0x30]
-    mov    DWORD PTR [esp+0x14],ebx
-    cmp    eax,ecx
-    je    Branch2
-    sub    eax,ecx
-    push    eax
-    push    ecx
-    push    ebx
-    call    R6GameServiceAddresses::memmove
-    add    esp,0xc
-  Branch2:
-    mov    edx,DWORD PTR [esi]
-    lea    eax,[esp+0x10]
-    push    eax
-    push    0x0
-    push    edi
-    push    ebx
-    mov    ecx,esi
-    call    DWORD PTR [edx+0x14]
-    mov    ecx,DWORD PTR [esp+0x10]
-    push    ecx
-    call    R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    ecx,DWORD PTR [esp+0x14]
-    mov    edx,DWORD PTR [esi]
-    mov    ebx,eax
-    lea    eax,[esp+0x10]
-    push    eax
-    push    ebx
-    push    edi
-    push    ecx
-    mov    ecx,esi
-    call    DWORD PTR [edx+0x14]
-    mov    edx,DWORD PTR [esp+0x10]
-    mov    edi,DWORD PTR [esp+0x50]
-    lea    eax,[edx+0x6]
-    push    eax
-    push    ebp
-    mov    DWORD PTR [edi],eax
-    call    R6GameServiceAddresses::WriteHeaderSize24
-    mov    al,BYTE PTR [esi+0xc]
-    push    eax
-    push    ebp
-    call    R6GameServiceAddresses::WriteHeaderByte3HighBits
-    mov    cl,BYTE PTR [esi+0xe]
-    push    ecx
-    push    ebp
-    call    R6GameServiceAddresses::SetHeaderByte3Bit5
-    mov    dl,BYTE PTR [esi+0xd]
-    push    edx
-    push    ebp
-    call    R6GameServiceAddresses::WriteHeaderByte4
-    mov    al,BYTE PTR [esi+0x10]
-    push    eax
-    push    ebp
-    call    R6GameServiceAddresses::WriteHeaderByte5HighNibble
-    mov    cl,BYTE PTR [esi+0x11]
-    push    ecx
-    push    ebp
-    call    R6GameServiceAddresses::WriteHeaderByte5LowNibble
-    mov    edx,DWORD PTR [edi]
-    push    edx
-    call    R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    ecx,ebp
-    mov    edx,eax
-    lea    edi,[eax+0x6]
-    push    ebp
-    mov    esi,DWORD PTR [ecx]
-    mov    DWORD PTR [esp+0x54],eax
-    mov    DWORD PTR [edx],esi
-    mov    esi,ebx
-    mov    cx,WORD PTR [ecx+0x4]
-    mov    WORD PTR [edx+0x4],cx
-    mov    ecx,DWORD PTR [esp+0x14]
-    mov    edx,ecx
-    shr    ecx,0x2
-    rep    movs DWORD PTR es:[edi],DWORD PTR ds:[esi]
-    mov    ecx,edx
-    and    ecx,0x3
-    rep    movs BYTE PTR es:[edi],BYTE PTR ds:[esi]
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    push    ebx
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    eax,DWORD PTR [esp+0x14]
-    push    eax
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    lea    ecx,[esp+0x18]
-    mov    BYTE PTR [esp+0x48],0x2
-    call    R6GameServiceAddresses::ResetClDataSerializeVtable
-    mov    DWORD PTR [esp+0x20],R6GameServiceAddresses::clDataBinPTR_FUN
-    mov    DWORD PTR [esp+0x48],0x5
-    lea    ecx,[esp+0x2c]
-    call    R6GameServiceAddresses::ReleaseNonNullFirstWordBuffer
-    mov    eax,DWORD PTR [esp+0x50]
-  Branch3:
-    mov    ecx,DWORD PTR [esp+0x40]
-    pop    edi
-    pop    esi
-    pop    ebp
-    pop    ebx
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x3c
-    ret    0x4
+  GSMessageSerializeLocals frame;
+  GSMessageSerializeCleanup cleanup{&frame,-1,true};
+  frame.flagsOrCopy = 0;
+  void *savedMessage = message;
+  frame.binary[1] = R6GameServiceAddresses::ClDataBinOwnerBaseOffsets;
+  frame.binary[6] = R6GameServiceAddresses::ClDataBinBaseOffsets;
+  frame.flagsOrCopy = 1;
+  frame.binary[0] = R6GameServiceAddresses::PTR_LAB;
+  frame.binary[2] = 2;
+  cleanup.state = 1;
+  InitializeEmptyByteBufferTriplet(frame.binary + 3,0);
+  frame.binary[0] = R6GameServiceAddresses::clDataBinPTR_FUN;
+  cleanup.state = 2;
+  ConstructClDataSerialize(frame.serializer,1);
+  uint payload = *(uint *)((byte *)savedMessage + 0x14);
+  cleanup.state = 3;
+  WriteTaggedEntries(frame.serializer,(int)payload,(undefined1 *)frame.binary);
+  uint serializedEnd = frame.binary[4];
+  uint serializedBegin = frame.binary[3];
+  uint serializedBytes = serializedEnd - serializedBegin;
+  byte *header = (byte *)AllocateGameServiceBytes(6);
+  *(uint *)header = 0;
+  *(ushort *)(header + 4) = 0;
+  if (serializedBytes == 0) {
+    WriteHeaderSize24(header,6);
+    WriteHeaderByte3HighBits(header,*((byte *)savedMessage + 0xc));
+    SetHeaderByte3Bit5(header,*((byte *)savedMessage + 0xe));
+    WriteHeaderByte4(header,*((byte *)savedMessage + 0xd));
+    WriteHeaderByte5HighNibble(header,*((byte *)savedMessage + 0x10));
+    WriteHeaderByte5LowNibble(header,*((byte *)savedMessage + 0x11));
+    uint *sizeCell = outputSize;
+    cleanup.state = 2;
+    *sizeCell = 6;
+    ResetClDataSerializeVtable(frame.serializer);
+    frame.binary[0] = R6GameServiceAddresses::clDataBinPTR_FUN;
+    cleanup.state = 4;
+    ReleaseNonNullFirstWordBuffer(frame.binary + 3);
+    cleanup.armed = false;
+    return header;
   }
+  byte *copy = (byte *)AllocateGameServiceBytes(serializedBytes);
+  uint currentBegin = frame.binary[3];
+  uint currentEnd = frame.binary[4];
+  frame.flagsOrCopy = (uint)copy;
+  if (currentEnd != currentBegin) memmove(copy,(void *)currentBegin,currentEnd - currentBegin);
+  using CodecABI = uint (__thiscall *)(void *,const byte *,uint,byte *,uint *);
+  uint table = *(uint *)savedMessage;
+  (*(CodecABI *)(table + 0x14))(savedMessage,copy,serializedBytes,nullptr,&frame.transformedBytes);
+  byte *transformed = (byte *)AllocateGameServiceBytes(frame.transformedBytes);
+  byte *currentCopy = (byte *)frame.flagsOrCopy;
+  table = *(uint *)savedMessage;
+  (*(CodecABI *)(table + 0x14))(savedMessage,currentCopy,serializedBytes,transformed,&frame.transformedBytes);
+  uint reportedBytes = frame.transformedBytes;
+  uint *sizeCell = outputSize;
+  uint totalBytes = reportedBytes + 6;
+  *sizeCell = totalBytes;
+  WriteHeaderSize24(header,totalBytes);
+  WriteHeaderByte3HighBits(header,*((byte *)savedMessage + 0xc));
+  SetHeaderByte3Bit5(header,*((byte *)savedMessage + 0xe));
+  WriteHeaderByte4(header,*((byte *)savedMessage + 0xd));
+  WriteHeaderByte5HighNibble(header,*((byte *)savedMessage + 0x10));
+  WriteHeaderByte5LowNibble(header,*((byte *)savedMessage + 0x11));
+  byte *packet = (byte *)AllocateGameServiceBytes(*sizeCell);
+  byte *out = packet + 6;
+  outputSize = (uint *)packet;
+  uint firstWord = *(uint *)header;
+  *(uint *)packet = firstWord;
+  ushort lastWord = *(ushort *)(header + 4);
+  *(ushort *)(packet + 4) = lastWord;
+  const byte *first = transformed;
+  uint copyBytes = frame.transformedBytes;
+  uint words = copyBytes >> 2;
+  while (words != 0) {
+    uint word = *(const uint *)first;
+    *(uint *)out = word;
+    first += 4;
+    out += 4;
+    --words;
+  }
+  uint tailBytes = copyBytes & 3;
+  while (tailBytes != 0) {
+    byte value = *first;
+    *out = value;
+    ++first;
+    ++out;
+    --tailBytes;
+  }
+  TailFreeThroughGlobalAllocator(header);
+  TailFreeThroughGlobalAllocator(transformed);
+  void *releaseCopy = (void *)frame.flagsOrCopy;
+  TailFreeThroughGlobalAllocator(releaseCopy);
+  cleanup.state = 2;
+  ResetClDataSerializeVtable(frame.serializer);
+  frame.binary[0] = R6GameServiceAddresses::clDataBinPTR_FUN;
+  cleanup.state = 5;
+  ReleaseNonNullFirstWordBuffer(frame.binary + 3);
+  cleanup.armed = false;
+  return outputSize;
 }
 
 // If inherited flagS-38 bit0 is set, tail empty-base cleanup with addressS-10.
@@ -307,46 +263,100 @@ const R6GameServiceNative::FuncInfo SerializePayloadRecordExceptionInfo = {
 // Read current message8 helper and forward four full words plus literal selector1 to shared slot0c dispatch; raw
 // EAX/RET16.
 // R6GameService.dll @ 10059d40 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall EncodeMessagePayload(
-    void *message,uint word0,uint word1,uint word2,uint word3)
+uint __thiscall EncodeMessagePayload(void *message,uint word0,uint word1,uint word2,uint word3)
 {
-  __asm {
-    mov    eax,DWORD PTR [esp+0x10]
-    mov    edx,DWORD PTR [esp+0xc]
-    mov    ecx,DWORD PTR [ecx+0x8]
-    push    0x1
-    push    eax
-    mov    eax,DWORD PTR [esp+0x10]
-    push    edx
-    mov    edx,DWORD PTR [esp+0x10]
-    push    eax
-    push    edx
-    call    R6GameServiceAddresses::DispatchThroughSelectedSlot0C
-    ret    0x10
-  }
+  uint last = word3;
+  uint third = word2;
+  void *helper = *(void **)((byte *)message + 8);
+  uint second = word1;
+  uint first = word0;
+  using DispatchABI = uint (__thiscall *)(void *,uint,uint,uint,uint,uint);
+  return ((DispatchABI)R6GameServiceAddresses::DispatchThroughSelectedSlot0C)(helper,first,second,third,last,1);
 }
 
 // Read current message8 helper and forward four full words plus literal selector1 to shared slot10 dispatch; raw
 // EAX/RET16.
 // R6GameService.dll @ 10059d70 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall DecodeMessagePayload(
-    void *message,uint word0,uint word1,uint word2,uint word3)
+uint __thiscall DecodeMessagePayload(void *message,uint word0,uint word1,uint word2,uint word3)
 {
-  __asm {
-    mov    eax,DWORD PTR [esp+0x10]
-    mov    edx,DWORD PTR [esp+0xc]
-    mov    ecx,DWORD PTR [ecx+0x8]
-    push    0x1
-    push    eax
-    mov    eax,DWORD PTR [esp+0x10]
-    push    edx
-    mov    edx,DWORD PTR [esp+0x10]
-    push    eax
-    push    edx
-    call    R6GameServiceAddresses::DispatchThroughSelectedSlot10
-    ret    0x10
-  }
+  uint last = word3;
+  uint third = word2;
+  void *helper = *(void **)((byte *)message + 8);
+  uint second = word1;
+  uint first = word0;
+  using DispatchABI = uint (__thiscall *)(void *,uint,uint,uint,uint,uint);
+  return ((DispatchABI)R6GameServiceAddresses::DispatchThroughSelectedSlot10)(helper,first,second,third,last,1);
 }
+
+// Inferred decoder locals: sizeS-5c, flagsS-58, pendingS-54, serializerS-50, listS-48 and binaryS-2c.
+struct GSMessageDecodeLocals {
+  uint decodedBytes;
+  uint flags;
+  uint pendingList;
+  uint serializer[2];
+  uint temporaryList[6];
+  uint listBaseContext;
+  uint binary[7];
+  uint binaryBaseContext;
+};
+
+// Owns temporary descriptors and only the heap list still under construction; decoded raw bytes are not guarded.
+struct GSMessageDecodeCleanup {
+  GSMessageDecodeLocals *frame;
+  int state;
+  // Release the current constructor stage before unwinding earlier descriptors, preserving published payloads.
+  ~GSMessageDecodeCleanup() noexcept(false)
+  {
+    using ContextABI = void (__fastcall *)(void *);
+    while (state >= 0) {
+      switch (state) {
+        case 0:
+          state = -1;
+          if ((frame->flags & 1) != 0)
+            ((ContextABI)R6GameServiceAddresses::list_node_support_NoOp)(&frame->binaryBaseContext);
+          break;
+        case 1:
+          state = 0;
+          ResetClDataVtable(frame->binary);
+          break;
+        case 2:
+          state = -1;
+          DestroyClDataBinAlias(frame->binary);
+          break;
+        case 3:
+          state = 2;
+          ResetClDataSerializeVtableAlias(frame->serializer);
+          break;
+        case 4:
+          state = 3;
+          if ((frame->flags & 2) != 0)
+            ((ContextABI)R6GameServiceAddresses::list_node_support_NoOp)(&frame->listBaseContext);
+          break;
+        case 5:
+          state = 4;
+          ResetClDataVtable(frame->temporaryList);
+          break;
+        case 6:
+          state = 3;
+          DestroyClDataListAlias(frame->temporaryList);
+          break;
+        case 7:
+          state = 6;
+          ForwardToAllocatorTail((void *)frame->pendingList);
+          break;
+        case 8:
+          state = 7;
+          if ((frame->flags & 4) != 0)
+            ((ContextABI)R6GameServiceAddresses::list_node_support_NoOp)((void *)(frame->pendingList + 0x18));
+          break;
+        case 9:
+          state = 8;
+          ResetClDataVtable((undefined4 *)frame->pendingList);
+          break;
+      }
+    }
+  }
+};
 
 // Construct/publish a fresh payload list before unsigned length>=6 and exact encoded-size comparison; retain replaced
 // old payload.
@@ -356,198 +366,108 @@ __declspec(naked) uint __thiscall DecodeMessagePayload(
 // final AL/RET8.
 // Ten-state construction cleanup owns descriptors and pending list allocation, never the raw decoded byte buffer.
 // R6GameService.dll @ 10059da0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall DecodePayloadRecord(void *message,const byte *input,uint inputSizeWord)
+uint __thiscall DecodePayloadRecord(void *message,const byte *input,uint inputSizeWord)
 {
-  __asm {
-    push    0xffffffff
-    push    R6GameServiceAddresses::SelectMessageDecoderEH
-    mov    eax,fs:0x0
-    push    eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x50
-    push    ebx
-    push    ebp
-    push    esi
-    xor    ebx,ebx
-    mov    esi,0x1
-    mov    DWORD PTR [esp+0x10],ebx
-    push    edi
-    mov    ebp,ecx
-    mov    DWORD PTR [esp+0x44],R6GameServiceAddresses::ClDataBinOwnerBaseOffsets
-    mov    DWORD PTR [esp+0x58],R6GameServiceAddresses::ClDataBinBaseOffsets
-    mov    DWORD PTR [esp+0x14],esi
-    push    ebx
-    push    0x2
-    lea    ecx,[esp+0x48]
-    mov    DWORD PTR [esp+0x70],ebx
-    call    R6GameServiceAddresses::InitializeClDataFields
-    push    ebx
-    lea    ecx,[esp+0x50]
-    mov    DWORD PTR [esp+0x6c],esi
-    call    R6GameServiceAddresses::InitializeEmptyByteBufferTriplet
-    mov    DWORD PTR [esp+0x40],R6GameServiceAddresses::clDataBinPTR_FUN
-    push    esi
-    lea    ecx,[esp+0x20]
-    mov    DWORD PTR [esp+0x6c],0x2
-    call    R6GameServiceAddresses::ConstructClDataSerialize
-    mov    edi,R6GameServiceAddresses::ClDataListInnerBaseOffsets
-    mov    DWORD PTR [esp+0x28],R6GameServiceAddresses::ClDataListBaseOffsets
-    mov    DWORD PTR [esp+0x38],edi
-    mov    DWORD PTR [esp+0x14],0x3
-    push    ebx
-    push    0x3
-    lea    ecx,[esp+0x2c]
-    mov    BYTE PTR [esp+0x70],0x4
-    call    R6GameServiceAddresses::InitializeClDataFields
-    push    ebx
-    lea    ecx,[esp+0x34]
-    mov    DWORD PTR [esp+0x6c],0x5
-    call    R6GameServiceAddresses::ConstructClDataPointerList
-    mov    DWORD PTR [esp+0x24],R6GameServiceAddresses::clDataListPTR_FUN
-    mov    DWORD PTR [esp+0x30],R6GameServiceAddresses::clDataListPTR_LAB
-    push    0x18
-    call    R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    esi,eax
-    mov    DWORD PTR [esp+0x18],esi
-    cmp    esi,ebx
-    je    Branch5
-    mov    DWORD PTR [esi+0x4],R6GameServiceAddresses::ClDataListBaseOffsets
-    mov    DWORD PTR [esi+0x14],edi
-    mov    DWORD PTR [esp+0x14],0x7
-    push    ebx
-    push    0x3
-    mov    ecx,esi
-    mov    BYTE PTR [esp+0x70],0x8
-    call    R6GameServiceAddresses::InitializeClDataFields
-    lea    edi,[esi+0xc]
-    push    ebx
-    mov    ecx,edi
-    mov    DWORD PTR [esp+0x6c],0x9
-    call    R6GameServiceAddresses::ConstructClDataPointerList
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clDataListPTR_FUN
-    mov    DWORD PTR [edi],R6GameServiceAddresses::clDataListPTR_LAB
-    jmp    Branch6
-  Branch5:
-    xor    esi,esi
-  Branch6:
-    mov    ebx,DWORD PTR [esp+0x74]
-    mov    BYTE PTR [esp+0x68],0x6
-    cmp    ebx,0x6
-    mov    DWORD PTR [ebp+0x14],esi
-    jb    Branch8
-    mov    esi,DWORD PTR [esp+0x70]
-    push    esi
-    call    R6GameServiceAddresses::ReadHeaderSize24
-    cmp    eax,ebx
-    jne    Branch8
-    push    esi
-    call    R6GameServiceAddresses::ReadHeaderByte3LowBits
-    push    esi
-    mov    BYTE PTR [ebp+0xe],al
-    call    R6GameServiceAddresses::ReadHeaderByte4
-    push    esi
-    mov    BYTE PTR [ebp+0xd],al
-    call    R6GameServiceAddresses::ReadHeaderByte5HighNibble
-    push    esi
-    mov    BYTE PTR [ebp+0x10],al
-    call    R6GameServiceAddresses::ReadHeaderByte5LowNibble
-    add    ebx,0xfffffffa
-    mov    BYTE PTR [ebp+0x11],al
-    test    ebx,ebx
-    jne    Branch7
-    lea    ecx,[esp+0x24]
-    mov    BYTE PTR [esp+0x68],0x3
-    call    R6GameServiceAddresses::DestroyClDataList
-    lea    ecx,[esp+0x1c]
-    mov    BYTE PTR [esp+0x68],0x2
-    call    R6GameServiceAddresses::ResetClDataSerializeVtable
-    lea    ecx,[esp+0x40]
-    mov    DWORD PTR [esp+0x68],0xffffffff
-    call    R6GameServiceAddresses::DestroyClDataBin
-    jmp    Branch10
-  Branch7:
-    mov    eax,DWORD PTR [ebp+0x0]
-    lea    ecx,[esp+0x10]
-    push    ecx
-    add    esi,0x6
-    push    0x0
-    push    ebx
-    push    esi
-    mov    ecx,ebp
-    mov    DWORD PTR [esp+0x84],esi
-    call    DWORD PTR [eax+0x18]
-    mov    edx,DWORD PTR [esp+0x10]
-    push    edx
-    call    R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    ecx,DWORD PTR [esp+0x10]
-    mov    esi,eax
-    mov    edx,ecx
-    xor    eax,eax
-    mov    edi,esi
-    shr    ecx,0x2
-    rep    stos DWORD PTR es:[edi],eax
-    mov    ecx,edx
-    mov    edx,DWORD PTR [esp+0x74]
-    and    ecx,0x3
-    rep    stos BYTE PTR es:[edi],al
-    mov    eax,DWORD PTR [ebp+0x0]
-    lea    ecx,[esp+0x10]
-    push    ecx
-    push    esi
-    push    ebx
-    push    edx
-    mov    ecx,ebp
-    call    DWORD PTR [eax+0x18]
-    mov    eax,DWORD PTR [esp+0x10]
-    lea    ecx,[esp+0x40]
-    push    eax
-    push    esi
-    call    R6GameServiceAddresses::ReplaceClDataBinBytes
-    mov    ecx,DWORD PTR [ebp+0x14]
-    lea    edx,[esp+0x40]
-    push    ecx
-    push    edx
-    lea    ecx,[esp+0x24]
-    call    R6GameServiceAddresses::ParseTaggedValues
-    test    al,al
-    push    esi
-    jne    Branch9
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch8:
-    lea    ecx,[esp+0x24]
-    mov    BYTE PTR [esp+0x68],0x3
-    call    R6GameServiceAddresses::DestroyClDataList
-    lea    ecx,[esp+0x1c]
-    mov    BYTE PTR [esp+0x68],0x2
-    call    R6GameServiceAddresses::ResetClDataSerializeVtable
-    lea    ecx,[esp+0x40]
-    mov    DWORD PTR [esp+0x68],0xffffffff
-    call    R6GameServiceAddresses::DestroyClDataBin
-    xor    al,al
-    jmp    Branch11
-  Branch9:
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    lea    ecx,[esp+0x24]
-    mov    BYTE PTR [esp+0x68],0x3
-    call    R6GameServiceAddresses::DestroyClDataList
-    lea    ecx,[esp+0x1c]
-    mov    BYTE PTR [esp+0x68],0x2
-    call    R6GameServiceAddresses::ResetClDataSerializeVtableAlias
-    lea    ecx,[esp+0x40]
-    mov    DWORD PTR [esp+0x68],0xffffffff
-    call    R6GameServiceAddresses::DestroyClDataBinAlias
-  Branch10:
-    mov    al,0x1
-  Branch11:
-    mov    ecx,DWORD PTR [esp+0x60]
-    pop    edi
-    pop    esi
-    pop    ebp
-    pop    ebx
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x5c
-    ret    0x8
+  GSMessageDecodeLocals frame;
+  GSMessageDecodeCleanup cleanup{&frame,-1};
+  frame.flags = 0;
+  void *savedMessage = message;
+  frame.binary[1] = R6GameServiceAddresses::ClDataBinOwnerBaseOffsets;
+  frame.binary[6] = R6GameServiceAddresses::ClDataBinBaseOffsets;
+  frame.flags = 1;
+  cleanup.state = 0;
+  InitializeClDataFields(frame.binary,2,0);
+  cleanup.state = 1;
+  InitializeEmptyByteBufferTriplet(frame.binary + 3,0);
+  frame.binary[0] = R6GameServiceAddresses::clDataBinPTR_FUN;
+  cleanup.state = 2;
+  ConstructClDataSerialize(frame.serializer,1);
+  frame.temporaryList[1] = R6GameServiceAddresses::ClDataListBaseOffsets;
+  frame.temporaryList[5] = R6GameServiceAddresses::ClDataListInnerBaseOffsets;
+  frame.flags = 3;
+  cleanup.state = 4;
+  InitializeClDataFields(frame.temporaryList,3,0);
+  cleanup.state = 5;
+  ConstructClDataPointerList(frame.temporaryList + 3,0);
+  frame.temporaryList[0] = R6GameServiceAddresses::clDataListPTR_FUN;
+  frame.temporaryList[3] = R6GameServiceAddresses::clDataListPTR_LAB;
+  uint heapList = (uint)AllocateGameServiceBytes(0x18);
+  frame.pendingList = heapList;
+  if (heapList != 0) {
+    *(uint *)(heapList + 4) = R6GameServiceAddresses::ClDataListBaseOffsets;
+    *(uint *)(heapList + 0x14) = R6GameServiceAddresses::ClDataListInnerBaseOffsets;
+    frame.flags = 7;
+    cleanup.state = 8;
+    InitializeClDataFields((void *)heapList,3,0);
+    uint inner = heapList + 0xc;
+    cleanup.state = 9;
+    ConstructClDataPointerList((void *)inner,0);
+    *(uint *)heapList = R6GameServiceAddresses::clDataListPTR_FUN;
+    *(uint *)inner = R6GameServiceAddresses::clDataListPTR_LAB;
   }
+  uint encodedBytes = inputSizeWord;
+  cleanup.state = 6;
+  *(uint *)((byte *)savedMessage + 0x14) = heapList;
+  bool success = false;
+  bool parsedPayload = false;
+  if (encodedBytes >= 6) {
+    const byte *packet = input;
+    if (ReadHeaderSize24(packet) == encodedBytes) {
+      *((byte *)savedMessage + 0xe) = (byte)ReadHeaderByte3LowBits(packet);
+      *((byte *)savedMessage + 0xd) = (byte)ReadHeaderByte4(packet);
+      *((byte *)savedMessage + 0x10) = (byte)ReadHeaderByte5HighNibble(packet);
+      *((byte *)savedMessage + 0x11) = (byte)ReadHeaderByte5LowNibble(packet);
+      uint payloadBytes = encodedBytes - 6;
+      if (payloadBytes == 0) {
+        success = true;
+      } else {
+        uint table = *(uint *)savedMessage;
+        const byte *payloadInput = packet + 6;
+        inputSizeWord = (uint)payloadInput;
+        using CodecABI = uint (__thiscall *)(void *,const byte *,uint,byte *,uint *);
+        (*(CodecABI *)(table + 0x18))(savedMessage,payloadInput,payloadBytes,nullptr,&frame.decodedBytes);
+        byte *decoded = (byte *)AllocateGameServiceBytes(frame.decodedBytes);
+        uint zeroBytes = frame.decodedBytes;
+        byte *zeroAt = decoded;
+        uint words = zeroBytes >> 2;
+        while (words != 0) {
+          *(uint *)zeroAt = 0;
+          zeroAt += 4;
+          --words;
+        }
+        uint tailBytes = zeroBytes & 3;
+        const byte *currentInput = (const byte *)inputSizeWord;
+        while (tailBytes != 0) {
+          *zeroAt = 0;
+          ++zeroAt;
+          --tailBytes;
+        }
+        table = *(uint *)savedMessage;
+        (*(CodecABI *)(table + 0x18))(savedMessage,currentInput,payloadBytes,decoded,&frame.decodedBytes);
+        uint decodedBytes = frame.decodedBytes;
+        ReplaceClDataBinBytes(frame.binary,decoded,decodedBytes);
+        uint currentPayload = *(uint *)((byte *)savedMessage + 0x14);
+        uint parsed = ParseTaggedValues(frame.serializer,frame.binary,(undefined1 *)currentPayload);
+        success = (byte)parsed != 0;
+        parsedPayload = true;
+        TailFreeThroughGlobalAllocator(decoded);
+      }
+    }
+  }
+  cleanup.state = 3;
+  DestroyClDataList(frame.temporaryList);
+  cleanup.state = 2;
+  uint result;
+  if (success && parsedPayload) {
+    ResetClDataSerializeVtableAlias(frame.serializer);
+    cleanup.state = -1;
+    result = DestroyClDataBinAlias(frame.binary);
+  } else {
+    ResetClDataSerializeVtable(frame.serializer);
+    cleanup.state = -1;
+    result = DestroyClDataBin(frame.binary);
+  }
+  return (result & 0xffffff00u) | (success ? 1u : 0u);
 }
 
 // Test inheritedS-58 bit0, tail empty-base cleanup with addressS-10 if constructed.
@@ -708,180 +628,140 @@ const R6GameServiceNative::FuncInfo DecodePayloadRecordExceptionInfo = {
   0x0,
 };
 
-// Initialize metadata/lowBYTE fields and allocate list24; source nonzero clones with flag1, otherwise constructs empty
-// list inline.
-// Clone branch reuses original code argumentS+8 for allocation and arms BYTEstate2; empty-list header allocation has no
-// pending-list guard.
-// Publish owner14 only after construction or NULL branch; seven full physical words, original receiver return/RET28.
-// R6GameService.dll @ 10059940 : complete native control/access order and raw ABI retained.
-__declspec(naked) void *__thiscall ConstructClGSMessage(
+namespace {
+// Inferred constructor guard: only the clone branch owns a pending allocation before publication.
+struct GSMessageConstructionCleanup {
+  byte *message;
+  uint virtualBaseConstructed;
+  uint *pendingAllocation;
+  int state;
+  // Free the current pending clone allocation, restore base identity and finish the optional empty virtual base.
+  ~GSMessageConstructionCleanup() noexcept(false) {
+    using ResetABI = void (__fastcall *)(void *);
+    using FreeABI = void (__stdcall *)(void *);
+    if (state == 2) {
+      state = 1;
+      ((FreeABI)R6GameServiceAddresses::ForwardToAllocatorTail)((void *)*pendingAllocation);
+    }
+    if (state == 1) {
+      state = 0;
+      ((ResetABI)R6GameServiceAddresses::ResetClMessageVtable)(message);
+    }
+    if (state == 0) {
+      state = -1;
+      if ((virtualBaseConstructed & 1) != 0) {
+        ((ResetABI)R6GameServiceAddresses::list_node_support_NoOp)((void *)((uint)message + 0x18));
+      }
+    }
+  }
+};
+}
+
+// Set metadata, then clone a source list or construct an empty list with native staged allocation ownership.
+// R6GameService.dll @ 10059940 : clone allocation reuses the code argument; empty-list failures retain pending storage.
+void * __thiscall ConstructClGSMessage(
     void *message,uint contextWord,uint codeOrPendingWord,uint byte0eWord,uint byte10Word,uint byte11Word,
-    uint     sourceWord,uint initializeBaseWord)
+    uint sourceWord,uint initializeBaseWord)
 {
-  __asm {
-    push    0xffffffff
-    push    R6GameServiceAddresses::MessageConstructionExceptionHandler
-    mov    eax,fs:0x0
-    push    eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x8
-    mov    eax,DWORD PTR [esp+0x30]
-    push    esi
-    push    edi
-    mov    edi,ecx
-    test    eax,eax
-    mov    DWORD PTR [esp+0xc],edi
-    mov    DWORD PTR [esp+0x8],0x0
-    je    Branch15
-    mov    DWORD PTR [edi+0x4],0x100781b8
-    mov    DWORD PTR [esp+0x8],0x1
-  Branch15:
-    mov    eax,DWORD PTR [esp+0x20]
-    mov    DWORD PTR [edi+0x8],eax
-    mov    cl,BYTE PTR [esp+0x24]
-    mov    dl,BYTE PTR [esp+0x28]
-    mov    al,BYTE PTR [esp+0x2c]
-    mov    esi,DWORD PTR [esp+0x34]
-    mov    BYTE PTR [edi+0xd],cl
-    mov    cl,BYTE PTR [esp+0x30]
-    push    0x18
-    mov    DWORD PTR [esp+0x1c],0x1
-    mov    DWORD PTR [edi],R6GameServiceAddresses::clGSMessageVTable
-    mov    BYTE PTR [edi+0xc],0x0
-    mov    BYTE PTR [edi+0xe],dl
-    mov    BYTE PTR [edi+0x10],al
-    mov    BYTE PTR [edi+0x11],cl
-    call    R6GameServiceAddresses::AllocateGameServiceBytes
-    test    esi,esi
-    je    Branch17
-    mov    DWORD PTR [esp+0x24],eax
-    test    eax,eax
-    mov    BYTE PTR [esp+0x18],0x2
-    je    Branch16
-    push    0x1
-    push    esi
-    mov    ecx,eax
-    call    R6GameServiceAddresses::CopyConstructClDataList
-    mov    DWORD PTR [edi+0x14],eax
-    jmp    Branch20
-  Branch16:
-    xor    eax,eax
-    mov    DWORD PTR [edi+0x14],eax
-    jmp    Branch20
-  Branch17:
-    mov    esi,eax
-    test    esi,esi
-    je    Branch18
-    mov    DWORD PTR [esi+0x4],R6GameServiceAddresses::ClDataListBaseOffsets
-    mov    DWORD PTR [esi+0x14],R6GameServiceAddresses::ClDataListInnerBaseOffsets
-    mov    DWORD PTR [esi+0x8],0x3
-    mov    DWORD PTR [esi],R6GameServiceAddresses::PTR_LAB
-    push    0xc
-    mov    DWORD PTR [esi+0x10],0x0
-    call    R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    DWORD PTR [eax],eax
-    mov    DWORD PTR [eax+0x4],eax
-    mov    DWORD PTR [esi+0x10],eax
-    mov    DWORD PTR [esi+0xc],R6GameServiceAddresses::clDataListPTR_FUN2
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clDataListPTR_FUN
-    mov    DWORD PTR [esi+0xc],R6GameServiceAddresses::clDataListPTR_LAB
-    jmp    Branch19
-  Branch18:
-    xor    esi,esi
-  Branch19:
-    mov    DWORD PTR [edi+0x14],esi
-  Branch20:
-    mov    ecx,DWORD PTR [esp+0x10]
-    mov    eax,edi
-    pop    edi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x14
-    ret    0x1c
+  uint initializeBase = initializeBaseWord;
+  GSMessageConstructionCleanup cleanup{(byte *)message, 0, &codeOrPendingWord, -1};
+  if (initializeBase != 0) {
+    *(uint *)((byte *)message + 4) = 0x100781b8;
+    cleanup.virtualBaseConstructed = 1;
   }
+  uint context = contextWord;
+  *(uint *)((byte *)message + 8) = context;
+  byte code = (byte)codeOrPendingWord;
+  byte field0e = (byte)byte0eWord;
+  byte field10 = (byte)byte10Word;
+  uint source = sourceWord;
+  *((byte *)message + 0xd) = code;
+  byte field11 = (byte)byte11Word;
+  cleanup.state = 1;
+  *(uint *)message = R6GameServiceAddresses::clGSMessageVTable;
+  *((byte *)message + 0xc) = 0;
+  *((byte *)message + 0xe) = field0e;
+  *((byte *)message + 0x10) = field10;
+  *((byte *)message + 0x11) = field11;
+  uint allocation = (uint)AllocateGameServiceBytes(0x18);
+  if (source != 0) {
+    codeOrPendingWord = allocation;
+    *(byte *)&cleanup.state = 2;
+    void *constructed = nullptr;
+    if (allocation != 0) {
+      using CloneABI = void * (__thiscall *)(void *,void *,uint);
+      constructed = ((CloneABI)R6GameServiceAddresses::CopyConstructClDataList)((void *)allocation,(void *)source,1);
+    }
+    *(void **)((byte *)message + 0x14) = constructed;
+  } else {
+    uint list = allocation;
+    if (list != 0) {
+      *(uint *)(list + 4) = R6GameServiceAddresses::ClDataListBaseOffsets;
+      *(uint *)(list + 0x14) = R6GameServiceAddresses::ClDataListInnerBaseOffsets;
+      *(uint *)(list + 8) = 3;
+      *(uint *)list = R6GameServiceAddresses::PTR_LAB;
+      *(uint *)(list + 0x10) = 0;
+      uint head = (uint)AllocateGameServiceBytes(0xc);
+      *(uint *)head = head;
+      *(uint *)(head + 4) = head;
+      *(uint *)(list + 0x10) = head;
+      *(uint *)(list + 0xc) = R6GameServiceAddresses::clDataListPTR_FUN2;
+      *(uint *)list = R6GameServiceAddresses::clDataListPTR_FUN;
+      *(uint *)(list + 0xc) = R6GameServiceAddresses::clDataListPTR_LAB;
+    }
+    *(uint *)((byte *)message + 0x14) = list;
+  }
+  cleanup.state = -1;
+  return message;
 }
 
-// Destroy payload/base, test CURRENT original flag lowBYTE bit0 after child returns, optionally free receiver; return
-// receiver/RET4.
-// R6GameService.dll @ 10059a50 : complete native control/access order and raw ABI retained.
-__declspec(naked) void *__thiscall DeleteClGSMessage(void *message,uint deleteFlags)
+// Destroy owned members, then inspect the current deletion flag and optionally free the cached message allocation.
+// R6GameService.dll @ 10059a50 : flag bit 0 controls storage release; returns the original receiver.
+void * __thiscall DeleteClGSMessage(void *message,uint deleteFlags)
 {
-  __asm {
-    push    esi
-    mov    esi,ecx
-    call    R6GameServiceAddresses::DestroyClGSMessage
-    test    BYTE PTR [esp+0x8],0x1
-    je    Branch21
-    push    esi
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch21:
-    mov    eax,esi
-    pop    esi
-    ret    0x4
-  }
+  using DestroyABI = void (__fastcall *)(void *);
+  ((DestroyABI)R6GameServiceAddresses::DestroyClGSMessage)(message);
+  if ((deleteFlags & 1) != 0) TailFreeThroughGlobalAllocator(message);
+  return message;
 }
 
-// Optionally install virtual-base table, publish base table/context, clear BYTEc/10/11 and payload14; leave d/e/gaps.
-// ECX0/RET8.
-// R6GameService.dll @ 10059a70 : complete native control/access order and raw ABI retained.
-__declspec(naked) void *__thiscall InitializeClGSMessageFields(
-        void *message,uint contextWord,uint initializeBaseWord)
+// Initialize base message metadata and empty payload fields while preserving subtype bytes and padding.
+// R6GameService.dll @ 10059a70 : optional base-offset table at +4; context +8 and owned payload pointer +0x14.
+void * __thiscall InitializeClGSMessageFields(void *message,uint contextWord,uint initializeBaseWord)
 {
-  __asm {
-    push    ecx
-    mov    edx,DWORD PTR [esp+0xc]
-    mov    eax,ecx
-    xor    ecx,ecx
-    cmp    edx,ecx
-    mov    DWORD PTR [esp+0x0],ecx
-    je    Branch22
-    mov    DWORD PTR [eax+0x4],0x100781b8
-  Branch22:
-    mov    edx,DWORD PTR [esp+0x8]
-    mov    DWORD PTR [eax],R6GameServiceAddresses::clGSMessageVTable
-    mov    DWORD PTR [eax+0x8],edx
-    mov    BYTE PTR [eax+0xc],cl
-    mov    BYTE PTR [eax+0x10],cl
-    mov    BYTE PTR [eax+0x11],cl
-    mov    DWORD PTR [eax+0x14],ecx
-    pop    ecx
-    ret    0x8
-  }
+  if (initializeBaseWord != 0) *(uint *)((byte *)message + 4) = 0x100781b8;
+  uint context = contextWord;
+  *(uint *)message = R6GameServiceAddresses::clGSMessageVTable;
+  *(uint *)((byte *)message + 8) = context;
+  *((byte *)message + 0xc) = 0;
+  *((byte *)message + 0x10) = 0;
+  *((byte *)message + 0x11) = 0;
+  *(uint *)((byte *)message + 0x14) = 0;
+  return message;
 }
 
-// Install base-derived table, cache current payload14 and current-virtually delete it with full flag1, then restore
-// clMessage table.
-// Keep payload14 unchanged, exact one-state base cleanup and raw child EAX (previous FS value on NULL payload); no
-// receiver free.
+// Delete the cached payload with flags1 and restore clMessage identity without clearing the payload field.
+// Inferred void ABI: both deleting callers overwrite EAX; native residue is child EAX or prior FS on NULL payload.
+// Failure resets the current saved cleanup receiver; normal completion restores the original receiver.
 // R6GameService.dll @ 10059ab0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall DestroyClGSMessage(void *message)
+void __fastcall DestroyClGSMessage(void *message)
 {
-  __asm {
-    push    0xffffffff
-    push    R6GameServiceAddresses::MessageDestructionExceptionHandler
-    mov    eax,fs:0x0
-    push    eax
-    mov    DWORD PTR fs:0x0,esp
-    push    ecx
-    push    esi
-    mov    esi,ecx
-    mov    DWORD PTR [esp+0x4],esi
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clGSMessageVTable
-    mov    ecx,DWORD PTR [esi+0x14]
-    mov    DWORD PTR [esp+0x10],0x0
-    test    ecx,ecx
-    je    Branch23
-    mov    eax,DWORD PTR [ecx]
-    push    0x1
-    call    DWORD PTR [eax]
-  Branch23:
-    mov    ecx,DWORD PTR [esp+0x8]
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clMessageVTable
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x10
-    ret
+  void *cleanupReceiver = message;
+  void *savedMessage = message;
+  *(uint *)savedMessage = R6GameServiceAddresses::clGSMessageVTable;
+  void *payload = *(void **)((byte *)savedMessage + 0x14);
+  try {
+    if (payload != nullptr) {
+      uint table = *(uint *)payload;
+      using DeleteABI = uint (__thiscall *)(void *,uint);
+      (*(DeleteABI *)table)(payload,1);
+    }
+  } catch (...) {
+    using ResetABI = void (__fastcall *)(void *);
+    ((ResetABI)R6GameServiceAddresses::ResetClMessageVtable)(cleanupReceiver);
+    throw;
   }
+  *(uint *)savedMessage = R6GameServiceAddresses::clMessageVTable;
 }
 
 // If inheritedS-14 bit0 is set, tail genuine empty-base cleanup at CURRENT saved receiverS-10 plus18.

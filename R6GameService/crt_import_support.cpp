@@ -1,4 +1,5 @@
 #include "native_addresses.h"
+#include "native_import_bindings.h"
 #include "native_records.h"
 
 // Selected CRT import tails. Each body preserves incoming stack/registers/flags and all unnamed arguments.
@@ -13,22 +14,16 @@ __declspec(naked) void __cdecl free(void *memory)
   }
 }
 
-// Forwards the unchanged destination, source and count to the current strncpy import.
-// R6GameService.dll @ 10033a6c : complete six-byte native current-IAT tail, no wrapper frame.
-__declspec(naked) char * __cdecl strncpy(char *destination,const char *source,size_t count)
-{
-  __asm {
-    jmp    DWORD PTR ds:R6GameServiceAddresses::MSVCR71_strncpySlot
-  }
+namespace R6GameServiceImports {
+// Bind the current import pointer directly; the native entry only jumps through this IAT cell.
+// R6GameService.dll @ 10033a6c : six-byte compiler import tail; typed live-IAT representation.
+Strncpy &strncpy{*reinterpret_cast<Strncpy *>(R6GameServiceAddresses::MSVCR71_strncpySlot)};
 }
 
-// Forwards both text pointers and count, retaining the raw imported comparison result.
-// R6GameService.dll @ 10033a72 : complete six-byte native current-IAT tail, no wrapper frame.
-__declspec(naked) int __cdecl strncmp(const char *first,const char *second,size_t count)
-{
-  __asm {
-    jmp    DWORD PTR ds:R6GameServiceAddresses::MSVCR71_strncmpSlot
-  }
+namespace R6GameServiceImports {
+// Bind the current import pointer directly; the native entry only jumps through this IAT cell.
+// R6GameService.dll @ 10033a72 : six-byte compiler import tail; typed live-IAT representation.
+Strncmp &strncmp{*reinterpret_cast<Strncmp *>(R6GameServiceAddresses::MSVCR71_strncmpSlot)};
 }
 
 // Forwards the complete variadic snprintf argument stream without rebuilding it.
@@ -40,22 +35,16 @@ __declspec(naked) int __cdecl _snprintf(char *destination,size_t count,const cha
   }
 }
 
-// Forwards the complete variadic sprintf argument stream and raw imported result.
-// R6GameService.dll @ 10033a7e : complete six-byte native current-IAT tail, no wrapper frame.
-__declspec(naked) int __cdecl sprintf(char *destination,const char *format,...)
-{
-  __asm {
-    jmp    DWORD PTR ds:R6GameServiceAddresses::MSVCR71_sprintfSlot
-  }
+namespace R6GameServiceImports {
+// Bind the current import pointer directly; the native entry only jumps through this IAT cell.
+// R6GameService.dll @ 10033a7e : six-byte compiler import tail; typed live-IAT representation.
+Sprintf &sprintf{*reinterpret_cast<Sprintf *>(R6GameServiceAddresses::MSVCR71_sprintfSlot)};
 }
 
-// Forwards the complete variadic printf argument stream without consuming unnamed arguments.
-// R6GameService.dll @ 10033a84 : complete six-byte native current-IAT tail, no wrapper frame.
-__declspec(naked) int __cdecl printf(const char *format,...)
-{
-  __asm {
-    jmp    DWORD PTR ds:R6GameServiceAddresses::MSVCR71_printfSlot
-  }
+namespace R6GameServiceImports {
+// Bind the current import pointer directly; the native entry only jumps through this IAT cell.
+// R6GameService.dll @ 10033a84 : six-byte compiler import tail; typed live-IAT representation.
+Printf &printf{*reinterpret_cast<Printf *>(R6GameServiceAddresses::MSVCR71_printfSlot)};
 }
 
 // Forwards the original text pointer and raw imported integer result.
@@ -130,13 +119,10 @@ __declspec(naked) size_t __cdecl fwrite(const void *buffer,size_t elementSize,si
   }
 }
 
-// Forwards the original overlapping byte ranges and raw imported destination result.
-// R6GameService.dll @ 10033c9c : complete six-byte native current-IAT tail, no wrapper frame.
-__declspec(naked) void * __cdecl memmove(void *destination,const void *source,size_t count)
-{
-  __asm {
-    jmp    DWORD PTR ds:R6GameServiceAddresses::MSVCR71_memmoveSlot
-  }
+namespace R6GameServiceImports {
+// Bind the current import pointer directly; the native entry only jumps through this IAT cell.
+// R6GameService.dll @ 10033c9c : six-byte compiler import tail; typed live-IAT representation.
+Memmove &memmove{*reinterpret_cast<Memmove *>(R6GameServiceAddresses::MSVCR71_memmoveSlot)};
 }
 
 // Forwards the original allocation count and element size without adding checks.
@@ -157,13 +143,10 @@ __declspec(naked) int __cdecl _purecall(void)
   }
 }
 
-// Forwards the original optional time-output pointer and native imported result.
-// R6GameService.dll @ 10033cba : complete six-byte native current-IAT tail, no wrapper frame.
-__declspec(naked) time_t __cdecl time(time_t *timer)
-{
-  __asm {
-    jmp    DWORD PTR ds:R6GameServiceAddresses::MSVCR71_timeSlot
-  }
+namespace R6GameServiceImports {
+// Bind the current import pointer directly; the native entry only jumps through this IAT cell.
+// R6GameService.dll @ 10033cba : six-byte compiler import tail; typed live-IAT representation.
+Time &time{*reinterpret_cast<Time *>(R6GameServiceAddresses::MSVCR71_timeSlot)};
 }
 
 // Forwards the original time arguments, leaving the imported x87 result untouched.
@@ -184,13 +167,10 @@ __declspec(naked) void * __cdecl __RTDynamicCast(void *object,int vfDelta,void *
   }
 }
 
-// Forwards both original tokenizer pointers without adding local tokenizer state.
-// R6GameService.dll @ 10033db4 : complete six-byte native current-IAT tail, no wrapper frame.
-__declspec(naked) char * __cdecl strtok(char *text,const char *delimiters)
-{
-  __asm {
-    jmp    DWORD PTR ds:R6GameServiceAddresses::MSVCR71_strtokSlot
-  }
+namespace R6GameServiceImports {
+// Bind the current import pointer directly; the native entry only jumps through this IAT cell.
+// R6GameService.dll @ 10033db4 : six-byte compiler import tail; typed live-IAT representation.
+Strtok &strtok{*reinterpret_cast<Strtok *>(R6GameServiceAddresses::MSVCR71_strtokSlot)};
 }
 
 // Tail current rand import with original return address/unnamed machine state; no local PRNG state.
@@ -220,13 +200,12 @@ __declspec(naked) void *__cdecl memset(void *destination,int value,size_t count)
   }
 }
 
-// Tail current CRT compiler-error import with both full words and original machine state; no local reporting policy.
-// R6GameService.dll @ 10062336 : complete native control/access order and raw ABI retained.
-__declspec(naked) void __cdecl __security_error_handler(uint reason,uint flags)
-{
-  __asm {
-    jmp    DWORD PTR ds:R6GameServiceAddresses::MSVCR71___security_error_handlerSlot
-  }
+namespace R6GameServiceImports {
+// Bind the current import pointer directly; the native entry only jumps through this IAT cell.
+// R6GameService.dll @ 10062336 : six-byte compiler import tail; typed live-IAT representation.
+SecurityErrorHandler &__security_error_handler{
+  *reinterpret_cast<SecurityErrorHandler *>(R6GameServiceAddresses::MSVCR71___security_error_handlerSlot)
+};
 }
 
 // Tail current fflush import with original stream pointer and raw imported result.

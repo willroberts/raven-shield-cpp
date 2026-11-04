@@ -78,164 +78,80 @@ __declspec(naked) uint __thiscall ForwardToDescriptorSlot04(
   }
 }
 
-// Appends bytes and NUL using occupied+max(occupied,added)+1 growth, retaining native reloads and scratch words.
-// R6GameService.dll @ 10018560 : complete register/stack/access order and native raw returns retained.
-__declspec(naked) void * __thiscall AppendByteRangeWithGrowth(
-    void *triplet,void *first,void *last,uint unusedTag)
+// Appends a range and NUL, growing by occupied+max(occupied,added)+1 or copying the first byte after the tail.
+// R6GameService.dll @ 10018560 : ECX triplet, three stack words; cached lengths and scratch aliases are inferred.
+void * __thiscall AppendByteRangeWithGrowth(void *triplet,void *first,void *last,uint unusedTag)
 {
-  __asm {
-    push   ecx
-    push   ebx
-    push   ebp
-    mov    ebp,DWORD PTR [esp+0x14]
-    push   esi
-    mov    esi,ecx
-    mov    ecx,DWORD PTR [esp+0x14]
-    cmp    ecx,ebp
-    push   edi
-    je Branch6
-    // Cache occupied/added lengths; reject unsigned length overflow before reading capacity.
-    mov    ebx,DWORD PTR [esi+0x4]
-    mov    edi,DWORD PTR [esi]
-    sub    ebx,edi
-    mov    edi,ebp
-    sub    edi,ecx
-    mov    DWORD PTR [esp+0x10],ebx
-    cmp    edi,0xfffffffe
-    ja Branch1
-    mov    eax,0xfffffffe
-    sub    eax,edi
-    cmp    ebx,eax
-    jbe Branch2
-  Branch1:
-    push   R6GameServiceAddresses::s_basic_string
-    call   R6GameServiceAddresses::ThrowByteStringLengthError
-    mov    ecx,DWORD PTR [esp+0x1c]
-    add    esp,0x4
-  Branch2:
-    mov    edx,DWORD PTR [esi+0x8]
-    mov    eax,DWORD PTR [esi]
-    sub    edx,eax
-    lea    eax,[edi+ebx*1]
-    dec    edx
-    cmp    eax,edx
-    jbe Branch4
-    // Reuse the incoming last-pointer slot for added length while EBP retains the actual source end.
-    cmp    ebx,edi
-    mov    DWORD PTR [esp+0x1c],edi
-    lea    eax,[esp+0x1c]
-    jb Branch3
-    lea    eax,[esp+0x10]
-  Branch3:
-    mov    ecx,DWORD PTR [eax]
-    lea    ebx,[ecx+ebx*1+0x1]
-    push   ebx
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    // Reload old begin/end after allocation; the second copy reloads the original first argument.
-    mov    ecx,DWORD PTR [esi]
-    mov    edi,eax
-    mov    eax,DWORD PTR [esi+0x4]
-    push   edi
-    push   eax
-    push   ecx
-    call   R6GameServiceAddresses::MoveByteRange
-    mov    edx,DWORD PTR [esp+0x18]
-    push   eax
-    push   ebp
-    push   edx
-    call   R6GameServiceAddresses::MoveByteRange
-    mov    ebp,eax
-    mov    BYTE PTR [ebp+0x0],0x0
-    mov    eax,DWORD PTR [esi]
-    push   eax
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    // Publish begin, capacity, then end only after the old buffer has been freed.
-    mov    DWORD PTR [esi],edi
-    add    edi,ebx
-    mov    DWORD PTR [esi+0x8],edi
-    mov    DWORD PTR [esi+0x4],ebp
-    mov    eax,esi
-    pop    edi
-    pop    esi
-    pop    ebp
-    pop    ebx
-    pop    ecx
-    ret    0xc
-    // Move bytes after the first before writing NUL and reloading the first byte.
-  Branch4:
-    lea    eax,[ecx+0x1]
-    cmp    ebp,eax
-    je Branch5
-    mov    ecx,DWORD PTR [esi+0x4]
-    sub    ebp,eax
-    push   ebp
-    inc    ecx
-    push   eax
-    push   ecx
-    call   R6GameServiceAddresses::memmove
-    mov    ecx,DWORD PTR [esp+0x24]
-    add    esp,0xc
-  Branch5:
-    mov    edx,DWORD PTR [esi+0x4]
-    mov    BYTE PTR [edi+edx*1],0x0
-    mov    eax,DWORD PTR [esi+0x4]
-    mov    cl,BYTE PTR [ecx]
-    mov    BYTE PTR [eax],cl
-    mov    eax,DWORD PTR [esi+0x4]
-    add    eax,edi
-    mov    DWORD PTR [esi+0x4],eax
-  Branch6:
-    mov    eax,esi
-    pop    edi
-    pop    esi
-    pop    ebp
-    pop    ebx
-    pop    ecx
-    ret    0xc
+  uint sourceEnd = (uint)last;
+  auto *owner = (R6GameServiceNative::ByteRange *)triplet;
+  uint sourceBegin = (uint)first;
+  if (sourceBegin == sourceEnd) return owner;
+  uint oldEnd = owner->end;
+  uint oldBegin = owner->begin;
+  uint occupiedBytes = oldEnd - oldBegin;
+  uint addedBytes = sourceEnd - sourceBegin;
+  uint savedOccupiedBytes = occupiedBytes;
+  if (addedBytes > 0xfffffffeu || occupiedBytes > 0xfffffffeu - addedBytes) {
+    ThrowByteStringLengthError(s_basic_string);
+    sourceBegin = (uint)first;
   }
+  uint capacityWithoutNul = owner->capacityEnd - owner->begin - 1;
+  uint requiredBytes = occupiedBytes + addedBytes;
+  if (requiredBytes > capacityWithoutNul) {
+    last = (void *)addedBytes;
+    uint *growth = occupiedBytes < addedBytes ? (uint *)&last : &savedOccupiedBytes;
+    uint allocationBytes = *growth + occupiedBytes + 1;
+    uint replacement = (uint)AllocateGameServiceBytes(allocationBytes);
+    uint currentBegin = owner->begin;
+    uint currentEnd = owner->end;
+    uint writeAt = (uint)MoveByteRange((void *)currentBegin,(void *)currentEnd,(void *)replacement);
+    uint currentFirst = (uint)first;
+    uint newEnd = (uint)MoveByteRange((void *)currentFirst,(void *)sourceEnd,(void *)writeAt);
+    *(byte *)newEnd = 0;
+    uint releaseBegin = owner->begin;
+    TailFreeThroughGlobalAllocator((void *)releaseBegin);
+    owner->begin = replacement;
+    owner->capacityEnd = replacement + allocationBytes;
+    owner->end = newEnd;
+    return owner;
+  }
+  uint afterFirst = sourceBegin + 1;
+  if (sourceEnd != afterFirst) {
+    uint destination = owner->end + 1;
+    uint copyBytes = sourceEnd - afterFirst;
+    using MoveABI = void * (__cdecl *)(void *,const void *,uint);
+    ((MoveABI)R6GameServiceAddresses::memmove)((void *)destination,(void *)afterFirst,copyBytes);
+    sourceBegin = (uint)first;
+  }
+  uint currentEnd = owner->end;
+  *(byte *)(addedBytes + currentEnd) = 0;
+  currentEnd = owner->end;
+  byte firstByte = *(byte *)sourceBegin;
+  *(byte *)currentEnd = firstByte;
+  uint newEnd = owner->end + addedBytes;
+  owner->end = newEnd;
+  return owner;
 }
 
-// Optionally installs the +0x0c virtual-base table, then clears three words and returns receiver EAX with zero ECX.
-// R6GameService.dll @ 1002a980 : native store order, stack aliases and raw register effects retained.
-__declspec(naked) void * __thiscall InitializeEmptyByteBufferTriplet(
-    void *triplet,uint initializeVirtualBaseWord)
+// Optionally publish the virtual-base table, then clear begin/end/capacity in order.
+// R6GameService.dll @ 1002a980 : selected PE32 operations; helper/type names remain descriptive.
+void * __thiscall InitializeEmptyByteBufferTriplet(void *triplet,uint initializeVirtualBaseWord)
 {
-  __asm {
-    push   ecx
-    mov    edx,DWORD PTR [esp+0x8]
-    mov    eax,ecx
-    xor    ecx,ecx
-    cmp    edx,ecx
-    mov    DWORD PTR [esp+0x0],ecx
-    je Branch7
-    mov    DWORD PTR [eax+0xc],0x10076b94
-  Branch7:
-    mov    DWORD PTR [eax],ecx
-    mov    DWORD PTR [eax+0x4],ecx
-    mov    DWORD PTR [eax+0x8],ecx
-    pop    ecx
-    ret    0x4
-  }
+  if (initializeVirtualBaseWord != 0) *(uint *)((byte *)triplet + 0xc) = 0x10076b94;
+  *(uint *)triplet = 0;
+  *(uint *)((byte *)triplet + 4) = 0;
+  *(uint *)((byte *)triplet + 8) = 0;
+  return triplet;
 }
 
-// Clear begin/end then capacity via actual561b0; unused context passed physically, RET4/original triplet EAX.
-// R6GameService.dll @ 1002ab00 : complete native control/access order and raw ABI retained.
-__declspec(naked) void * __thiscall InitializeEmptyByteBufferTripletWithContext(void *triplet,uint contextWord)
+// Clear begin/end and forward the unused context while clearing capacity through the canonical store helper.
+// R6GameService.dll @ 1002ab00 : selected PE32 operations; helper/type names remain descriptive.
+void * __thiscall InitializeEmptyByteBufferTripletWithContext(void *triplet,uint contextWord)
 {
-  __asm {
-    mov    eax,DWORD PTR [esp+0x4]
-    push   esi
-    mov    esi,ecx
-    push   0x0
-    push   eax
-    lea    ecx,[esi+0x8]
-    mov    DWORD PTR [esi],0x0
-    mov    DWORD PTR [esi+0x4],0x0
-    call   R6GameServiceAddresses::StoreFirstWordIgnoringContext
-    mov    eax,esi
-    pop    esi
-    ret    0x4
-  }
+  *(uint *)triplet = 0;
+  *(uint *)((byte *)triplet + 4) = 0;
+  StoreFirstWordIgnoringContext((byte *)triplet + 8,contextWord,0);
+  return triplet;
 }
 
 // Fills a destination range, reloading the source byte each iteration, and returns the advanced destination.
@@ -257,177 +173,69 @@ struct TaggedTypeTwoWriteLocals {
   uint encodedLength;
 };
 
-// Appends b, the virtual length in network order and the late-loaded payload range, retaining scratch and raw EAX.
-// R6GameService.dll @ 1002c950 : complete native arguments/accesses/growth and raw ABI retained, RET8.
-__declspec(naked) uint __stdcall WriteTaggedType2(int *valueNode,undefined1 *outputContext)
+// Appends b, a network-order virtual size and the late-loaded payload; success changes only the insertion result's AL.
+// R6GameService.dll @ 1002c950 : stdcall two physical words; scratch/helper names are inferred.
+uint __stdcall WriteTaggedType2(int *valueNode,undefined1 *outputContext)
 {
-  __asm {
-    // Cache value, initialize failure byte at entry-5, and retain raw extent read plus unreachable >UINT_MAX branch.
-    sub    esp,0x8
-    push   edi
-    mov    edi,DWORD PTR [esp+0x10]
-    mov    BYTE PTR [esp+0x7],0x0
-    mov    eax,DWORD PTR [edi+0x10]
-    mov    edx,DWORD PTR [edi+0xc]
-    sub    eax,edx
-    cmp    eax,0xffffffff
-    ja Branch23
-    // Call cached value virtual size, then ordinal8; load output argument after both calls and cache encoded length.
-    mov    edx,DWORD PTR [edi]
-    push   ebx
-    push   ebp
-    push   esi
-    mov    ecx,edi
-    call   DWORD PTR [edx+0x14]
-    push   eax
-    call   DWORD PTR ds:R6GameServiceAddresses::WS2_32_htonlSlot
-    mov    ebp,DWORD PTR [esp+0x20]
-    mov    ebx,eax
-    mov    DWORD PTR [esp+0x14],ebx
-    mov    eax,DWORD PTR [ebp+0x10]
-    mov    ecx,DWORD PTR [ebp+0x14]
-    lea    esi,[ebp+0xc]
-    cmp    eax,ecx
-    je Branch9
-    test   eax,eax
-    je Branch8
-    mov    BYTE PTR [eax],0x62
-  Branch8:
-    inc    DWORD PTR [esi+0x4]
-    jmp Branch10
-  Branch9:
-    push   0x1
-    lea    ecx,[esp+0x20]
-    push   0x1
-    push   ecx
-    push   R6GameServiceAddresses::WideTextB3
-    push   eax
-    mov    ecx,esi
-    call   R6GameServiceAddresses::GrowByteBufferAndInsertRepeatedBytes
-  Branch10:
-    // Emit four encoded length bytes using original value argument as byte scratch; output/triplet stay cached.
-    mov    eax,DWORD PTR [esi+0x4]
-    mov    ecx,DWORD PTR [esi+0x8]
-    cmp    eax,ecx
-    mov    BYTE PTR [esp+0x1c],bl
-    je Branch12
-    test   eax,eax
-    je Branch11
-    mov    BYTE PTR [eax],bl
-  Branch11:
-    inc    DWORD PTR [esi+0x4]
-    jmp Branch13
-  Branch12:
-    push   0x1
-    lea    edx,[esp+0x24]
-    push   0x1
-    lea    ecx,[esp+0x24]
-    push   edx
-    push   ecx
-    push   eax
-    mov    ecx,esi
-    call   R6GameServiceAddresses::GrowByteBufferAndInsertRepeatedBytes
-  Branch13:
-    mov    eax,DWORD PTR [esi+0x4]
-    mov    ecx,DWORD PTR [esi+0x8]
-    cmp    eax,ecx
-    mov    BYTE PTR [esp+0x1c],bh
-    je Branch15
-    test   eax,eax
-    je Branch14
-    mov    BYTE PTR [eax],bh
-  Branch14:
-    inc    DWORD PTR [esi+0x4]
-    jmp Branch16
-  Branch15:
-    push   0x1
-    lea    edx,[esp+0x24]
-    push   0x1
-    lea    ecx,[esp+0x24]
-    push   edx
-    push   ecx
-    push   eax
-    mov    ecx,esi
-    call   R6GameServiceAddresses::GrowByteBufferAndInsertRepeatedBytes
-  Branch16:
-    mov    eax,DWORD PTR [esi+0x4]
-    mov    edx,DWORD PTR [esi+0x8]
-    mov    cl,BYTE PTR [esp+0x16]
-    cmp    eax,edx
-    mov    BYTE PTR [esp+0x1c],cl
-    je Branch18
-    test   eax,eax
-    je Branch17
-    mov    BYTE PTR [eax],cl
-  Branch17:
-    inc    DWORD PTR [esi+0x4]
-    jmp Branch19
-  Branch18:
-    push   0x1
-    lea    edx,[esp+0x24]
-    push   0x1
-    lea    ecx,[esp+0x24]
-    push   edx
-    push   ecx
-    push   eax
-    mov    ecx,esi
-    call   R6GameServiceAddresses::GrowByteBufferAndInsertRepeatedBytes
-  Branch19:
-    mov    eax,DWORD PTR [esi+0x4]
-    mov    edx,DWORD PTR [esi+0x8]
-    mov    cl,BYTE PTR [esp+0x17]
-    cmp    eax,edx
-    mov    BYTE PTR [esp+0x1c],cl
-    je Branch21
-    test   eax,eax
-    je Branch20
-    mov    BYTE PTR [eax],cl
-  Branch20:
-    inc    DWORD PTR [esi+0x4]
-    jmp Branch22
-  Branch21:
-    push   0x1
-    lea    edx,[esp+0x24]
-    push   0x1
-    lea    ecx,[esp+0x24]
-    push   edx
-    push   ecx
-    push   eax
-    mov    ecx,esi
-    call   R6GameServiceAddresses::GrowByteBufferAndInsertRepeatedBytes
-  Branch22:
-    // Reload current source end/begin from cached value after header effects, then current output end for range insertion.
-    mov    dl,BYTE PTR [esp+0x1c]
-    mov    ecx,DWORD PTR [edi+0x10]
-    lea    eax,[esp+0x1c]
-    mov    BYTE PTR [esp+0x1c],dl
-    mov    edx,DWORD PTR [edi+0xc]
-    push   eax
-    mov    eax,DWORD PTR [ebp+0x10]
-    push   ecx
-    push   edx
-    push   eax
-    mov    ecx,esi
-    call   R6GameServiceAddresses::InsertByteRange
-    // Read initialized failure byte before restoring registers; return insertion upper EAX with success AL.
-    mov    al,BYTE PTR [esp+0x13]
-    pop    esi
-    pop    ebp
-    pop    ebx
-    test   al,al
-    sete   al
-    pop    edi
-    add    esp,0x8
-    ret    0x8
-  Branch23:
-    // Preserve the native unreachable failure exit after unsigned CMP EAX,UINT_MAX.
-    mov    al,0x1
-    pop    edi
-    test   al,al
-    sete   al
-    add    esp,0x8
-    ret    0x8
+  int *source = valueNode;
+  TaggedTypeTwoWriteLocals scratch;
+  scratch.failed = 0;
+  uint initialEnd = *(uint *)((uint)source + 0x10);
+  uint initialBegin = *(uint *)((uint)source + 0xc);
+  uint rawSpan = initialEnd - initialBegin;
+  // The retail unsigned JA after CMP UINT_MAX cannot take this failure exit.
+  if (rawSpan > 0xffffffffu) return rawSpan & 0xffffff00u;
+  uint vtable = *(uint *)source;
+  using SizeABI = uint (__thiscall *)(void *);
+  uint size = (*(SizeABI *)(vtable + 0x14))(source);
+  using ConvertABI = uint (__stdcall *)(uint);
+  uint converted = (*(ConvertABI *)R6GameServiceAddresses::WS2_32_htonlSlot)(size);
+  uint output = (uint)outputContext;
+  uint encoded = converted;
+  scratch.encodedLength = encoded;
+  uint end = *(uint *)(output + 0x10);
+  uint capacity = *(uint *)(output + 0x14);
+  auto *triplet = (R6GameServiceNative::ByteRange *)(output + 0xc);
+  if (end != capacity) {
+    if (end != 0) *(byte *)end = 'b';
+    ++triplet->end;
+  } else {
+    GrowByteBufferAndInsertRepeatedBytes(triplet,(void *)end,
+        (undefined1 *)R6GameServiceAddresses::WideTextB3,(uint)&valueNode,1,1);
   }
+  // Append an already-selected length byte using the original value argument as the native byte scratch.
+  auto appendLengthByte = [&](uint position,uint capacityEnd,byte selected) {
+    *(byte *)&valueNode = selected;
+    if (position != capacityEnd) {
+      if (position != 0) *(byte *)position = selected;
+      ++triplet->end;
+    } else {
+      GrowByteBufferAndInsertRepeatedBytes(triplet,(void *)position,
+          (undefined1 *)&valueNode,(uint)&outputContext,1,1);
+    }
+  };
+  end = triplet->end;
+  capacity = triplet->capacityEnd;
+  appendLengthByte(end,capacity,(byte)encoded);
+  end = triplet->end;
+  capacity = triplet->capacityEnd;
+  appendLengthByte(end,capacity,(byte)(encoded >> 8));
+  end = triplet->end;
+  capacity = triplet->capacityEnd;
+  byte thirdByte = *((byte *)&scratch.encodedLength + 2);
+  appendLengthByte(end,capacity,thirdByte);
+  end = triplet->end;
+  capacity = triplet->capacityEnd;
+  byte fourthByte = *((byte *)&scratch.encodedLength + 3);
+  appendLengthByte(end,capacity,fourthByte);
+  byte savedTag = *(byte *)&valueNode;
+  uint sourceEnd = *(uint *)((uint)source + 0x10);
+  *(byte *)&valueNode = savedTag;
+  uint sourceBegin = *(uint *)((uint)source + 0xc);
+  uint insertionPoint = *(uint *)(output + 0x10);
+  uint result = InsertByteRange(
+      triplet,(void *)insertionPoint,(void *)sourceBegin,(void *)sourceEnd,&valueNode,insertionPoint);
+  return (result & 0xffffff00u) | (scratch.failed == 0 ? 1u : 0u);
 }
 
 // Allocates occupied+max(occupied,count), inserts repeated bytes and optionally copies the old tail.
@@ -480,495 +288,257 @@ uint __thiscall SetThreeWordRecord(void *record,uint first,uint second,uint thir
   return thirdAfterFirstStore;
 }
 
-// Moves a half-open range and returns memmove EAX plus the saved count; an empty range returns destination.
-// R6GameService.dll @ 10028600 : complete register/stack/access order and native raw returns retained.
-__declspec(naked) void * __stdcall MoveByteRange(void *first,void *last,void *destination)
+// Move the wrapped half-open range and return the provider result plus its size; skip the provider for an empty range.
+// R6GameService.dll @ 10028600 : selected PE32 operations; helper/type names remain descriptive.
+void * __stdcall MoveByteRange(void *first,void *last,void *destination)
 {
-  __asm {
-    mov    eax,DWORD PTR [esp+0x4]
-    push   esi
-    mov    esi,DWORD PTR [esp+0xc]
-    cmp    esi,eax
-    jne Branch24
-    mov    eax,DWORD PTR [esp+0x10]
-    pop    esi
-    ret    0xc
-  Branch24:
-    sub    esi,eax
-    push   esi
-    push   eax
-    mov    eax,DWORD PTR [esp+0x18]
-    push   eax
-    call   R6GameServiceAddresses::memmove
-    add    esp,0xc
-    add    eax,esi
-    pop    esi
-    ret    0xc
-  }
+  if (last == first) return destination;
+  uint byteCount = (uint)last - (uint)first;
+  using MoveABI = void * (__cdecl *)(void *,const void *,uint);
+  void *copied = ((MoveABI)R6GameServiceAddresses::memmove)(destination,first,byteCount);
+  return (void *)((uint)copied + byteCount);
 }
 
-// Moves a half-open range with an unused fourth word, returning destination for an empty range.
-// R6GameService.dll @ 1002bbf0 : complete register/stack/access order and native raw returns retained.
-__declspec(naked) void * __stdcall CopyByteRange(void *first,void *last,void *destination,void *unusedTag)
+// Move the wrapped half-open range and return the provider result plus its size; skip the provider for an empty range.
+// R6GameService.dll @ 1002bbf0 : selected PE32 operations; helper/type names remain descriptive.
+void * __stdcall CopyByteRange(void *first,void *last,void *destination,void *unusedTag)
 {
-  __asm {
-    mov    eax,DWORD PTR [esp+0x4]
-    push   esi
-    mov    esi,DWORD PTR [esp+0xc]
-    cmp    esi,eax
-    jne Branch25
-    mov    eax,DWORD PTR [esp+0x10]
-    pop    esi
-    ret    0x10
-  Branch25:
-    sub    esi,eax
-    push   esi
-    push   eax
-    mov    eax,DWORD PTR [esp+0x18]
-    push   eax
-    call   R6GameServiceAddresses::memmove
-    add    esp,0xc
-    add    eax,esi
-    pop    esi
-    ret    0x10
-  }
+  if (last == first) return destination;
+  uint byteCount = (uint)last - (uint)first;
+  using MoveABI = void * (__cdecl *)(void *,const void *,uint);
+  void *copied = ((MoveABI)R6GameServiceAddresses::memmove)(destination,first,byteCount);
+  return (void *)((uint)copied + byteCount);
 }
 
-// Inserts by shifting or growing, preserving empty-range EAX and path-specific copy results and publication order.
-// R6GameService.dll @ 1002b100 : complete register/stack/access order and native raw returns retained.
-__declspec(naked) uint __thiscall InsertByteRange(
-    void *buffer,void *position,void *first,void *last,void *unusedTag)
+// Insert bytes by shifting a long/short suffix or growing, retaining live fields/formals and allocator return pointers.
+// Empty input skips triplet fields and returns incoming EAX. Native locals: entryESP-c padding/tag/count/occupied.
+// R6GameService.dll @ 1002b100 : ECX/EAX register view, four native stack words/RET16; no allocation guard.
+uint InsertByteRange(
+    [[r6abi::register_input("ecx")]] void *buffer,void *position,void *first,void *last,void *unusedTag,
+    [[r6abi::register_input("eax")]] uint eaxAtEntry)
 {
-  __asm {
-    mov    edx,DWORD PTR [esp+0xc]
-    sub    esp,0xc
-    push   ebx
-    push   ebp
-    push   esi
-    mov    esi,ecx
-    mov    ecx,DWORD PTR [esp+0x20]
-    push   edi
-    cmp    ecx,edx
-    je Branch31
-    // Cache inserted count and available capacity; an empty range bypasses all triplet reads.
-    mov    eax,DWORD PTR [esi+0x4]
-    mov    ebx,DWORD PTR [esi+0x8]
-    mov    edi,edx
-    sub    ebx,eax
-    sub    edi,ecx
-    cmp    ebx,edi
-    mov    DWORD PTR [esp+0x14],edi
-    jb Branch28
-    mov    ebx,DWORD PTR [esp+0x20]
-    sub    eax,ebx
-    mov    ebx,DWORD PTR [esi+0x4]
-    mov    ebp,eax
-    cmp    ebp,edi
-    jbe Branch27
-    // Duplicate the final inserted-count bytes before shifting the remaining tail.
-    mov    al,BYTE PTR [esp+0x20]
-    lea    ecx,[esp+0x13]
-    mov    ebp,ebx
-    push   ecx
-    sub    ebp,edi
-    push   ebx
-    push   ebx
-    push   ebp
-    mov    BYTE PTR [esp+0x23],al
-    call   R6GameServiceAddresses::CopyByteRange
-    mov    edx,DWORD PTR [esi+0x4]
-    add    edx,edi
-    mov    DWORD PTR [esi+0x4],edx
-    // Reload position after the duplicate copy; shift only when the signed difference is positive.
-    mov    esi,DWORD PTR [esp+0x20]
-    sub    ebp,esi
-    test   ebp,ebp
-    jle Branch26
-    push   ebp
-    sub    ebx,ebp
-    push   esi
-    push   ebx
-    call   R6GameServiceAddresses::memmove
-    add    esp,0xc
-  Branch26:
-    mov    edx,DWORD PTR [esp+0x28]
-    mov    eax,DWORD PTR [esp+0x24]
-    push   esi
-    push   edx
-    push   eax
-    call   R6GameServiceAddresses::MoveByteRange
-    pop    edi
-    pop    esi
-    pop    ebp
-    pop    ebx
-    add    esp,0xc
-    ret    0x10
-    // Split source at tail length and overwrite the original last argument with that split.
-  Branch27:
-    lea    eax,[ecx+ebp*1]
-    push   ebx
-    push   edx
-    push   eax
-    mov    DWORD PTR [esp+0x34],eax
-    call   R6GameServiceAddresses::MoveByteRange
-    mov    eax,DWORD PTR [esi+0x4]
-    sub    edi,ebp
-    add    eax,edi
-    mov    edi,DWORD PTR [esp+0x20]
-    push   eax
-    push   ebx
-    push   edi
-    mov    DWORD PTR [esi+0x4],eax
-    call   R6GameServiceAddresses::MoveByteRange
-    mov    ebx,DWORD PTR [esi+0x4]
-    mov    ecx,DWORD PTR [esp+0x28]
-    mov    edx,DWORD PTR [esp+0x24]
-    push   edi
-    add    ebx,ebp
-    push   ecx
-    push   edx
-    mov    DWORD PTR [esi+0x4],ebx
-    call   R6GameServiceAddresses::MoveByteRange
-    pop    edi
-    pop    esi
-    pop    ebp
-    pop    ebx
-    add    esp,0xc
-    ret    0x10
-    // Grow by occupied+max(occupied,inserted), with native unsigned wraparound and no NUL.
-  Branch28:
-    mov    edx,DWORD PTR [esi]
-    lea    ecx,[esp+0x14]
-    sub    eax,edx
-    cmp    eax,edi
-    mov    DWORD PTR [esp+0x18],eax
-    jb Branch29
-    lea    ecx,[esp+0x18]
-  Branch29:
-    mov    edi,DWORD PTR [ecx]
-    add    edi,eax
-    push   edi
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    ebx,DWORD PTR [esp+0x20]
-    mov    ebp,eax
-    mov    eax,DWORD PTR [esi]
-    push   ebp
-    push   ebx
-    push   eax
-    call   R6GameServiceAddresses::MoveByteRange
-    mov    ecx,DWORD PTR [esp+0x24]
-    push   eax
-    mov    eax,DWORD PTR [esp+0x2c]
-    push   eax
-    push   ecx
-    call   R6GameServiceAddresses::MoveByteRange
-    // Reload current end after both copies; retain the insertion point cached after allocation.
-    mov    ecx,DWORD PTR [esi+0x4]
-    mov    DWORD PTR [esp+0x20],eax
-    cmp    ecx,ebx
-    je Branch30
-    sub    ecx,ebx
-    push   ecx
-    push   ebx
-    push   eax
-    mov    DWORD PTR [esp+0x2c],ecx
-    call   R6GameServiceAddresses::memmove
-    mov    ecx,DWORD PTR [esp+0x2c]
-    add    esp,0xc
-    add    eax,ecx
-    mov    DWORD PTR [esp+0x20],eax
-  Branch30:
-    mov    edx,DWORD PTR [esi]
-    push   edx
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    // Reload the saved new end from the original position slot after free, then publish begin/end/capacity.
-    mov    eax,DWORD PTR [esp+0x20]
-    mov    DWORD PTR [esi],ebp
-    add    ebp,edi
-    mov    DWORD PTR [esi+0x4],eax
-    mov    DWORD PTR [esi+0x8],ebp
-  Branch31:
-    pop    edi
-    pop    esi
-    pop    ebp
-    pop    ebx
-    add    esp,0xc
-    ret    0x10
+  struct { // Inferred twelve-byte native scratch; tag is the last byte of the untouched first word.
+    byte padding[3];
+    byte constructorTag;
+    uint insertedCount;
+    uint occupiedBytes;
+  } frame;
+  void *sourceLast = last;
+  void *sourceFirst = first;
+  if (sourceFirst == sourceLast) return eaxAtEntry;
+  uint base = (uint)buffer;
+  uint initialEnd = *(uint *)(base + 4);
+  uint capacityEnd = *(uint *)(base + 8);
+  uint spare = capacityEnd - initialEnd;
+  uint inserted = (uint)sourceLast - (uint)sourceFirst;
+  frame.insertedCount = inserted;
+  using MoveABI = void * (__cdecl *)(void *,const void *,uint);
+  if (spare >= inserted) {
+    uint initialPosition = (uint)position;
+    uint suffix = initialEnd - initialPosition;
+    uint oldEnd = *(uint *)(base + 4);
+    if (suffix > inserted) {
+      byte tag = *(byte *)&position;
+      uint duplicateStart = oldEnd - inserted;
+      frame.constructorTag = tag;
+      CopyByteRange((void *)duplicateStart,(void *)oldEnd,(void *)oldEnd,&frame.constructorTag);
+      uint end = *(uint *)(base + 4) + inserted;
+      *(uint *)(base + 4) = end;
+      uint retainedPosition = (uint)position;
+      uint shiftBytes = duplicateStart - retainedPosition;
+      if ((int)shiftBytes > 0) {
+        uint destination = oldEnd - shiftBytes;
+        ((MoveABI)R6GameServiceAddresses::memmove)((void *)destination,(void *)retainedPosition,shiftBytes);
+      }
+      void *currentLast = last;
+      void *currentFirst = first;
+      return (uint)MoveByteRange(currentFirst,currentLast,(void *)retainedPosition);
+    }
+    uint split = (uint)sourceFirst + suffix;
+    last = (void *)split; // Original range-end argument becomes the source split before the first copy.
+    MoveByteRange((void *)split,sourceLast,(void *)oldEnd);
+    uint end = *(uint *)(base + 4);
+    uint excess = inserted - suffix;
+    end += excess;
+    uint retainedPosition = (uint)position;
+    *(uint *)(base + 4) = end;
+    MoveByteRange((void *)retainedPosition,(void *)oldEnd,(void *)end);
+    uint extendedEnd = *(uint *)(base + 4) + suffix;
+    void *currentSplit = last;
+    void *currentFirst = first;
+    *(uint *)(base + 4) = extendedEnd;
+    return (uint)MoveByteRange(currentFirst,currentSplit,(void *)retainedPosition);
   }
+  uint begin = *(uint *)base;
+  uint occupied = initialEnd - begin;
+  frame.occupiedBytes = occupied;
+  uint *growthSource = &frame.insertedCount;
+  if (occupied >= inserted) growthSource = &frame.occupiedBytes;
+  uint allocationBytes = *growthSource + occupied;
+  uint allocation = (uint)AllocateGameServiceBytes(allocationBytes);
+  uint retainedPosition = (uint)position;
+  uint oldBegin = *(uint *)base;
+  uint prefixEnd = (uint)MoveByteRange((void *)oldBegin,(void *)retainedPosition,(void *)allocation);
+  void *currentFirst = first;
+  void *currentLast = last;
+  uint newEnd = (uint)MoveByteRange(currentFirst,currentLast,(void *)prefixEnd);
+  uint currentEnd = *(uint *)(base + 4);
+  position = (void *)newEnd;
+  if (currentEnd != retainedPosition) {
+    uint tailBytes = currentEnd - retainedPosition;
+    position = (void *)tailBytes; // Position word is scratch while memmove owns its cached destination argument.
+    void *moved = ((MoveABI)R6GameServiceAddresses::memmove)((void *)newEnd,(void *)retainedPosition,tailBytes);
+    uint currentTail = (uint)position;
+    position = (void *)((uint)moved + currentTail);
+  }
+  void *currentBegin = *(void **)base;
+  TailFreeThroughGlobalAllocator(currentBegin);
+  uint finalEnd = (uint)position;
+  *(uint *)base = allocation;
+  uint newCapacityEnd = allocation + allocationBytes;
+  *(uint *)(base + 4) = finalEnd;
+  *(uint *)(base + 8) = newCapacityEnd;
+  return finalEnd;
 }
 
-// Forwards insertion with a local byte tag and position in EAX, retaining the callee's complete return value.
-// R6GameService.dll @ 1002b010 : ECX triplet, position/first/last/unused-tag stack words, RET 0x10.
-__declspec(naked) uint __thiscall InsertByteRangeWithLocalTag(
+// Forward with a tag in the high byte of saved ECX; native POP restores that modified volatile word on normal return.
+// The target's empty path receives insertionPoint in EAX, independently of this wrapper's incoming EAX.
+// R6GameService.dll @ 1002b010 : ECX triplet, four native stack words/RET16; annotated local is return ECX.
+uint __thiscall InsertByteRangeWithLocalTag(
     void *buffer,void *insertionPoint,void *first,void *last,undefined1 *unusedTag)
 {
-  __asm {
-    push   ecx
-    mov    al,byte ptr [esp+0x10]
-    lea    edx,[esp+0x3]
-    mov    byte ptr [esp+0x3],al
-    mov    eax,dword ptr [esp+0x10]
-    push   edx
-    mov    edx,dword ptr [esp+0x10]
-    push   eax
-    mov    eax,dword ptr [esp+0x10]
-    push   edx
-    push   eax
-    call   R6GameServiceAddresses::InsertByteRange
-    pop    ecx
-    ret    0x10
-  }
+  [[r6abi::register_output("ecx")]] uint savedEcx = (uint)buffer;
+  byte tag = *(byte *)&last;
+  byte *tagAddress = (byte *)&savedEcx + 3;
+  *tagAddress = tag;
+  void *currentLast = last;
+  void *currentFirst = first;
+  void *currentPosition = insertionPoint;
+  return InsertByteRange(buffer,currentPosition,currentFirst,currentLast,tagAddress,(uint)currentPosition);
 }
 
 // Appends a type-four scalar on success or short input, committing its cached cursor only after insertion.
 // R6GameService.dll @ 1002c260 : complete native frame/argument/access order and raw ABI retained; ECX unused.
-__declspec(naked) uint __stdcall ParseWordValue(undefined4 *source,int *cursorAddress,int destination)
+uint __stdcall ParseWordValue(undefined4 *source,int *cursorAddress,int destination)
 {
-  __asm {
-    // Cache source end and pointed cursor before allocation; the saved ECX word is cleared as scratch, with no EH frame.
-    push   ecx
-    mov    eax,DWORD PTR [esp+0xc]
-    mov    ecx,DWORD PTR [esp+0x8]
-    push   ebx
-    push   ebp
-    push   esi
-    mov    esi,DWORD PTR [ecx+0x10]
-    push   edi
-    mov    edi,DWORD PTR [eax]
-    xor    ebp,ebp
-    push   0x14
-    mov    DWORD PTR [esp+0x14],ebp
-    xor    bl,bl
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    cmp    eax,ebp
-    je Branch32
-    // A short-input object retains uninitialized raw/decoded value words; null allocation is still a possible payload.
-    mov    DWORD PTR [eax+0x4],0x10076b34
-    mov    DWORD PTR [eax+0x8],0x4
-    mov    DWORD PTR [eax],R6GameServiceAddresses::clDataLongVTable
-    mov    ebp,eax
-  Branch32:
-    // Check exact end, one remaining byte and unsigned remaining count; no pointer ordering guard is present.
-    cmp    edi,esi
-    je Branch33
-    lea    edx,[edi+0x1]
-    cmp    edx,esi
-    je Branch33
-    sub    esi,edi
-    cmp    esi,0x4
-    jb Branch33
-    // Read the raw unaligned word, advance the local cursor, then store raw and network-decoded fields through bd90.
-    mov    eax,DWORD PTR [edi]
-    mov    ecx,ebp
-    push   eax
-    add    edi,0x4
-    call   R6GameServiceAddresses::SetClDataLongEncodedValue
-    jmp Branch34
-  Branch33:
-    mov    bl,0x1
-  Branch34:
-    // Reuse original source for payload and destination for copied sentinel; append on both success and failure.
-    mov    eax,DWORD PTR [esp+0x20]
-    lea    ecx,[esp+0x20]
-    push   ecx
-    mov    DWORD PTR [esp+0x1c],ebp
-    lea    esi,[eax+0x10]
-    mov    ecx,esi
-    call   R6GameServiceAddresses::CopyListHeadSlot
-    lea    edx,[esp+0x18]
-    mov    ecx,esi
-    push   edx
-    call   R6GameServiceAddresses::AllocateListPayloadNode
-    // Reload saved sentinel after node allocation, then publish links before committing the cursor.
-    mov    esi,DWORD PTR [esp+0x20]
-    test   bl,bl
-    mov    edx,DWORD PTR [esi+0x4]
-    lea    ecx,[esi+0x4]
-    mov    DWORD PTR [eax],esi
-    mov    DWORD PTR [eax+0x4],edx
-    mov    DWORD PTR [edx],eax
-    mov    DWORD PTR [ecx],eax
-    // Reload original cursor-address late; return its upper EAX with status AL and pop the cleared ECX scratch word.
-    mov    eax,DWORD PTR [esp+0x1c]
-    mov    DWORD PTR [eax],edi
-    pop    edi
-    pop    esi
-    pop    ebp
-    sete   al
-    pop    ebx
-    pop    ecx
-    ret    0xc
+  uint *initialCursorAddress = (uint *)cursorAddress;
+  uint sourceObject = (uint)source;
+  uint end = *(uint *)(sourceObject + 0x10);
+  uint cursor = *initialCursorAddress;
+  uint payload = (uint)AllocateGameServiceBytes(0x14);
+  if (payload != 0) {
+    *(uint *)(payload + 4) = 0x10076b34;
+    *(uint *)(payload + 8) = 4;
+    *(uint *)payload = R6GameServiceAddresses::clDataLongVTable;
   }
+  bool failed = cursor == end || cursor + 1 == end || end - cursor < 4;
+  if (!failed) {
+    uint encoded = *(uint *)cursor;
+    cursor += 4;
+    SetClDataLongEncodedValue((void *)payload,encoded);
+  }
+  uint savedDestination = (uint)destination;
+  source = (undefined4 *)payload;
+  uint headSlot = savedDestination + 0x10;
+  CopyListHeadSlot((void *)headSlot,(uint *)&destination);
+  uint node = (uint)AllocateListPayloadNode((uint *)&source);
+  uint sentinel = (uint)destination;
+  uint previous = *(uint *)(sentinel + 4);
+  *(uint *)node = sentinel;
+  *(uint *)(node + 4) = previous;
+  *(uint *)previous = node;
+  *(uint *)(sentinel + 4) = node;
+  uint *outputCursorAddress = (uint *)cursorAddress;
+  *outputCursorAddress = cursor;
+  return ((uint)outputCursorAddress & 0xffffff00u) | (failed ? 0u : 1u);
 }
 
-// String parser constructor locals occupy logical EBP-0x18 through EBP-4.
-struct TaggedStringParseFrame {
-  uint constructionFlags;
-  uint endOrSentinel;
-  uint *allocation;
-  void *previousExceptionList;
-  void *handler;
-  uint state;
-};
-
-// Reads through NUL or cached end and appends even a partial string, preserving cursor and argument-slot scratch.
-// R6GameService.dll @ 1002c0c0 : complete native frame/argument/access order and raw ABI retained; ECX unused.
-__declspec(naked) uint __stdcall ParseStringValue(undefined4 *source,int *cursorAddress,int destination)
+// Parses through NUL or cached end and appends even a partial string, retaining path-specific argument scratch.
+// R6GameService.dll @ 1002c0c0 : stdcall three words; construction scope and local names are inferred.
+uint __stdcall ParseStringValue(undefined4 *source,int *cursorAddress,int destination)
 {
-  __asm {
-    // Register the constructor frame; normalized entry locals are flags-18, cached end/head-14, allocation-10, EH-c/-8/-4.
-    push   0xffffffff
-    push   R6GameServiceAddresses::TaggedStringParseExceptionHandler
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0xc
-    push   ebx
-    push   ebp
-    xor    ebp,ebp
-    push   esi
-    mov    DWORD PTR [esp+0xc],ebp
-    mov    eax,DWORD PTR [esp+0x28]
-    push   edi
-    push   0x18
-    mov    ebx,DWORD PTR [eax+0x10]
-    mov    DWORD PTR [esp+0x18],ebx
-    // Cache input end before allocation; retain the original source argument as the constructor tag.
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    esi,eax
-    mov    DWORD PTR [esp+0x18],esi
-    cmp    esi,ebp
-    je Branch35
-    mov    eax,0x1
-    mov    DWORD PTR [esi+0x4],R6GameServiceAddresses::ClDataStrBaseOffsets
-    mov    DWORD PTR [esp+0x10],eax
-    mov    DWORD PTR [esi+0x8],eax
-    mov    DWORD PTR [esi],R6GameServiceAddresses::PTR_LAB
-    // Construction enters state2 then state3; initial buffer allocation and its unchecked NUL write remain live in state3.
-    mov    DWORD PTR [esp+0x24],0x2
-    lea    edi,[esi+0xc]
-    lea    ecx,[esp+0x2c]
-    mov    BYTE PTR [esp+0x24],0x3
-    push   ecx
-    mov    ecx,edi
-    call   R6GameServiceAddresses::InitializeEmptyByteBufferTripletWithContext
-    push   0x8
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    lea    edx,[eax+0x8]
-    mov    DWORD PTR [edi],eax
-    mov    DWORD PTR [edi+0x4],eax
-    mov    DWORD PTR [edi+0x8],edx
-    mov    BYTE PTR [eax],0x0
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clDataStrPTR_FUN
-    mov    ebp,esi
-  Branch35:
-    // Lower cleanup state before conversion; load cursor-address only after constructing the string.
-    test   ebp,ebp
-    mov    DWORD PTR [esp+0x24],0xffffffff
-    je Branch36
-    lea    esi,[ebp+0xc]
-    jmp Branch37
-  Branch36:
-    xor    esi,esi
-  Branch37:
-    mov    edi,DWORD PTR [esp+0x30]
-    mov    eax,DWORD PTR [edi]
-    cmp    eax,ebx
-    je Branch41
-  Branch38:
-    // Commit each input byte before checking NUL; BL replaces the low byte of the cached end register.
-    mov    bl,BYTE PTR [eax]
-    inc    eax
-    test   bl,bl
-    mov    DWORD PTR [edi],eax
-    je Branch43
-    mov    eax,DWORD PTR [esi+0x4]
-    mov    edx,DWORD PTR [esi+0x8]
-    lea    ecx,[eax+0x1]
-    cmp    ecx,edx
-    jne Branch40
-    // Growth reuses original source/cursor arguments for one/length; the live cursor-address stays in EDI.
-    mov    edx,DWORD PTR [esi]
-    mov    DWORD PTR [esp+0x2c],0x1
-    sub    eax,edx
-    lea    ecx,[esp+0x2c]
-    cmp    eax,0x1
-    mov    DWORD PTR [esp+0x30],eax
-    jb Branch39
-    lea    ecx,[esp+0x30]
-  Branch39:
-    mov    edx,DWORD PTR [ecx]
-    mov    ecx,esi
-    add    edx,eax
-    push   edx
-    call   R6GameServiceAddresses::ReserveByteString
-  Branch40:
-    // Reload end for each NUL, character and increment access; compare the next cursor with the saved frame bound.
-    mov    eax,DWORD PTR [esi+0x4]
-    mov    BYTE PTR [eax+0x1],0x0
-    mov    ecx,DWORD PTR [esi+0x4]
-    mov    BYTE PTR [ecx],bl
-    mov    edx,DWORD PTR [esi+0x4]
-    mov    ecx,DWORD PTR [esp+0x14]
-    inc    edx
-    mov    DWORD PTR [esi+0x4],edx
-    mov    eax,DWORD PTR [edi]
-    cmp    eax,ecx
-    jne Branch38
-  Branch41:
-    // Missing NUL still inserts the partial value: original cursor argument holds payload, frame bound becomes sentinel.
-    mov    edx,DWORD PTR [esp+0x34]
-    lea    eax,[esp+0x14]
-    push   eax
-    mov    DWORD PTR [esp+0x34],ebp
-    lea    esi,[edx+0x10]
-    mov    ecx,esi
-    call   R6GameServiceAddresses::CopyListHeadSlot
-    lea    ecx,[esp+0x30]
-    push   ecx
-    mov    ecx,esi
-    call   R6GameServiceAddresses::AllocateListPayloadNode
-    mov    esi,DWORD PTR [esp+0x14]
-    mov    edx,DWORD PTR [esi+0x4]
-    lea    ecx,[esi+0x4]
-    mov    DWORD PTR [eax],esi
-    mov    DWORD PTR [eax+0x4],edx
-    mov    DWORD PTR [edx],eax
-    mov    DWORD PTR [ecx],eax
-    // Only clear AL on missing NUL, retaining node upper EAX and previous-FS ECX.
-    xor    al,al
-  Branch42:
-    mov    ecx,DWORD PTR [esp+0x1c]
-    pop    edi
-    pop    esi
-    pop    ebp
-    pop    ebx
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x18
-    ret    0xc
-  Branch43:
-    // NUL success uses original source argument for payload and original destination argument for saved sentinel.
-    mov    edx,DWORD PTR [esp+0x34]
-    lea    eax,[esp+0x34]
-    push   eax
-    mov    DWORD PTR [esp+0x30],ebp
-    lea    esi,[edx+0x10]
-    mov    ecx,esi
-    call   R6GameServiceAddresses::CopyListHeadSlot
-    lea    ecx,[esp+0x2c]
-    push   ecx
-    mov    ecx,esi
-    call   R6GameServiceAddresses::AllocateListPayloadNode
-    mov    esi,DWORD PTR [esp+0x34]
-    mov    edx,DWORD PTR [esi+0x4]
-    lea    ecx,[esi+0x4]
-    mov    DWORD PTR [eax],esi
-    mov    DWORD PTR [eax+0x4],edx
-    mov    DWORD PTR [edx],eax
-    mov    DWORD PTR [ecx],eax
-    mov    al,0x1
-    jmp Branch42
+  uint inputEnd = *(uint *)((uint)source + 0x10);
+  uint endOrSentinel = inputEnd;
+  uint payload = 0;
+  uint allocation = (uint)AllocateGameServiceBytes(0x18);
+  uint savedAllocation = allocation;
+  if (allocation != 0) {
+    *(uint *)(allocation + 4) = R6GameServiceAddresses::ClDataStrBaseOffsets;
+    *(uint *)(allocation + 8) = 1;
+    *(uint *)allocation = R6GameServiceAddresses::PTR_LAB;
+    uint triplet = allocation + 0xc;
+    // Native state3 owns the object through initial NUL/table publication; tag/context cleanup actions are empty.
+    try {
+      InitializeEmptyByteBufferTripletWithContext((void *)triplet,(uint)&source);
+      uint buffer = (uint)AllocateGameServiceBytes(8);
+      *(uint *)triplet = buffer;
+      *(uint *)(triplet + 4) = buffer;
+      *(uint *)(triplet + 8) = buffer + 8;
+      *(byte *)buffer = 0;
+      *(uint *)allocation = R6GameServiceAddresses::clDataStrPTR_FUN;
+      payload = allocation;
+    } catch (...) {
+      ResetClDataVtable((undefined4 *)savedAllocation);
+      ForwardToAllocatorTail((void *)savedAllocation);
+      throw;
+    }
   }
+  uint triplet = payload != 0 ? payload + 0xc : 0;
+  int *sharedCursor = cursorAddress;
+  uint cursor = (uint)*sharedCursor;
+  bool terminated = false;
+  if (cursor != inputEnd) {
+    for (;;) {
+      byte character = *(byte *)cursor;
+      ++cursor;
+      *sharedCursor = (int)cursor;
+      if (character == 0) {
+        terminated = true;
+        break;
+      }
+      uint end = *(uint *)(triplet + 4);
+      uint capacity = *(uint *)(triplet + 8);
+      if (end + 1 == capacity) {
+        source = (undefined4 *)1;
+        uint occupiedBytes = end - *(uint *)triplet;
+        cursorAddress = (int *)occupiedBytes;
+        uint *growth = occupiedBytes < 1 ? (uint *)&source : (uint *)&cursorAddress;
+        uint requestedBytes = *growth + occupiedBytes;
+        ReserveByteString((void *)triplet,requestedBytes);
+      }
+      end = *(uint *)(triplet + 4);
+      *(byte *)(end + 1) = 0;
+      end = *(uint *)(triplet + 4);
+      *(byte *)end = character;
+      end = *(uint *)(triplet + 4);
+      uint savedBound = endOrSentinel;
+      ++end;
+      *(uint *)(triplet + 4) = end;
+      cursor = (uint)*sharedCursor;
+      if (cursor == savedBound) break;
+    }
+  }
+  uint node;
+  uint head;
+  uint savedDestination = (uint)destination;
+  uint headSlot = savedDestination + 0x10;
+  if (terminated) {
+    source = (undefined4 *)payload;
+    CopyListHeadSlot((void *)headSlot,(uint *)&destination);
+    node = (uint)AllocateListPayloadNode((uint *)&source);
+    head = (uint)destination;
+  } else {
+    cursorAddress = (int *)payload;
+    CopyListHeadSlot((void *)headSlot,&endOrSentinel);
+    node = (uint)AllocateListPayloadNode((uint *)&cursorAddress);
+    head = endOrSentinel;
+  }
+  uint previous = *(uint *)(head + 4);
+  *(uint *)node = head;
+  *(uint *)(node + 4) = previous;
+  *(uint *)previous = node;
+  *(uint *)(head + 4) = node;
+  return (node & 0xffffff00u) | (terminated ? 1u : 0u);
 }
 
 // Releases the string allocation saved at parent EBP-0x10 during constructor unwinding.
@@ -1030,143 +600,77 @@ __declspec(naked) void __cdecl TaggedStringParseExceptionHandler(void)
   }
 }
 
-// Binary parser locals occupy logical EBP-0x18 through EBP-4; arguments +4/+8 become allocation/prefix slots.
-struct TaggedByteBlockParseFrame {
-  byte padding[3];
-  byte failed;
-  uint constructionFlags;
-  uint *savedTriplet;
-  void *previousExceptionList;
-  void *handler;
-  uint state;
-};
-
-// Appends a length-prefixed block or failed partial value, retaining native short-prefix overread and cursor timing.
-// R6GameService.dll @ 1002c310 : complete native frame/argument/access order and raw ABI retained; ECX unused.
-__declspec(naked) uint __stdcall ParseByteBlockValue(undefined4 *source,int *cursorAddress,int destination)
+// Parses a network-length block, retaining two/three-byte prefix overread and insertion before final cursor commit.
+// R6GameService.dll @ 1002c310 : stdcall three words; construction cleanup and scratch names are inferred.
+uint __stdcall ParseByteBlockValue(undefined4 *source,int *cursorAddress,int destination)
 {
-  __asm {
-    // Register constructor cleanup; entry locals are failure-15, flags-14, saved triplet-10, EH-c/-8/-4.
-    push   0xffffffff
-    push   R6GameServiceAddresses::TaggedByteBlockParseExceptionHandler
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0xc
-    push   ebx
-    push   ebp
-    mov    DWORD PTR [esp+0xc],0x0
-    mov    ebx,DWORD PTR [esp+0x28]
-    mov    eax,DWORD PTR [esp+0x24]
-    push   esi
-    mov    esi,DWORD PTR [ebx]
-    push   edi
-    mov    ebp,DWORD PTR [eax+0x10]
-    push   0x1c
-    mov    BYTE PTR [esp+0x17],0x0
-    // Cache cursor address/value and input end before allocation; original source argument becomes saved allocation.
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    edi,eax
-    mov    DWORD PTR [esp+0x2c],edi
-    test   edi,edi
-    je Branch44
-    // Initialize kind2/base/vbase tables and state4, with original cursor argument address as constructor tag.
-    mov    DWORD PTR [edi+0x4],R6GameServiceAddresses::ClDataBinOwnerBaseOffsets
-    mov    DWORD PTR [edi+0x18],R6GameServiceAddresses::ClDataBinBaseOffsets
-    mov    DWORD PTR [esp+0x14],0x1
-    mov    DWORD PTR [edi+0x8],0x2
-    mov    DWORD PTR [edi],R6GameServiceAddresses::PTR_LAB
-    lea    ecx,[edi+0xc]
-    mov    DWORD PTR [esp+0x18],ecx
-    lea    edx,[esp+0x30]
-    mov    DWORD PTR [esp+0x24],0x4
-    push   edx
-    call   R6GameServiceAddresses::InitializePointerTriplet
-    mov    DWORD PTR [edi],R6GameServiceAddresses::clDataBinPTR_FUN
-    jmp Branch45
-  Branch44:
-    xor    edi,edi
-  Branch45:
-    // Lower state before parsing; only zero/one remaining byte is rejected before reading the four-byte prefix.
-    cmp    esi,ebp
-    mov    DWORD PTR [esp+0x24],0xffffffff
-    je Branch46
-    lea    eax,[esi+0x1]
-    cmp    eax,ebp
-    je Branch46
-    // Read prefix bytes in native order 0,2,1,3 into the original cursor-argument word, including short-prefix overread.
-    mov    cl,BYTE PTR [esi]
-    mov    esi,eax
-    mov    al,BYTE PTR [esi+0x1]
-    mov    BYTE PTR [esp+0x30],cl
-    mov    dl,BYTE PTR [esi]
-    inc    esi
-    inc    esi
-    mov    BYTE PTR [esp+0x31],dl
-    mov    BYTE PTR [esp+0x32],al
-    mov    cl,BYTE PTR [esi]
-    inc    esi
-    mov    BYTE PTR [esp+0x33],cl
-    mov    edx,DWORD PTR [esp+0x30]
-    // Network decode uses imported ordinal14; retain the unsigned size test and unreachable comparison above UINT_MAX.
-    push   edx
-    call   DWORD PTR ds:R6GameServiceAddresses::WS2_32_ntohlSlot
-    sub    ebp,esi
-    cmp    ebp,eax
-    jb Branch46
-    cmp    eax,0xffffffff
-    ja Branch46
-    // Publish payload start before insertion; local cursor advances across the declared bytes before the child call.
-    mov    DWORD PTR [ebx],esi
-    add    esi,eax
-    mov    al,BYTE PTR [esp+0x30]
-    lea    ecx,[edi+0xc]
-    lea    edx,[esp+0x30]
-    mov    BYTE PTR [esp+0x30],al
-    mov    eax,DWORD PTR [ebx]
-    push   edx
-    mov    edx,DWORD PTR [ecx]
-    push   esi
-    push   eax
-    push   edx
-    call   R6GameServiceAddresses::InsertByteRange
-    jmp Branch47
-  Branch46:
-    mov    BYTE PTR [esp+0x13],0x1
-  Branch47:
-    // Append even on failure; source argument holds payload and destination argument holds the copied sentinel.
-    mov    eax,DWORD PTR [esp+0x34]
-    mov    DWORD PTR [esp+0x2c],edi
-    lea    ecx,[esp+0x34]
-    lea    edi,[eax+0x10]
-    push   ecx
-    mov    ecx,edi
-    call   R6GameServiceAddresses::CopyListHeadSlot
-    lea    edx,[esp+0x2c]
-    mov    ecx,edi
-    push   edx
-    call   R6GameServiceAddresses::AllocateListPayloadNode
-    mov    edi,DWORD PTR [esp+0x34]
-    mov    edx,DWORD PTR [edi+0x4]
-    lea    ecx,[edi+0x4]
-    mov    DWORD PTR [eax],edi
-    mov    DWORD PTR [eax+0x4],edx
-    mov    DWORD PTR [edx],eax
-    mov    DWORD PTR [ecx],eax
-    // Load failure and previous FS before final cursor write; only replace AL, retaining node upper EAX.
-    mov    al,BYTE PTR [esp+0x13]
-    mov    ecx,DWORD PTR [esp+0x1c]
-    mov    DWORD PTR [ebx],esi
-    pop    edi
-    test   al,al
-    pop    esi
-    pop    ebp
-    sete   al
-    pop    ebx
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x18
-    ret    0xc
+  int *sharedCursor = cursorAddress;
+  uint cursor = (uint)*sharedCursor;
+  uint inputEnd = *(uint *)((uint)source + 0x10);
+  byte failed = 0;
+  uint payload = (uint)AllocateGameServiceBytes(0x1c);
+  source = (undefined4 *)payload;
+  if (payload != 0) {
+    *(uint *)(payload + 4) = R6GameServiceAddresses::ClDataBinOwnerBaseOffsets;
+    *(uint *)(payload + 0x18) = R6GameServiceAddresses::ClDataBinBaseOffsets;
+    *(uint *)(payload + 8) = 2;
+    *(uint *)payload = R6GameServiceAddresses::PTR_LAB;
+    uint triplet = payload + 0xc;
+    // Native state4 owns the object only during triplet/table initialization; its tag/context actions are empty.
+    try {
+      InitializePointerTriplet((void *)triplet,&cursorAddress);
+      *(uint *)payload = R6GameServiceAddresses::clDataBinPTR_FUN;
+    } catch (...) {
+      ResetClDataVtable(source);
+      ForwardToAllocatorTail(source);
+      throw;
+    }
   }
+  if (cursor == inputEnd || cursor + 1 == inputEnd) {
+    failed = 1;
+  } else {
+    byte firstByte = *(byte *)cursor;
+    cursor += 1;
+    byte thirdByte = *(byte *)(cursor + 1);
+    *(byte *)&cursorAddress = firstByte;
+    byte secondByte = *(byte *)cursor;
+    cursor += 2;
+    *((byte *)&cursorAddress + 1) = secondByte;
+    *((byte *)&cursorAddress + 2) = thirdByte;
+    byte fourthByte = *(byte *)cursor;
+    ++cursor;
+    *((byte *)&cursorAddress + 3) = fourthByte;
+    using ConvertABI = uint (__stdcall *)(uint);
+    uint declaredBytes = (*(ConvertABI *)R6GameServiceAddresses::WS2_32_ntohlSlot)((uint)cursorAddress);
+    uint remaining = inputEnd - cursor;
+    if (remaining < declaredBytes || declaredBytes > 0xffffffffu) {
+      failed = 1;
+    } else {
+      *sharedCursor = (int)cursor;
+      cursor += declaredBytes;
+      byte savedTag = *(byte *)&cursorAddress;
+      uint triplet = payload + 0xc;
+      *(byte *)&cursorAddress = savedTag;
+      uint first = (uint)*sharedCursor;
+      uint insertionPoint = *(uint *)triplet;
+      InsertByteRange((void *)triplet,(void *)insertionPoint,(void *)first,(void *)cursor,&cursorAddress,first);
+    }
+  }
+  uint savedDestination = (uint)destination;
+  source = (undefined4 *)payload;
+  uint headSlot = savedDestination + 0x10;
+  CopyListHeadSlot((void *)headSlot,(uint *)&destination);
+  uint node = (uint)AllocateListPayloadNode((uint *)&source);
+  uint head = (uint)destination;
+  uint previous = *(uint *)(head + 4);
+  *(uint *)node = head;
+  *(uint *)(node + 4) = previous;
+  *(uint *)previous = node;
+  *(uint *)(head + 4) = node;
+  byte finalFailure = failed;
+  uint result = node & 0xffffff00u;
+  *sharedCursor = (int)cursor;
+  return result | (finalFailure == 0 ? 1u : 0u);
 }
 
 // Releases the binary allocation saved at parent EBP+4 during constructor unwinding.
@@ -1228,453 +732,219 @@ __declspec(naked) void __cdecl TaggedByteBlockParseExceptionHandler(void)
   }
 }
 
-// Appends s, the current string range and NUL, retaining native scratch aliases and path-specific raw returns.
-// R6GameService.dll @ 1002c5e0 : complete native arguments/accesses/growth and raw ABI retained, RET8.
-__declspec(naked) uint __stdcall WriteTaggedType1(int valueWord,int outputWord)
+// Appends s, the current string range and NUL; scratch argument aliases and growth publication order are retained.
+// R6GameService.dll @ 1002c5e0 : stdcall two physical words; success replaces only AL.
+uint __stdcall WriteTaggedType1(int valueWord,int outputWord)
 {
-  __asm {
-    // Cache output and triplet before tag append; original value argument loads only after any tag growth.
-    push   ebp
-    push   esi
-    push   edi
-    mov    edi,DWORD PTR [esp+0x14]
-    mov    eax,DWORD PTR [edi+0x10]
-    mov    ecx,DWORD PTR [edi+0x14]
-    lea    esi,[edi+0xc]
-    cmp    eax,ecx
-    je Branch49
-    test   eax,eax
-    je Branch48
-    mov    BYTE PTR [eax],0x73
-  Branch48:
-    inc    DWORD PTR [esi+0x4]
-    jmp Branch50
-  Branch49:
-    push   0x1
-    lea    ecx,[esp+0x18]
-    push   0x1
-    push   ecx
-    push   R6GameServiceAddresses::TextSLb3
-    push   eax
-    mov    ecx,esi
-    call   R6GameServiceAddresses::GrowByteBufferAndInsertRepeatedBytes
-  Branch50:
-    // Use original output argument as tag scratch and reload value argument, then source end/begin and current output end.
-    mov    dl,BYTE PTR [esp+0x14]
-    lea    eax,[esp+0x14]
-    push   eax
-    mov    eax,DWORD PTR [esp+0x14]
-    mov    BYTE PTR [esp+0x18],dl
-    mov    ecx,DWORD PTR [eax+0x10]
-    mov    edx,DWORD PTR [eax+0xc]
-    mov    eax,DWORD PTR [edi+0x10]
-    push   ecx
-    push   edx
-    push   eax
-    mov    ecx,esi
-    call   R6GameServiceAddresses::InsertByteRange
-    // Append NUL after actual range insertion; fitting output returns new-end upper EAX with AL1.
-    mov    ebp,DWORD PTR [esi+0x4]
-    mov    eax,DWORD PTR [esi+0x8]
-    cmp    ebp,eax
-    je Branch52
-    test   ebp,ebp
-    je Branch51
-    mov    BYTE PTR [ebp+0x0],0x0
-  Branch51:
-    mov    eax,DWORD PTR [esi+0x4]
-    pop    edi
-    inc    eax
-    mov    DWORD PTR [esi+0x4],eax
-    pop    esi
-    mov    al,0x1
-    pop    ebp
-    ret    0x8
-  Branch52:
-    // NUL growth reuses original output/value arguments for one/occupied length, with unchecked allocation.
-    mov    edx,DWORD PTR [esi]
-    mov    eax,ebp
-    sub    eax,edx
-    mov    DWORD PTR [esp+0x14],0x1
-    cmp    eax,0x1
-    mov    DWORD PTR [esp+0x10],eax
-    lea    ecx,[esp+0x14]
-    jb Branch53
-    lea    ecx,[esp+0x10]
-  Branch53:
-    mov    edi,DWORD PTR [ecx]
-    push   ebx
-    add    edi,eax
-    push   edi
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    ebx,eax
-    mov    eax,DWORD PTR [esi]
-    cmp    ebp,eax
-    jne Branch54
-    mov    eax,ebx
-    jmp Branch55
-  Branch54:
-    sub    ebp,eax
-    push   ebp
-    push   eax
-    push   ebx
-    call   R6GameServiceAddresses::memmove
-    add    esp,0xc
-    add    eax,ebp
-  Branch55:
-    // Write NUL before releasing old storage; publish begin/capacity/end in that order and retain free upper EAX.
-    mov    BYTE PTR [eax],0x0
-    mov    ecx,DWORD PTR [esi]
-    push   ecx
-    lea    ebp,[eax+0x1]
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    DWORD PTR [esi],ebx
-    add    ebx,edi
-    mov    DWORD PTR [esi+0x8],ebx
-    pop    ebx
-    mov    DWORD PTR [esi+0x4],ebp
-    pop    edi
-    pop    esi
-    mov    al,0x1
-    pop    ebp
-    ret    0x8
+  uint output = (uint)outputWord;
+  auto *triplet = (R6GameServiceNative::ByteRange *)(output + 0xc);
+  uint end = triplet->end;
+  uint capacity = triplet->capacityEnd;
+  if (end != capacity) {
+    if (end != 0) *(byte *)end = 's';
+    ++triplet->end;
+  } else {
+    GrowByteBufferAndInsertRepeatedBytes(triplet,(void *)end,
+        (undefined1 *)R6GameServiceAddresses::TextSLb3,(uint)&outputWord,1,1);
   }
+  byte savedTag = *(byte *)&outputWord;
+  uint source = (uint)valueWord;
+  *(byte *)&outputWord = savedTag;
+  uint sourceEnd = *(uint *)(source + 0x10);
+  uint sourceBegin = *(uint *)(source + 0xc);
+  uint insertionPoint = *(uint *)(output + 0x10);
+  InsertByteRange(
+      triplet,(void *)insertionPoint,(void *)sourceBegin,(void *)sourceEnd,&outputWord,insertionPoint);
+  end = triplet->end;
+  capacity = triplet->capacityEnd;
+  if (end != capacity) {
+    if (end != 0) *(byte *)end = 0;
+    uint newEnd = triplet->end + 1;
+    triplet->end = newEnd;
+    return (newEnd & 0xffffff00u) | 1u;
+  }
+  uint occupiedBytes = end - triplet->begin;
+  outputWord = 1;
+  valueWord = (int)occupiedBytes;
+  uint *growth = occupiedBytes < 1 ? (uint *)&outputWord : (uint *)&valueWord;
+  uint allocationBytes = *growth + occupiedBytes;
+  uint replacement = (uint)AllocateGameServiceBytes(allocationBytes);
+  uint currentBegin = triplet->begin;
+  uint writeAt = replacement;
+  if (end != currentBegin) {
+    uint copyBytes = end - currentBegin;
+    using MoveABI = void * (__cdecl *)(void *,const void *,uint);
+    writeAt = (uint)((MoveABI)R6GameServiceAddresses::memmove)(
+        (void *)replacement,(void *)currentBegin,copyBytes) + copyBytes;
+  }
+  *(byte *)writeAt = 0;
+  uint oldBegin = triplet->begin;
+  uint newEnd = writeAt + 1;
+  uint result = TailFreeThroughGlobalAllocator((void *)oldBegin);
+  triplet->begin = replacement;
+  triplet->capacityEnd = replacement + allocationBytes;
+  triplet->end = newEnd;
+  return (result & 0xffffff00u) | 1u;
 }
 
-// Type-five writer locals hold the current growth length and cached source end in an eight-byte allocation.
-struct TaggedType5WriteFrame {
-  uint occupiedBytes;
-  uint sourceEnd;
-};
-
-// Appends s and virtual-size-plus-one source bytes, retaining cached source pointer and late byte loads.
-// R6GameService.dll @ 1002c6d0 : complete native arguments/accesses/growth and raw ABI retained, RET8.
-__declspec(naked) uint __stdcall WriteTaggedType5(int *value,undefined1 *outputWord)
+// Appends s and virtual-size-plus-one bytes, retaining the source pointer cached before the size callback.
+// R6GameService.dll @ 1002c6d0 : stdcall two physical words; cursor/limit/growth names are inferred.
+uint __stdcall WriteTaggedType5(int *value,undefined1 *outputWord)
 {
-  __asm {
-    // Cache output triplet; growth uses original output argument as constant-one scratch before source loads.
-    mov    eax,DWORD PTR [esp+0x8]
-    sub    esp,0x8
-    push   ebx
-    mov    ebx,DWORD PTR [eax+0x10]
-    push   ebp
-    push   esi
-    lea    esi,[eax+0xc]
-    push   edi
-    cmp    ebx,DWORD PTR [esi+0x8]
-    je Branch57
-    test   ebx,ebx
-    je Branch56
-    mov    BYTE PTR [ebx],0x73
-  Branch56:
-    inc    DWORD PTR [esi+0x4]
-    jmp Branch61
-  Branch57:
-    mov    edx,DWORD PTR [esi]
-    mov    eax,ebx
-    sub    eax,edx
-    mov    DWORD PTR [esp+0x20],0x1
-    cmp    eax,0x1
-    mov    DWORD PTR [esp+0x10],eax
-    lea    ecx,[esp+0x20]
-    jb Branch58
-    lea    ecx,[esp+0x10]
-  Branch58:
-    mov    edi,DWORD PTR [ecx]
-    add    edi,eax
-    push   edi
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    ebp,eax
-    mov    eax,DWORD PTR [esi]
-    cmp    ebx,eax
-    jne Branch59
-    mov    eax,ebp
-    jmp Branch60
-  Branch59:
-    sub    ebx,eax
-    push   ebx
-    push   eax
-    push   ebp
-    call   R6GameServiceAddresses::memmove
-    add    esp,0xc
-    add    eax,ebx
-  Branch60:
-    // Tag growth writes s, releases the old allocation with its size, then publishes all three new words.
-    lea    ecx,[esi+0x8]
-    mov    BYTE PTR [eax],0x73
-    lea    ebx,[eax+0x1]
-    mov    eax,DWORD PTR [esi]
-    mov    edx,DWORD PTR [ecx]
-    sub    edx,eax
-    push   edx
-    push   eax
-    call   R6GameServiceAddresses::ReleaseMemoryIgnoringSize
-    lea    eax,[edi+ebp*1]
-    mov    ecx,esi
-    push   eax
-    push   ebx
-    push   ebp
-    call   R6GameServiceAddresses::SetThreeWordRecord
-  Branch61:
-    // Load source argument late, cache source pointer before virtual size call, and include one extra byte.
-    mov    ecx,DWORD PTR [esp+0x1c]
-    mov    edx,DWORD PTR [ecx]
-    mov    edi,DWORD PTR [ecx+0xc]
-    call   DWORD PTR [edx+0x14]
-    lea    ebp,[eax+edi*1+0x1]
-    // Original output argument becomes current source cursor; frame-4 stores source limit and frame-8 growth length.
-    mov    eax,edi
-    cmp    eax,ebp
-    mov    DWORD PTR [esp+0x14],ebp
-    mov    DWORD PTR [esp+0x20],eax
-    je Branch69
-  Branch62:
-    mov    ebx,DWORD PTR [esi+0x4]
-    mov    ecx,DWORD PTR [esi+0x8]
-    cmp    ebx,ecx
-    je Branch64
-    test   ebx,ebx
-    je Branch63
-    mov    cl,BYTE PTR [eax]
-    mov    BYTE PTR [ebx],cl
-  Branch63:
-    inc    DWORD PTR [esi+0x4]
-    jmp Branch68
-  Branch64:
-    // Body growth overwrites original value argument with one while retaining cursor and limit in their native slots.
-    mov    edx,DWORD PTR [esi]
-    mov    eax,ebx
-    sub    eax,edx
-    mov    DWORD PTR [esp+0x1c],0x1
-    cmp    eax,0x1
-    mov    DWORD PTR [esp+0x10],eax
-    lea    ecx,[esp+0x1c]
-    jb Branch65
-    lea    ecx,[esp+0x10]
-  Branch65:
-    mov    edi,DWORD PTR [ecx]
-    add    edi,eax
-    push   edi
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    ebp,eax
-    mov    eax,DWORD PTR [esi]
-    cmp    ebx,eax
-    jne Branch66
-    mov    eax,ebp
-    jmp Branch67
-  Branch66:
-    sub    ebx,eax
-    push   ebx
-    push   eax
-    push   ebp
-    call   R6GameServiceAddresses::memmove
-    add    esp,0xc
-    add    eax,ebx
-  Branch67:
-    // Load source byte after allocation/copy, release old first-word storage, and restore current cursor/limit.
-    mov    edx,DWORD PTR [esp+0x20]
-    lea    ebx,[eax+0x1]
-    mov    cl,BYTE PTR [edx]
-    mov    BYTE PTR [eax],cl
-    mov    ecx,esi
-    call   R6GameServiceAddresses::ReleaseFirstWordBuffer
-    lea    edx,[edi+ebp*1]
-    mov    ecx,esi
-    push   edx
-    push   ebx
-    push   ebp
-    call   R6GameServiceAddresses::SetThreeWordRecord
-    mov    eax,DWORD PTR [esp+0x20]
-    mov    ebp,DWORD PTR [esp+0x14]
-  Branch68:
-    inc    eax
-    cmp    eax,ebp
-    mov    DWORD PTR [esp+0x20],eax
-    jne Branch62
-  Branch69:
-    // Return the advanced source cursor upper EAX with AL1, even when virtual size UINT_MAX skipped the copy loop.
-    pop    edi
-    pop    esi
-    pop    ebp
-    mov    al,0x1
-    pop    ebx
-    add    esp,0x8
-    ret    0x8
+  uint end = *(uint *)((uint)outputWord + 0x10);
+  auto *triplet = (R6GameServiceNative::ByteRange *)((uint)outputWord + 0xc);
+  if (end != triplet->capacityEnd) {
+    if (end != 0) *(byte *)end = 's';
+    ++triplet->end;
+  } else {
+    uint occupiedBytes = end - triplet->begin;
+    outputWord = (undefined1 *)1;
+    uint *growth = occupiedBytes < 1 ? (uint *)&outputWord : &occupiedBytes;
+    uint allocationBytes = *growth + occupiedBytes;
+    uint replacement = (uint)AllocateGameServiceBytes(allocationBytes);
+    uint currentBegin = triplet->begin;
+    uint writeAt = replacement;
+    if (end != currentBegin) {
+      uint copyBytes = end - currentBegin;
+      using MoveABI = void * (__cdecl *)(void *,const void *,uint);
+      writeAt = (uint)((MoveABI)R6GameServiceAddresses::memmove)(
+          (void *)replacement,(void *)currentBegin,copyBytes) + copyBytes;
+    }
+    *(byte *)writeAt = 's';
+    uint newEnd = writeAt + 1;
+    uint oldBegin = triplet->begin;
+    uint oldAllocationBytes = triplet->capacityEnd - oldBegin;
+    ReleaseMemoryIgnoringSize((void *)oldBegin,oldAllocationBytes);
+    SetThreeWordRecord(triplet,replacement,newEnd,replacement + allocationBytes);
   }
+  int *source = value;
+  uint vtable = *(uint *)source;
+  uint sourceBegin = *(uint *)((uint)source + 0xc);
+  using SizeABI = uint (__thiscall *)(void *);
+  uint size = (*(SizeABI *)(vtable + 0x14))(source);
+  uint limit = sourceBegin + size + 1;
+  uint sourceEnd = limit;
+  uint cursor = sourceBegin;
+  outputWord = (undefined1 *)cursor;
+  while (cursor != limit) {
+    end = triplet->end;
+    uint capacity = triplet->capacityEnd;
+    if (end != capacity) {
+      if (end != 0) *(byte *)end = *(byte *)cursor;
+      ++triplet->end;
+    } else {
+      uint occupiedBytes = end - triplet->begin;
+      value = (int *)1;
+      uint *growth = occupiedBytes < 1 ? (uint *)&value : &occupiedBytes;
+      uint allocationBytes = *growth + occupiedBytes;
+      uint replacement = (uint)AllocateGameServiceBytes(allocationBytes);
+      uint currentBegin = triplet->begin;
+      uint writeAt = replacement;
+      if (end != currentBegin) {
+        uint copyBytes = end - currentBegin;
+        using MoveABI = void * (__cdecl *)(void *,const void *,uint);
+        writeAt = (uint)((MoveABI)R6GameServiceAddresses::memmove)(
+            (void *)replacement,(void *)currentBegin,copyBytes) + copyBytes;
+      }
+      uint currentSource = (uint)outputWord;
+      uint newEnd = writeAt + 1;
+      byte sourceByte = *(byte *)currentSource;
+      *(byte *)writeAt = sourceByte;
+      ReleaseFirstWordBuffer(triplet);
+      SetThreeWordRecord(triplet,replacement,newEnd,replacement + allocationBytes);
+      cursor = (uint)outputWord;
+      limit = sourceEnd;
+    }
+    ++cursor;
+    outputWord = (undefined1 *)cursor;
+  }
+  return (cursor & 0xffffff00u) | 1u;
 }
 
-// Type-four writer locals: index/header length, constant-one scratch and payload-growth length.
-struct TaggedType4WriteFrame {
-  uint index;
-  uint one;
-  uint occupiedBytes;
-};
-
-// Appends L and four physical encoded-word bytes with exact growth/index/register effects.
-// R6GameService.dll @ 1002c820 : complete native arguments/accesses/growth and raw ABI retained, RET8.
-__declspec(naked) uint __stdcall WriteTaggedType4(int valueWord,uint outputWord)
+// Appends L and four encoded bytes, reloading the value each time and preserving path-specific upper return bits.
+// R6GameService.dll @ 1002c820 : stdcall two physical words; local index/growth names are inferred.
+uint __stdcall WriteTaggedType4(int valueWord,uint outputWord)
 {
-  __asm {
-    // Cache output triplet; append L or grow before reading the original value argument.
-    mov    eax,DWORD PTR [esp+0x8]
-    sub    esp,0xc
-    push   ebx
-    mov    ebx,DWORD PTR [eax+0x10]
-    push   ebp
-    push   esi
-    lea    esi,[eax+0xc]
-    push   edi
-    cmp    ebx,DWORD PTR [esi+0x8]
-    je Branch71
-    test   ebx,ebx
-    je Branch70
-    mov    BYTE PTR [ebx],0x4c
-  Branch70:
-    inc    DWORD PTR [esi+0x4]
-    jmp Branch75
-  Branch71:
-    mov    edx,DWORD PTR [esi]
-    mov    eax,ebx
-    sub    eax,edx
-    mov    DWORD PTR [esp+0x24],0x1
-    cmp    eax,0x1
-    mov    DWORD PTR [esp+0x10],eax
-    lea    ecx,[esp+0x24]
-    jb Branch72
-    lea    ecx,[esp+0x10]
-  Branch72:
-    mov    edi,DWORD PTR [ecx]
-    add    edi,eax
-    push   edi
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    ebp,eax
-    mov    eax,DWORD PTR [esi]
-    cmp    ebx,eax
-    jne Branch73
-    mov    eax,ebp
-    jmp Branch74
-  Branch73:
-    sub    ebx,eax
-    push   ebx
-    push   eax
-    push   ebp
-    call   R6GameServiceAddresses::memmove
-    add    esp,0xc
-    add    eax,ebx
-  Branch74:
-    // Fill the L tag, release old first-word storage and publish the replacement triplet.
-    push   R6GameServiceAddresses::TextLb
-    push   0x1
-    push   eax
-    call   R6GameServiceAddresses::FillByteRangeAndReturnEnd
-    mov    ecx,esi
-    mov    ebx,eax
-    call   R6GameServiceAddresses::ReleaseFirstWordBuffer
-    lea    ecx,[edi+ebp*1]
-    push   ecx
-    push   ebx
-    push   ebp
-    mov    ecx,esi
-    call   R6GameServiceAddresses::SetThreeWordRecord
-  Branch75:
-    // Frame-0xc is the loop index; reload original value for each of four physical bytes at value+0xc.
-    xor    ecx,ecx
-    mov    DWORD PTR [esp+0x10],ecx
-  Branch76:
-    mov    edx,DWORD PTR [esp+0x20]
-    mov    ebp,DWORD PTR [esi+0x4]
-    mov    al,BYTE PTR [edx+ecx*1+0xc]
-    mov    edx,DWORD PTR [esi+0x8]
-    cmp    ebp,edx
-    mov    BYTE PTR [esp+0x24],al
-    je Branch78
-    test   ebp,ebp
-    je Branch77
-    mov    BYTE PTR [ebp+0x0],al
-  Branch77:
-    inc    DWORD PTR [esi+0x4]
-    jmp Branch82
-  Branch78:
-    // Frame-8/-4 hold one/occupied length; original output argument low byte preserves the selected payload byte.
-    mov    edx,DWORD PTR [esi]
-    mov    eax,ebp
-    sub    eax,edx
-    mov    DWORD PTR [esp+0x14],0x1
-    cmp    eax,0x1
-    mov    DWORD PTR [esp+0x18],eax
-    lea    ecx,[esp+0x14]
-    jb Branch79
-    lea    ecx,[esp+0x18]
-  Branch79:
-    mov    edi,DWORD PTR [ecx]
-    add    edi,eax
-    push   edi
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    ebx,eax
-    mov    eax,DWORD PTR [esi]
-    cmp    ebp,eax
-    jne Branch80
-    mov    eax,ebx
-    jmp Branch81
-  Branch80:
-    sub    ebp,eax
-    push   ebp
-    push   eax
-    push   ebx
-    call   R6GameServiceAddresses::memmove
-    add    esp,0xc
-    add    eax,ebp
-  Branch81:
-    // Reload saved byte after copying, write it before release, then restore loop index and publish new triplet.
-    mov    cl,BYTE PTR [esp+0x24]
-    lea    ebp,[eax+0x1]
-    mov    BYTE PTR [eax],cl
-    mov    edx,DWORD PTR [esi]
-    push   edx
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    ecx,DWORD PTR [esp+0x10]
-    mov    DWORD PTR [esi],ebx
-    add    ebx,edi
-    mov    DWORD PTR [esi+0x4],ebp
-    mov    DWORD PTR [esi+0x8],ebx
-  Branch82:
-    // Increment the actual saved index; do not replace it with the decompiler invented incoming-EBX value.
-    inc    ecx
-    cmp    ecx,0x4
-    mov    DWORD PTR [esp+0x10],ecx
-    jb Branch76
-    // Only replace AL with one; preserve upper EAX from last output-pointer, capacity or release path.
-    pop    edi
-    pop    esi
-    pop    ebp
-    mov    al,0x1
-    pop    ebx
-    add    esp,0xc
-    ret    0x8
+  uint result = outputWord;
+  uint end = *(uint *)(outputWord + 0x10);
+  auto *triplet = (R6GameServiceNative::ByteRange *)(outputWord + 0xc);
+  if (end != triplet->capacityEnd) {
+    if (end != 0) *(byte *)end = 'L';
+    ++triplet->end;
+  } else {
+    uint occupiedBytes = end - triplet->begin;
+    outputWord = 1;
+    uint *growth = occupiedBytes < 1 ? &outputWord : &occupiedBytes;
+    uint allocationBytes = *growth + occupiedBytes;
+    uint replacement = (uint)AllocateGameServiceBytes(allocationBytes);
+    uint currentBegin = triplet->begin;
+    uint writeAt = replacement;
+    if (end != currentBegin) {
+      uint copyBytes = end - currentBegin;
+      using MoveABI = void * (__cdecl *)(void *,const void *,uint);
+      writeAt = (uint)((MoveABI)R6GameServiceAddresses::memmove)(
+          (void *)replacement,(void *)currentBegin,copyBytes) + copyBytes;
+    }
+    uint newEnd = (uint)FillByteRangeAndReturnEnd((undefined1 *)writeAt,1,
+        (undefined1 *)R6GameServiceAddresses::TextLb);
+    ReleaseFirstWordBuffer(triplet);
+    result = SetThreeWordRecord(triplet,replacement,newEnd,replacement + allocationBytes);
   }
+  uint index = 0;
+  uint currentIndex = 0;
+  do {
+    uint source = (uint)valueWord;
+    end = triplet->end;
+    byte encodedByte = *(byte *)(source + currentIndex + 0xc);
+    result = (result & 0xffffff00u) | encodedByte;
+    uint capacity = triplet->capacityEnd;
+    *(byte *)&outputWord = encodedByte;
+    if (end != capacity) {
+      if (end != 0) *(byte *)end = encodedByte;
+      ++triplet->end;
+    } else {
+      uint occupiedBytes = end - triplet->begin;
+      uint one = 1;
+      uint *growth = occupiedBytes < 1 ? &one : &occupiedBytes;
+      uint allocationBytes = *growth + occupiedBytes;
+      uint replacement = (uint)AllocateGameServiceBytes(allocationBytes);
+      uint currentBegin = triplet->begin;
+      uint writeAt = replacement;
+      if (end != currentBegin) {
+        uint copyBytes = end - currentBegin;
+        using MoveABI = void * (__cdecl *)(void *,const void *,uint);
+        writeAt = (uint)((MoveABI)R6GameServiceAddresses::memmove)(
+            (void *)replacement,(void *)currentBegin,copyBytes) + copyBytes;
+      }
+      byte savedByte = *(byte *)&outputWord;
+      uint newEnd = writeAt + 1;
+      *(byte *)writeAt = savedByte;
+      uint oldBegin = triplet->begin;
+      result = TailFreeThroughGlobalAllocator((void *)oldBegin);
+      currentIndex = index;
+      triplet->begin = replacement;
+      triplet->end = newEnd;
+      triplet->capacityEnd = replacement + allocationBytes;
+    }
+    ++currentIndex;
+    index = currentIndex;
+  } while (currentIndex < 4);
+  return (result & 0xffffff00u) | 1u;
 }
 
-// Clears three words, allocates eight bytes unchecked, publishes begin/end/capacity, then writes the initial NUL.
-// R6GameService.dll @ 1002aca0 : native store order, stack aliases and raw register effects retained.
-__declspec(naked) void * __thiscall InitializeEmptyByteString(void *triplet)
+// Clear the triplet, allocate eight bytes unchecked and publish all three fields before writing the initial NUL.
+// R6GameService.dll @ 1002aca0 : selected PE32 operations; helper/type names remain descriptive.
+void * __thiscall InitializeEmptyByteString(void *triplet)
 {
-  __asm {
-    push   esi
-    mov    esi,ecx
-    push   0x8
-    mov    DWORD PTR [esi],0x0
-    mov    DWORD PTR [esi+0x4],0x0
-    mov    DWORD PTR [esi+0x8],0x0
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    lea    ecx,[eax+0x8]
-    mov    DWORD PTR [esi],eax
-    mov    DWORD PTR [esi+0x4],eax
-    mov    DWORD PTR [esi+0x8],ecx
-    mov    BYTE PTR [eax],0x0
-    mov    eax,esi
-    pop    esi
-    ret
-  }
+  *(uint *)triplet = 0;
+  *(uint *)((byte *)triplet + 4) = 0;
+  *(uint *)((byte *)triplet + 8) = 0;
+  uint allocation = (uint)AllocateGameServiceBytes(8);
+  *(uint *)triplet = allocation;
+  *(uint *)((byte *)triplet + 4) = allocation;
+  *(uint *)((byte *)triplet + 8) = allocation + 8;
+  *(byte *)allocation = 0;
+  return triplet;
 }
 
 // Prints the NUL-terminated pointer at descriptor+0x0c as a quoted string followed by a space.
@@ -1835,77 +1105,41 @@ __declspec(naked) void __cdecl ReleaseIndentSpacesLate(void)
   }
 }
 
-// Appends a range using a local last-low-byte tag, ignoring the incoming third stack word and retaining target EAX.
+// Appends a range using a local last-low-byte tag, ignoring the caller's third word and forwarding the full result.
 // R6GameService.dll @ 1002b040 : ECX triplet, first/last/unused-tag stack words, RET 0xc.
-__declspec(naked) void * __thiscall AppendByteRangeWithLocalGrowthTag(
+void * __thiscall AppendByteRangeWithLocalGrowthTag(
     void *triplet,undefined1 *first,undefined1 *last,uint unusedTag)
 {
-  __asm {
-    push   ecx
-    mov    al,byte ptr [esp+0xc]
-    lea    edx,[esp+0x3]
-    mov    byte ptr [esp+0x3],al
-    mov    eax,dword ptr [esp+0xc]
-    push   edx
-    mov    edx,dword ptr [esp+0xc]
-    push   eax
-    push   edx
-    call   R6GameServiceAddresses::AppendByteRangeWithGrowth
-    pop    ecx
-    ret    0xc
-  }
+  byte localTag = (byte)(uint)last;
+  return AppendByteRangeWithGrowth(triplet,first,last,(uint)&localTag);
 }
 
-// Compute cached length+1 modulo32, allocate/publish triplet; reload end argument for copy gate, cached length for move.
-// Publish current move-return+length/end, then NUL, RET12/end EAX. Zero allocation throws; no own EH/NULL repair.
-// R6GameService.dll @ 1002b0a0 : complete native control/access order and raw ABI retained.
-__declspec(naked) void * __thiscall ConstructHeapByteStringRange(void *triplet,void *first,int lastWord,void *unusedTag)
+// Allocates length+1, publishes storage before copying, then writes NUL; a wrapped zero size takes the length error.
+// R6GameService.dll @ 1002b0a0 : ECX triplet, first/last/unused-tag stack words; EAX=new end, RET 0xc.
+void * __thiscall ConstructHeapByteStringRange(void *triplet,void *first,int lastWord,void *unusedTag)
 {
-  __asm {
-    push   ebx
-    push   ebp
-    mov    ebp,DWORD PTR [esp+0xc]
-    push   esi
-    push   edi
-    mov    edi,DWORD PTR [esp+0x18]
-    sub    edi,ebp
-    mov    esi,ecx
-    lea    ebx,[edi+0x1]
-    cmp    ebx,0xffffffff
-    ja     Branch83
-    test   ebx,ebx
-    jbe    Branch83
-    push   ebx
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    DWORD PTR [esi],eax
-    mov    DWORD PTR [esi+0x4],eax
-    add    eax,ebx
-    mov    DWORD PTR [esi+0x8],eax
-    jmp    Branch84
-  Branch83:
-    push   R6GameServiceAddresses::s_basic_string
-    call   R6GameServiceAddresses::ThrowByteStringLengthError
-    add    esp,0x4
-  Branch84:
-    mov    ecx,DWORD PTR [esp+0x18]
-    mov    eax,DWORD PTR [esi]
-    cmp    ecx,ebp
-    je     Branch85
-    push   edi
-    push   ebp
-    push   eax
-    call   R6GameServiceAddresses::memmove
-    add    esp,0xc
-    add    eax,edi
-  Branch85:
-    mov    DWORD PTR [esi+0x4],eax
-    pop    edi
-    pop    esi
-    pop    ebp
-    mov    BYTE PTR [eax],0x0
-    pop    ebx
-    ret    0xc
+  uint sourceBegin = (uint)first;
+  uint copiedBytes = (uint)lastWord - sourceBegin;
+  auto *owner = (R6GameServiceNative::ByteRange *)triplet;
+  uint allocationBytes = copiedBytes + 1;
+  if (allocationBytes != 0) {
+    uint replacement = (uint)AllocateGameServiceBytes(allocationBytes);
+    owner->begin = replacement;
+    owner->end = replacement;
+    owner->capacityEnd = replacement + allocationBytes;
+  } else {
+    ThrowByteStringLengthError(s_basic_string);
   }
+  uint currentLast = (uint)lastWord;
+  uint result = owner->begin;
+  if (currentLast != sourceBegin) {
+    using MoveABI = void * (__cdecl *)(void *,const void *,uint);
+    result = (uint)((MoveABI)R6GameServiceAddresses::memmove)(
+        (void *)result,(void *)sourceBegin,copiedBytes) + copiedBytes;
+  }
+  owner->end = result;
+  *(byte *)result = 0;
+  return (void *)result;
 }
 
 // Overwrites occupied bytes from begin, then shrinks by copying the old end byte or grows with the remaining input.

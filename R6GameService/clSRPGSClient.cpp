@@ -66,33 +66,23 @@ __declspec(naked) void *__thiscall clSRPGSClientConstruct(void *owner,uint ident
   }
 }
 
-// Install client table before shared base cleanup; deleting wrapper reads CURRENT low-byte flag bit0 afterward.
-// R6GameService.dll @ 100596a0 : complete native control/access order and raw ABI retained.
-__declspec(naked) void *__thiscall clSRPGSClientDelete(void *owner,uint deleteFlags)
+// Destroy members before sampling the current deletion flag; optionally release storage and return the cached receiver.
+// R6GameService.dll @ 100596a0 : full physical flags word; only bit 0 controls storage ownership.
+void * __thiscall clSRPGSClientDelete(void *owner,uint deleteFlags)
 {
-  __asm {
-    push    esi
-    mov    esi,ecx
-    call    R6GameServiceAddresses::clSRPGSClientDestroy
-    test    BYTE PTR [esp+0x8],0x1
-    je    Branch4
-    push    esi
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch4:
-    mov    eax,esi
-    pop    esi
-    ret    0x4
-  }
+  using DestroyABI = uint (__fastcall *)(void *);
+  ((DestroyABI)R6GameServiceAddresses::clSRPGSClientDestroy)(owner);
+  if ((deleteFlags & 1) != 0) TailFreeThroughGlobalAllocator(owner);
+  return owner;
 }
 
-// Install client table before shared base cleanup; deleting wrapper reads CURRENT low-byte flag bit0 afterward.
-// R6GameService.dll @ 100596c0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall clSRPGSClientDestroy(void *owner)
+// Restore the derived client identity before forwarding the receiver to shared base destruction.
+// R6GameService.dll @ 100596c0 : native tail alias; shared cleanup's full return word is retained.
+uint __fastcall clSRPGSClientDestroy(void *owner)
 {
-  __asm {
-    mov    DWORD PTR [ecx],R6GameServiceAddresses::clSRPGSClientVTable
-    jmp    R6GameServiceAddresses::clSRPGSConnectDestroy
-  }
+  *(uint *)owner = R6GameServiceAddresses::clSRPGSClientVTable;
+  using DestroyABI = uint (__fastcall *)(void *);
+  return ((DestroyABI)R6GameServiceAddresses::clSRPGSConnectDestroy)(owner);
 }
 
 // Resolve into owner+60 ignoring resolver status; open current associated slot8, then poll until ready or AL0 failure.

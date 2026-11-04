@@ -109,19 +109,13 @@ __declspec(naked) void __thiscall UR6LanServers::~UR6LanServers(UR6LanServers *o
 }
 
 // Constructs the server-list base and publishes the LAN vtable without initializing the three derived tail words.
-// R6GameService.dll @ 10003e00 : complete native control/access order and raw ABI retained.
-__declspec(naked) UR6LanServers * __thiscall UR6LanServers::UR6LanServers(UR6LanServers *object)
+// R6GameService.dll @ 10003e00 : receiver in ECX; derived tail storage is untouched.
+UR6LanServers::UR6LanServers(void)
 {
-  __asm {
-    // No derived local EH frame; return the cached original object.
-    push   esi
-    mov    esi,ecx
-    call   R6GameServiceAddresses::UR6ServerList_UR6ServerList
-    mov    DWORD PTR [esi],R6GameServiceAddresses::UR6LanServersDispatchTable
-    mov    eax,esi
-    pop    esi
-    ret
-  }
+  UR6LanServers *object = this;
+  using ConstructABI = void (__thiscall *)(void *);
+  ((ConstructABI)R6GameServiceAddresses::UR6ServerList_UR6ServerList)(object);
+  *(uint *)object = R6GameServiceAddresses::UR6LanServersDispatchTable;
 }
 
 // Copy-constructs the base, publishes the LAN table and transfers two words plus mask1 of the last flag word.
@@ -205,18 +199,13 @@ __declspec(naked) void * __thiscall DeleteUR6LanServers(UR6LanServers *object,ui
   }
 }
 
-// Returns for null storage or tail-forwards its current storage argument to the LAN default constructor.
-// R6GameService.dll @ 100042f0 : complete native control/access order and raw ABI retained.
-__declspec(naked) void __cdecl UR6LanServers::InternalConstructor(void *objectMemory)
+// Constructs a LAN server list in nonnull supplied storage; null storage has no effect.
+// R6GameService.dll @ 100042f0 : caller-clean placement-construction wrapper; no allocation or result value.
+void __cdecl UR6LanServers::InternalConstructor(void *objectMemory)
 {
-  __asm {
-    // Null preserves incoming EAX; nonnull keeps the original caller-clean slot and adds no lifetime frame.
-    mov    ecx,DWORD PTR [esp+0x4]
-    test   ecx,ecx
-    je    Branch4
-    jmp    R6GameServiceAddresses::UR6LanServers_UR6LanServers
-  Branch4:
-    ret
+  if (objectMemory != nullptr) {
+    using ConstructABI = void (__thiscall *)(void *);
+    ((ConstructABI)R6GameServiceAddresses::UR6LanServers_UR6LanServers)(objectMemory);
   }
 }
 

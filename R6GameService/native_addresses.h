@@ -4,6 +4,11 @@
 // Unsigned 32-bit bindings preserve native table words, relocations and compiler-specific entry contracts.
 // Private/compiler names are descriptive; neutral ordinals distinguish unresolved private identities.
 // Interior cases remain in their canonical parents. Import names denote the live four-byte IAT slots.
+// In noncompiled C++ reference views, [[r6abi::register_input("...")]] binds a logical input to that native register.
+// Such annotated inputs are not native stack arguments; the address marker records the physical entry/RET contract.
+// [[r6abi::register_output("...")]] on a local binds its final value to that volatile register on normal return.
+// [[r6abi::register_snapshot("...")]] binds a local to the current register at its declaration, including call clobbers.
+// The annotations describe machine evidence, not a recovered original prototype or a compiler-supported extension.
 namespace R6GameServiceAddresses {
 // R6GameService.dll image-base @ 10000000
 constexpr unsigned int ModuleImageBase = 0x10000000;
@@ -16018,6 +16023,8 @@ constexpr unsigned int RandomStackMD5ExceptionHandlerFunctionInfo = 0x100811c0;
 constexpr unsigned int GLClientConstructExceptionHandlerFunctionInfo = 0x100811e4;
 // R6GameService.dll external-function-metadata @ 10081268
 constexpr unsigned int ServiceStateConstructExceptionHandlerFunctionInfo = 0x10081268;
+// R6GameService.dll data @ 10081284
+constexpr unsigned int ServiceStateDestroyUnwindMap = 0x10081284;
 // R6GameService.dll external-function-metadata @ 1008129c
 constexpr unsigned int ServiceStateDestroyExceptionHandlerFunctionInfo = 0x1008129c;
 // R6GameService.dll external-function-metadata @ 10082b0c

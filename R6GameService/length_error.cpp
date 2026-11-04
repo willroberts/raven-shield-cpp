@@ -65,30 +65,20 @@ __declspec(naked) __thiscall std::length_error::length_error(const std::length_e
   }
 }
 
-// Constructs the imported exception base and copies a late message into256 bytes.
-// Forces the final diagnostic byte zero and installs the _STL::length_error table.
-// R6GameService.dll @ 10017200 : complete native control/access order and raw ABI retained.
-__declspec(naked) void * __thiscall ConstructException75c28(void *owner,uint *message)
+// Construct the exception base, copy the late diagnostic into 256 bytes, terminate it and publish length_error identity.
+// R6GameService.dll @ 10017200 : selected PE32 operations; helper/type names remain descriptive.
+void * __thiscall ConstructException75c28(void *owner,uint *message)
 {
-  __asm {
-    push   esi
-    mov    esi,ecx
-    call   R6GameServiceAddresses::exception_exception2
-    mov    eax,DWORD PTR [esp+0x8]
-    mov    DWORD PTR [esi],R6GameServiceAddresses::Named_exception__STLVTable
-    push   0x100
-    lea    edx,[esi+0xc]
-    mov    ecx,DWORD PTR [eax]
-    push   ecx
-    push   edx
-    call   R6GameServiceAddresses::strncpy
-    add    esp,0xc
-    mov    BYTE PTR [esi+0x10b],0x0
-    mov    DWORD PTR [esi],R6GameServiceAddresses::length_error__STLVTable
-    mov    eax,esi
-    pop    esi
-    ret    0x4
-  }
+  using BaseABI = void (__thiscall *)(void *);
+  ((BaseABI)R6GameServiceAddresses::exception_exception2)(owner);
+  uint *messageSlot = message;
+  *(uint *)owner = R6GameServiceAddresses::Named_exception__STLVTable;
+  const char *text = *(const char **)messageSlot;
+  using CopyABI = char * (__cdecl *)(char *,const char *,uint);
+  ((CopyABI)R6GameServiceAddresses::strncpy)((char *)owner + 0xc,text,0x100);
+  *((byte *)owner + 0x10b) = 0;
+  *(uint *)owner = R6GameServiceAddresses::length_error__STLVTable;
+  return owner;
 }
 
 // Copies the imported exception base, then256 diagnostic bytes as forward DWORDs and installs the derived table.

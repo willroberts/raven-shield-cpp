@@ -62,68 +62,57 @@ __declspec(naked) void *__thiscall clSRPGSConnectConstruct(
   }
 }
 
-// Destroy derived/base members, then read CURRENT full flag low-byte bit0 for optional cached-owner free.
-// Return cached owner/RET4 regardless of child EAX; keep full physical DWORD flag.
-// R6GameService.dll @ 10059220 : complete native control/access order and raw ABI retained.
-__declspec(naked) void *__thiscall clSRPGSConnectDelete(void *owner,uint deleteFlags)
-{
-  __asm {
-    push   esi
-    mov    esi,ecx
-    call   R6GameServiceAddresses::clSRPGSConnectDestroy
-    test   BYTE PTR [esp+0x8],0x1
-    je     Branch2
-    push   esi
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch2:
-    mov    eax,esi
-    pop    esi
-    ret    0x4
+// Retain saved owner for base cleanup until explicit base destruction; association effects do not roll back.
+struct SRPGSConnectDestructionCleanup {
+  void *savedOwner;
+  int state;
+  bool armed;
+  // The native derived state owns only base destruction, never a separate association retry.
+  ~SRPGSConnectDestructionCleanup() noexcept(false)
+  {
+    if (armed && state == 0) {
+      state = -1;
+      DestroyTransportRecordMembers(savedOwner);
+    }
   }
+};
+
+// Destroy derived/base members, then optionally free the cached owner using the current flag low-byte bit0.
+// R6GameService.dll @ 10059220 : full physical DWORD flag, RET4 and cached owner EAX.
+void * __thiscall clSRPGSConnectDelete(void *owner,uint deleteFlags)
+{
+  void *savedOwner = owner;
+  clSRPGSConnectDestroy(savedOwner);
+  if (((byte)deleteFlags & 1) != 0) TailFreeThroughGlobalAllocator(savedOwner);
+  return savedOwner;
 }
 
-// Invoke associated member target+144 with receiver A+4+[A+148]+[[A+4]+[A+14c]] modulo32.
-// Then reload CURRENT +68 for optional virtual delete; disarm before actual base575f0 so base failure is not retried.
-// Original A is unchecked before callback; inherited frame saved ownerS-10/stateS-4, raw base EAX retained.
+// Invoke the associated member with its virtual-base adjustment, delete the current association, then destroy the base.
+// The initial association is unchecked; preserve late target/association reads and raw base return.
 // R6GameService.dll @ 10059240 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall clSRPGSConnectDestroy(void *owner)
+uint __fastcall clSRPGSConnectDestroy(void *owner)
 {
-  __asm {
-    push   0xffffffff
-    push   R6GameServiceAddresses::SelectSRPGSConnectDestroyEH
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    push   ecx
-    push   esi
-    mov    esi,ecx
-    mov    DWORD PTR [esp+0x4],esi
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clSRPGSConnectVTable
-    mov    eax,DWORD PTR [esi+0x68]
-    mov    DWORD PTR [esp+0x10],0x0
-    mov    ecx,DWORD PTR [eax+0x14c]
-    mov    edx,DWORD PTR [eax+0x4]
-    mov    ecx,DWORD PTR [ecx+edx*1]
-    mov    edx,DWORD PTR [eax+0x148]
-    add    ecx,edx
-    lea    ecx,[ecx+eax*1+0x4]
-    call   DWORD PTR [eax+0x144]
-    mov    ecx,DWORD PTR [esi+0x68]
-    test   ecx,ecx
-    je     Branch3
-    mov    edx,DWORD PTR [ecx]
-    push   0x1
-    call   DWORD PTR [edx]
-  Branch3:
-    mov    ecx,esi
-    mov    DWORD PTR [esp+0x10],0xffffffff
-    call   R6GameServiceAddresses::DestroyTransportRecordMembers
-    mov    ecx,DWORD PTR [esp+0x8]
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x10
-    ret
+  SRPGSConnectDestructionCleanup cleanup{owner,-1,true};
+  uint base = (uint)owner;
+  *(uint *)base = R6GameServiceAddresses::clSRPGSConnectVTable;
+  uint association = *(uint *)(base + 0x68);
+  cleanup.state = 0;
+  uint displacement = *(uint *)(association + 0x14c);
+  uint virtualBaseTable = *(uint *)(association + 4);
+  uint virtualOffset = *(uint *)(virtualBaseTable + displacement);
+  uint adjustment = *(uint *)(association + 0x148);
+  uint receiver = virtualOffset + adjustment + association + 4;
+  using MemberABI = void (__thiscall *)(void *);
+  ((MemberABI)*(uint *)(association + 0x144))((void *)receiver);
+  uint currentAssociation = *(uint *)(base + 0x68);
+  if (currentAssociation != 0) {
+    uint table = *(uint *)currentAssociation;
+    using DeleteABI = uint (__thiscall *)(void *,uint);
+    ((DeleteABI)*(uint *)table)((void *)currentAssociation,1);
   }
+  cleanup.state = -1;
+  cleanup.armed = false;
+  return DestroyTransportRecordMembers((void *)base);
 }
 
 // Apply exact inherited derived frame cleanup through saved owner/bit words and native target.
@@ -250,20 +239,17 @@ __declspec(naked) void *__fastcall clSRPGSConnectTakeMessage(void *owner)
 // Invoke associated target+138 with receiver A+4+[A+13c]+[[A+4]+[A+140]], then force AL1.
 // Preserve raw callback upper EAX and unchecked association/descriptor accesses; no stack arguments or local EH.
 // R6GameService.dll @ 10059300 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall CloseAssociatedOwner(void *owner)
+uint __fastcall CloseAssociatedOwner(void *owner)
 {
-  __asm {
-    mov    eax,DWORD PTR [ecx+0x68]
-    mov    ecx,DWORD PTR [eax+0x140]
-    mov    edx,DWORD PTR [eax+0x4]
-    mov    ecx,DWORD PTR [ecx+edx*1]
-    mov    edx,DWORD PTR [eax+0x13c]
-    add    ecx,edx
-    lea    ecx,[ecx+eax*1+0x4]
-    call   DWORD PTR [eax+0x138]
-    mov    al,0x1
-    ret
-  }
+  uint associated = *(uint *)((uint)owner + 0x68);
+  uint displacement = *(uint *)(associated + 0x140);
+  uint table = *(uint *)(associated + 4);
+  uint adjustment = *(uint *)(table + displacement);
+  uint fixedAdjustment = *(uint *)(associated + 0x13c);
+  void *receiver = (void *)(adjustment + fixedAdjustment + associated + 4);
+  using CloseABI = uint (__fastcall *)(void *);
+  uint result = (*(CloseABI *)(associated + 0x138))(receiver);
+  return (result & 0xffffff00u) | 1;
 }
 
 // Genuine native slot4 stub: clear AL only and discard three physical argument words; retain incoming upper EAX.

@@ -93,14 +93,11 @@ void * __thiscall CopyFirstWord(void *destination,undefined4 *source)
 
 // Releases the first stack-word pointer, ignores the size word and retains the allocator's raw EAX.
 // R6GameService.dll @ 10061d00 : two stdcall stack words, RET8; ECX context is ignored before CALL6390.
-__declspec(naked) uint __stdcall ReleaseMemoryIgnoringSize(void *memory,uint unusedSize)
+uint __stdcall ReleaseMemoryIgnoringSize(void *memory,uint unusedSize)
 {
-  __asm {
-    mov    eax,dword ptr [esp+0x4]
-    push   eax
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    ret    0x8
-  }
+  void *argument = memory;
+  using FreeABI = uint (__stdcall *)(void *);
+  return ((FreeABI)R6GameServiceAddresses::TailFreeThroughGlobalAllocator)(argument);
 }
 
 // Shared native frame for CipherModule_Blowfish and CipherModule_GSXor destruction.
@@ -204,68 +201,40 @@ __declspec(naked) uint __thiscall DestroyFirstListNode(void *list)
   }
 }
 
-// Deletes a nonsentinel payload, unlinks and frees the supplied node, then writes its saved next link.
-// R6GameService.dll @ 10026f80 : native accesses, callback ordering and raw register results retained.
-__declspec(naked) uint * __thiscall DestroyListNodeAndReturnNext(void *list,uint *nextOut,uint *node)
+// Delete a nonsentinel payload, unlink/free the node, then publish its saved next link through the output slot.
+// R6GameService.dll @ 10026f80 : selected PE32 operations; helper/type names remain descriptive.
+uint * __thiscall DestroyListNodeAndReturnNext(void *list,uint *nextOut,uint *node)
 {
-  __asm {
-    mov    eax,DWORD PTR [ecx+0x4]
-    push   esi
-    push   edi
-    mov    edi,DWORD PTR [esp+0x10]
-    cmp    edi,eax
-    je Branch3
-    mov    ecx,DWORD PTR [edi+0x8]
-    test   ecx,ecx
-    je Branch3
-    mov    eax,DWORD PTR [ecx]
-    push   0x1
-    call   DWORD PTR [eax]
-    // Sentinel suppresses only payload deletion; the node is still unlinked and freed.
-  Branch3:
-    mov    eax,DWORD PTR [edi+0x4]
-    mov    esi,DWORD PTR [edi]
-    push   edi
-    mov    DWORD PTR [eax],esi
-    mov    DWORD PTR [esi+0x4],eax
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    // Load the output pointer after freeing, but retain the next link saved before freeing.
-    mov    eax,DWORD PTR [esp+0xc]
-    pop    edi
-    mov    DWORD PTR [eax],esi
-    pop    esi
-    ret    0x8
+  uint sentinel = *(uint *)((byte *)list + 4);
+  uint *currentNode = node;
+  if ((uint)currentNode != sentinel) {
+    void *payload = *(void **)((byte *)currentNode + 8);
+    if (payload != nullptr) {
+      byte *table = *(byte **)payload;
+      using DeleteABI = void (__thiscall *)(void *,uint);
+      (*(DeleteABI *)table)(payload,1);
+    }
   }
+  uint *previous = *(uint **)((byte *)currentNode + 4);
+  uint next = *currentNode;
+  *previous = next;
+  *(uint *)(next + 4) = (uint)previous;
+  TailFreeThroughGlobalAllocator(currentNode);
+  *nextOut = next;
+  return nextOut;
 }
 
-// Optionally installs the +4 vbtable, zeros the head slot, and installs an unchecked self-linked sentinel.
-// R6GameService.dll @ 10026fc0 : native accesses, callback ordering and raw register results retained.
-__declspec(naked) void * __thiscall InitializePayloadListSentinel(
-    void *headSlot,uint initializeVirtualBaseWord)
+// Optionally install the virtual-base table, clear the head and allocate/publish an unchecked self-linked sentinel.
+// R6GameService.dll @ 10026fc0 : selected PE32 operations; helper/type names remain descriptive.
+void * __thiscall InitializePayloadListSentinel(void *headSlot,uint initializeVirtualBaseWord)
 {
-  __asm {
-    push   ecx
-    mov    eax,DWORD PTR [esp+0x8]
-    push   esi
-    test   eax,eax
-    mov    esi,ecx
-    // Saved ECX becomes zero; POP ECX returns that zero on normal completion.
-    mov    DWORD PTR [esp+0x4],0x0
-    je Branch4
-    mov    DWORD PTR [esi+0x4],0x10076aa0
-  Branch4:
-    push   0xc
-    mov    DWORD PTR [esi],0x0
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    // Allocation failure faults here; payload word +8 stays untouched.
-    mov    DWORD PTR [eax],eax
-    mov    DWORD PTR [eax+0x4],eax
-    mov    DWORD PTR [esi],eax
-    mov    eax,esi
-    pop    esi
-    pop    ecx
-    ret    0x4
-  }
+  if (initializeVirtualBaseWord != 0) *(uint *)((byte *)headSlot + 4) = 0x10076aa0;
+  *(uint *)headSlot = 0;
+  uint sentinel = (uint)AllocateGameServiceBytes(0xc);
+  *(uint *)sentinel = sentinel;
+  *(uint *)(sentinel + 4) = sentinel;
+  *(uint *)headSlot = sentinel;
+  return headSlot;
 }
 
 // Allocates the saved byte count, then reloads/copies the actual source range and returns the allocation base.
@@ -432,16 +401,12 @@ __declspec(naked) void __fastcall ForwardToNoOp(void *context)
   }
 }
 
-// Loads current receiver first word, includingNULL, then frees it through global allocator and retains raw EAX.
-// R6GameService.dll @ 10041530 : native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall ReleaseFirstWordBuffer(void *ownerAddress)
+// Release the current first-word pointer without clearing its slot or checking for null; retain the allocator result.
+// R6GameService.dll @ 10041530 : receiver in ECX; no stack arguments.
+uint __fastcall ReleaseFirstWordBuffer(void *ownerAddress)
 {
-  __asm {
-    mov    eax,DWORD PTR [ecx]
-    push   eax
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    ret
-  }
+  uint buffer = *(uint *)ownerAddress;
+  return TailFreeThroughGlobalAllocator((void *)buffer);
 }
 
 // Loads imported allocator receiver and current allocation slot, forwards size and new tag; returns raw pointer with cdecl word intact.
@@ -452,19 +417,15 @@ void * __cdecl AllocateTaggedBytesCdecl(uint byteCount)
   return allocator->Malloc(byteCount,reinterpret_cast<const TCHAR *>(R6GameServiceAddresses::WideTextNew));
 }
 
-// Copies original memory word to allocator release call, preserving raw EAX and original cdecl argument.
+// Forward memory to the current global allocator and retain the raw return-word view; caller cleans the argument.
 // R6GameService.dll @ 10001180 : native control/access order and raw ABI retained.
-__declspec(naked) uint __cdecl FreeThroughGlobalAllocator(void *memory)
+uint __cdecl FreeThroughGlobalAllocator(void *memory)
 {
-  __asm {
-    mov    eax,ds:R6GameServiceAddresses::Core__GMallocSlot
-    mov    ecx,DWORD PTR [eax]
-    mov    eax,DWORD PTR [esp+0x4]
-    mov    edx,DWORD PTR [ecx]
-    push   eax
-    call   DWORD PTR [edx+0x8]
-    ret
-  }
+  void *allocator = *(void **)R6GameServiceAddresses::Core__GMallocSlot;
+  void *argument = memory;
+  byte *table = *(byte **)allocator;
+  using FreeABI = uint (__thiscall *)(void *,void *);
+  return (*(FreeABI *)(table + 8))(allocator,argument);
 }
 
 // Forwards full byte-count word and GAME_SERVICE tag through current allocator slot0; returns raw EAX/RET4.
@@ -484,16 +445,15 @@ void * __stdcall ResizeGameServiceBytes(void *memory,uint byteCount)
       memory,byteCount,reinterpret_cast<const TCHAR *>(R6GameServiceAddresses::WideTextGAMESERVICE));
 }
 
-// Loads imported allocator receiver/vtable then tail-forwards existing memory word to current release slot8.
+// Forward memory to the current global allocator and retain the raw return-word view; callee cleans the argument.
 // R6GameService.dll @ 10006390 : native control/access order and raw ABI retained.
-__declspec(naked) uint __stdcall TailFreeThroughGlobalAllocator(void *memory)
+uint __stdcall TailFreeThroughGlobalAllocator(void *memory)
 {
-  __asm {
-    mov    eax,ds:R6GameServiceAddresses::Core__GMallocSlot
-    mov    ecx,DWORD PTR [eax]
-    mov    edx,DWORD PTR [ecx]
-    jmp    DWORD PTR [edx+0x8]
-  }
+  void *allocator = *(void **)R6GameServiceAddresses::Core__GMallocSlot;
+  void *argument = memory;
+  byte *table = *(byte **)allocator;
+  using FreeABI = uint (__thiscall *)(void *,void *);
+  return (*(FreeABI *)(table + 8))(allocator,argument);
 }
 
 // Advances the live head before each cached CRT free call, then reloads it; retains raw EAX and dangling node links.

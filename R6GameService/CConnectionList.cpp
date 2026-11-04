@@ -1,6 +1,43 @@
 #include "native_addresses.h"
 #include "native_records.h"
 
+// Inferred destruction states keep payload retries separate from storage-only cleanup.
+struct ConnectionListDestructionCleanup {
+  void *savedOwner;
+  void *savedMember;
+  void *savedSlot;
+  int state;
+  // Unwind the active member, then the current saved base; state4 releases base storage without payload retries.
+  ~ConnectionListDestructionCleanup() noexcept(false)
+  {
+    using MethodABI = uint (__fastcall *)(void *);
+    switch (state) {
+    case 0:
+      break;
+    case 1:
+      ((MethodABI)R6GameServiceAddresses::ForwardCurrentMessageListDestroy)((void *)((uint)savedOwner + 0xc));
+      break;
+    case 2:
+      savedSlot = savedMember == 0 ? 0 : (void *)((uint)savedMember + 4);
+      ((MethodABI)R6GameServiceAddresses::ReleaseNodesAndSentinel)(savedSlot);
+      break;
+    case 3: {
+      using EmptyABI = void (__fastcall *)(void *);
+      ((EmptyABI)R6GameServiceAddresses::list_node_support_NoOp)(savedSlot);
+      break;
+    }
+    case 4: {
+      void *slot = savedOwner == 0 ? 0 : (void *)((uint)savedOwner + 4);
+      ((MethodABI)R6GameServiceAddresses::ReleaseNodesAndSentinel)(slot);
+      return;
+    }
+    default:
+      return;
+    }
+    ((MethodABI)R6GameServiceAddresses::DestroyConnectionPointerList)(savedOwner);
+  }
+};
+
 // CConnectionList: primary77f08 -> COL79e2c -> type900ac, .?AVCConnectionList@@.
 
 // Walk owner+4 list and test actual transport predicate32150; reload head after each true result.
@@ -43,46 +80,25 @@ __declspec(naked) uint __fastcall CConnectionListFindFailingKey(void *owner)
 // Cache end/key, call CURRENT virtual slot14 with output=&original key and node by value; set AL1 only. RET4.
 // A miss clears AL on current cursor; virtual output can overwrite the original key argument.
 // R6GameService.dll @ 1004c8e0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall CConnectionListQueryKey(void *owner,int key)
+uint __thiscall CConnectionListQueryKey(void *owner,int key)
 {
-  __asm {
-    push   esi
-    mov    esi,DWORD PTR [ecx+0x4]
-    push   edi
-    mov    eax,DWORD PTR [esi]
-    cmp    eax,esi
-    je     Branch6
-    mov    edi,DWORD PTR [esp+0xc]
-  Branch4:
-    mov    edx,DWORD PTR [eax+0x8]
-    mov    edx,DWORD PTR [edx+0x8]
-    cmp    edx,edi
-    je     Branch5
-    jg     Branch6
-    mov    eax,DWORD PTR [eax]
-    cmp    eax,esi
-    jne    Branch4
-  Branch5:
-    cmp    eax,esi
-    jne    Branch7
-  Branch6:
-    xor    al,al
-    pop    edi
-    pop    esi
-    ret    0x4
-  Branch7:
-    push   ecx
-    mov    edx,esp
-    mov    DWORD PTR [edx],eax
-    mov    eax,DWORD PTR [ecx]
-    lea    edx,[esp+0x10]
-    push   edx
-    call   DWORD PTR [eax+0x14]
-    pop    edi
-    mov    al,0x1
-    pop    esi
-    ret    0x4
-  }
+  uint head = *(uint *)((uint)owner + 4);
+  uint node = *(uint *)head;
+  if (node == head) return node & 0xffffff00;
+  int requested = key;
+  do {
+    uint payload = *(uint *)(node + 8);
+    int current = *(int *)(payload + 8);
+    if (current == requested) break;
+    if (current > requested) return node & 0xffffff00;
+    node = *(uint *)node;
+  } while (node != head);
+  if (node == head) return node & 0xffffff00;
+  uint selected = node;
+  uint vtable = *(uint *)owner;
+  using EraseABI = uint (__thiscall *)(void *,int *,uint);
+  uint result = ((EraseABI)*(uint *)(vtable + 0x14))(owner,&key,selected);
+  return (result & 0xffffff00) | 1;
 }
 
 // Construct two12-byte circular-list headers, installing base/member tables before the final CConnectionList table.
@@ -90,54 +106,28 @@ __declspec(naked) uint __thiscall CConnectionListQueryKey(void *owner,int key)
 // ENTRY ESP S: localS-10/stateS-4; sole state0 cleanup is empty and does not release either published header.
 // Preserve first-slot clear, second-slot clear timing, FS load before second-header stores, owner EAX and RET4.
 // R6GameService.dll @ 1004c730 : complete native control/access order and raw ABI retained.
-__declspec(naked) void *__thiscall CConnectionListConstruct(void *owner,uint initializeVirtualBase)
+void *__thiscall CConnectionListConstruct(void *owner,uint initializeVirtualBase)
 {
-  __asm {
-    push   0xffffffff
-    push   R6GameServiceAddresses::SelectConnectionListCtorEH
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    push   ecx
-    mov    eax,DWORD PTR [esp+0x14]
-    push   esi
-    test   eax,eax
-    push   edi
-    mov    esi,ecx
-    mov    DWORD PTR [esp+0x8],0x0
-    je     Branch8
-    mov    DWORD PTR [esi+0x8],0x10077f28
-  Branch8:
-    lea    edi,[esi+0x4]
-    lea    eax,[esp+0x1c]
-    push   0x0
-    push   eax
-    mov    ecx,edi
-    mov    DWORD PTR [esp+0x1c],0x0
-    call   R6GameServiceAddresses::StoreFirstWordIgnoringContext
-    push   0xc
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    DWORD PTR [eax],eax
-    mov    DWORD PTR [eax+0x4],eax
-    mov    DWORD PTR [edi],eax
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clPointerList_PAVCConnectionVTable
-    mov    DWORD PTR [esi+0x14],0x10077f20
-    push   0xc
-    mov    DWORD PTR [esi+0x10],0x0
-    call   R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    ecx,DWORD PTR [esp+0xc]
-    mov    DWORD PTR [eax],eax
-    mov    DWORD PTR [eax+0x4],eax
-    mov    DWORD PTR [esi+0x10],eax
-    mov    DWORD PTR [esi+0xc],R6GameServiceAddresses::clPointerList_PAVCCurMessageVTable
-    mov    DWORD PTR [esi],R6GameServiceAddresses::CConnectionListVTable
-    mov    eax,esi
-    pop    edi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x10
-    ret    0x4
-  }
+  uint base = (uint)owner;
+  uint initialize = initializeVirtualBase;
+  if (initialize != 0) *(uint *)(base + 8) = 0x10077f28;
+  void *connectionSlot = (void *)(base + 4);
+  using StoreABI = void * (__thiscall *)(void *,uint,uint);
+  ((StoreABI)R6GameServiceAddresses::StoreFirstWordIgnoringContext)(connectionSlot,(uint)&initializeVirtualBase,0);
+  uint connections = (uint)AllocateGameServiceBytes(12);
+  *(uint *)connections = connections;
+  *(uint *)(connections + 4) = connections;
+  *(uint *)connectionSlot = connections;
+  *(uint *)base = R6GameServiceAddresses::clPointerList_PAVCConnectionVTable;
+  *(uint *)(base + 0x14) = 0x10077f20;
+  *(uint *)(base + 0x10) = 0;
+  uint messages = (uint)AllocateGameServiceBytes(12);
+  *(uint *)messages = messages;
+  *(uint *)(messages + 4) = messages;
+  *(uint *)(base + 0x10) = messages;
+  *(uint *)(base + 0xc) = R6GameServiceAddresses::clPointerList_PAVCCurMessageVTable;
+  *(uint *)base = R6GameServiceAddresses::CConnectionListVTable;
+  return owner;
 }
 
 // Tail the original flag-argument address from inherited ENTRY ESP+4 to the genuine empty helper.
@@ -181,136 +171,88 @@ const R6GameServiceNative::FuncInfo CConnectionListConstructExceptionInfo = {
 // ENTRY ESP S: savedownerS-1c/memberS-18/currentheadslotS-10/stateS-4. Keep two-pass ranges and current head reads.
 // Preserve copied global text, three-word virtual calls, five-state cleanup, dangling slots and raw allocator EAX.
 // R6GameService.dll @ 1004c5e0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall CConnectionListDestroy(void *owner)
+uint __fastcall CConnectionListDestroy(void *owner)
 {
-  __asm {
-    push   0xffffffff
-    push   R6GameServiceAddresses::SelectConnectionListDestroyEH
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x14
-    push   ebx
-    push   ebp
-    push   esi
-    mov    esi,ecx
-    push   edi
-    mov    DWORD PTR [esp+0x14],esi
-    mov    DWORD PTR [esi],R6GameServiceAddresses::CConnectionListVTable
-    mov    eax,R6GameServiceAddresses::GRegistrationEmptyText
-    lea    edx,[esi+0x18]
-    mov    DWORD PTR [esp+0x2c],0x1
-    sub    edx,eax
-  Branch9:
-    mov    cl,BYTE PTR [eax]
-    mov    BYTE PTR [edx+eax*1],cl
-    inc    eax
-    test   cl,cl
-    jne    Branch9
-    push   ecx
-    mov    ecx,DWORD PTR [esi+0x4]
-    lea    edi,[esi+0x4]
-    mov    eax,esp
-    push   ecx
-    push   esp
-    mov    DWORD PTR [eax],ecx
-    mov    ebx,DWORD PTR [esi]
-    mov    ecx,edi
-    call   R6GameServiceAddresses::ReadListFirstNodeFromHeadSlot
-    lea    eax,[esp+0x18]
-    mov    ecx,esi
-    push   eax
-    call   DWORD PTR [ebx+0x10]
-    lea    ebx,[esi+0xc]
-    mov    DWORD PTR [esp+0x18],ebx
-    mov    DWORD PTR [ebx],R6GameServiceAddresses::clPointerList_PAVCCurMessageVTable
-    mov    edx,DWORD PTR [ebx+0x4]
-    push   ecx
-    lea    ecx,[ebx+0x4]
-    mov    eax,esp
-    push   ecx
-    push   esp
-    mov    DWORD PTR [eax],edx
-    mov    ebp,DWORD PTR [ebx]
-    mov    BYTE PTR [esp+0x38],0x2
-    mov    DWORD PTR [esp+0x1c],ecx
-    call   R6GameServiceAddresses::ReadListFirstNodeFromHeadSlot
-    lea    ecx,[esp+0x24]
-    push   ecx
-    mov    ecx,ebx
-    call   DWORD PTR [ebp+0x10]
-    mov    ebx,DWORD PTR [esp+0x10]
-    mov    DWORD PTR [esp+0x20],ebx
-    mov    ecx,ebx
-    mov    BYTE PTR [esp+0x2c],0x3
-    call   R6GameServiceAddresses::ReleaseListNodesRetainHeader
-    mov    edx,DWORD PTR [ebx]
-    push   0x1
-    push   edx
-    mov    ecx,ebx
-    call   R6GameServiceAddresses::ReleaseMemoryIgnoringSize
-    mov    DWORD PTR [esi],R6GameServiceAddresses::clPointerList_PAVCConnectionVTable
-    push   ecx
-    mov    ecx,DWORD PTR [edi]
-    mov    eax,esp
-    push   ecx
-    push   esp
-    mov    DWORD PTR [esp+0x38],0x4
-    mov    DWORD PTR [eax],ecx
-    mov    ebx,DWORD PTR [esi]
-    mov    ecx,edi
-    call   R6GameServiceAddresses::ReadListFirstNodeFromHeadSlot
-    lea    edx,[esp+0x28]
-    mov    ecx,esi
-    push   edx
-    call   DWORD PTR [ebx+0x10]
-    mov    eax,DWORD PTR [edi]
-    mov    esi,DWORD PTR [eax]
-    cmp    esi,eax
-    je     Branch11
-  Branch10:
-    mov    eax,esi
-    mov    esi,DWORD PTR [esi]
-    push   eax
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    cmp    esi,DWORD PTR [edi]
-    jne    Branch10
-  Branch11:
-    mov    eax,DWORD PTR [edi]
-    mov    DWORD PTR [eax],eax
-    mov    eax,DWORD PTR [edi]
-    mov    DWORD PTR [eax+0x4],eax
-    mov    eax,DWORD PTR [edi]
-    push   eax
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    ecx,DWORD PTR [esp+0x24]
-    pop    edi
-    pop    esi
-    pop    ebp
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    add    esp,0x20
-    ret
+  ConnectionListDestructionCleanup cleanup{owner, 0, 0, -1};
+  uint base = (uint)owner;
+  *(uint *)base = R6GameServiceAddresses::CConnectionListVTable;
+  uint source = R6GameServiceAddresses::GRegistrationEmptyText;
+  uint destination = base + 0x18;
+  cleanup.state = 1;
+  byte value;
+  do {
+    value = *(byte *)source;
+    *(byte *)destination = value;
+    ++source;
+    ++destination;
+  } while (value != 0);
+  void *connectionSlot = (void *)(base + 4);
+  uint connectionEnd = *(uint *)connectionSlot;
+  uint connectionBegin = connectionEnd;
+  uint connectionTable = *(uint *)base;
+  using FirstABI = uint * (__thiscall *)(void *,uint *);
+  using RangeABI = uint * (__thiscall *)(void *,uint *,uint,uint);
+  ((FirstABI)R6GameServiceAddresses::ReadListFirstNodeFromHeadSlot)(connectionSlot,&connectionBegin);
+  // Inferred scratch union: entryESP-0x20 is first range output, then the message slot.
+  union { uint connectionResult; void *messageSlot; } scratch;
+  ((RangeABI)*(uint *)(connectionTable + 0x10))(
+      owner,&scratch.connectionResult,connectionBegin,connectionEnd);
+  void *member = (void *)(base + 0xc);
+  cleanup.savedMember = member;
+  *(uint *)member = R6GameServiceAddresses::clPointerList_PAVCCurMessageVTable;
+  uint messageEnd = *(uint *)((uint)member + 4);
+  void *messageSlot = (void *)((uint)member + 4);
+  uint messageBegin = messageEnd;
+  uint messageTable = *(uint *)member;
+  cleanup.state = 2;
+  scratch.messageSlot = messageSlot;
+  ((FirstABI)R6GameServiceAddresses::ReadListFirstNodeFromHeadSlot)(messageSlot,&messageBegin);
+  uint messageResult;
+  ((RangeABI)*(uint *)(messageTable + 0x10))(member,&messageResult,messageBegin,messageEnd);
+  void *releaseSlot = scratch.messageSlot;
+  cleanup.savedSlot = releaseSlot;
+  cleanup.state = 3;
+  using MethodABI = uint (__fastcall *)(void *);
+  ((MethodABI)R6GameServiceAddresses::ReleaseListNodesRetainHeader)(releaseSlot);
+  void *messageHead = *(void **)releaseSlot;
+  using FreeSizedABI = uint (__thiscall *)(void *,void *,uint);
+  ((FreeSizedABI)R6GameServiceAddresses::ReleaseMemoryIgnoringSize)(releaseSlot,messageHead,1);
+  *(uint *)base = R6GameServiceAddresses::clPointerList_PAVCConnectionVTable;
+  uint finalEnd = *(uint *)connectionSlot;
+  uint finalBegin = finalEnd;
+  cleanup.state = 4;
+  uint finalTable = *(uint *)base;
+  ((FirstABI)R6GameServiceAddresses::ReadListFirstNodeFromHeadSlot)(connectionSlot,&finalBegin);
+  ((RangeABI)*(uint *)(finalTable + 0x10))(owner,(uint *)&cleanup.savedSlot,finalBegin,finalEnd);
+  uint head = *(uint *)connectionSlot;
+  uint node = *(uint *)head;
+  if (node != head) {
+    do {
+      uint detached = node;
+      node = *(uint *)node;
+      TailFreeThroughGlobalAllocator((void *)detached);
+    } while (node != *(uint *)connectionSlot);
   }
+  head = *(uint *)connectionSlot;
+  *(uint *)head = head;
+  head = *(uint *)connectionSlot;
+  *(uint *)(head + 4) = head;
+  head = *(uint *)connectionSlot;
+  uint result = TailFreeThroughGlobalAllocator((void *)head);
+  cleanup.state = -1;
+  return result;
 }
 
 // Destroy CConnectionList, then test CURRENT flag lowBYTE/bit0, optionally free original owner and return it. RET4.
 // R6GameService.dll @ 1004c700 : complete native control/access order and raw ABI retained.
-__declspec(naked) void *__thiscall CConnectionListDelete(void *owner,uint deletingFlags)
+void *__thiscall CConnectionListDelete(void *owner,uint deletingFlags)
 {
-  __asm {
-    push   esi
-    mov    esi,ecx
-    call   R6GameServiceAddresses::CConnectionListDestroy
-    test   BYTE PTR [esp+0x8],0x1
-    je     Branch12
-    push   esi
-    call   R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-  Branch12:
-    mov    eax,esi
-    pop    esi
-    ret    0x4
-  }
+  void *savedOwner = owner;
+  using DestroyABI = uint (__fastcall *)(void *);
+  ((DestroyABI)R6GameServiceAddresses::CConnectionListDestroy)(savedOwner);
+  byte flags = *(byte *)&deletingFlags;
+  if ((flags & 1) != 0) TailFreeThroughGlobalAllocator(savedOwner);
+  return savedOwner;
 }
 
 // Destroy the connection pointer-list base using CURRENT saved owner.
@@ -510,28 +452,15 @@ __declspec(naked) uint __thiscall CConnectionListInsertConfigured(
 
 // Find the signed +8 key and send through actual transport32170 using three full physical stack words.
 // Return the sender raw EAX; a missing key returns zero. RET16, no ownership transfer or local cleanup.
-// R6GameService.dll @ 1004c960 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall CConnectionListSendToKey(void *owner,int key,uint opcode,uint mode,int payload)
+// R6GameService.dll @ 1004c960 : ECX receiver, four native stack words, RET16.
+uint __thiscall CConnectionListSendToKey(void *owner,int key,uint opcode,uint mode,int payload)
 {
-  __asm {
-    mov    eax,DWORD PTR [esp+0x4]
-    push   eax
-    call   R6GameServiceAddresses::CConnectionListFindBorrowed
-    test   eax,eax
-    je     Branch23
-    mov    ecx,DWORD PTR [esp+0x10]
-    mov    edx,DWORD PTR [esp+0xc]
-    push   ecx
-    mov    ecx,DWORD PTR [esp+0xc]
-    push   edx
-    push   ecx
-    mov    ecx,eax
-    call   R6GameServiceAddresses::SendTransportPayload
-    ret    0x10
-  Branch23:
-    xor    al,al
-    ret    0x10
-  }
+  uint borrowed = CConnectionListFindBorrowed(owner,key);
+  if (borrowed == 0) return 0;
+  uint currentPayload = (uint)payload;
+  uint currentMode = mode;
+  uint currentOpcode = opcode;
+  return SendTransportPayload((void *)borrowed,currentOpcode,currentMode,(const void *)currentPayload,borrowed);
 }
 
 // Send once per connection until AL0; success sets AL1 while retaining the last sender EAX upper bytes.
@@ -585,33 +514,20 @@ __declspec(naked) uint __thiscall CConnectionListBroadcast(void *owner,uint opco
 // Search borrowed owner+4 nodes by signed payload+8 key, stopping at the first greater key.
 // Cache initial head and requested key; return first equal payload, otherwise full zero. RET4.
 // R6GameService.dll @ 1004cad0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall CConnectionListFindBorrowed(void *owner,int key)
+uint __thiscall CConnectionListFindBorrowed(void *owner,int key)
 {
-  __asm {
-    push   esi
-    mov    esi,DWORD PTR [ecx+0x4]
-    mov    eax,DWORD PTR [esi]
-    cmp    eax,esi
-    je     Branch28
-    mov    edx,DWORD PTR [esp+0x8]
-  Branch27:
-    mov    ecx,DWORD PTR [eax+0x8]
-    mov    ecx,DWORD PTR [ecx+0x8]
-    cmp    ecx,edx
-    je     Branch29
-    jg     Branch28
-    mov    eax,DWORD PTR [eax]
-    cmp    eax,esi
-    jne    Branch27
-  Branch28:
-    xor    eax,eax
-    pop    esi
-    ret    0x4
-  Branch29:
-    mov    eax,DWORD PTR [eax+0x8]
-    pop    esi
-    ret    0x4
-  }
+  uint head = *(uint *)((uint)owner + 4);
+  uint node = *(uint *)head;
+  if (node == head) return 0;
+  int requested = key;
+  do {
+    uint payload = *(uint *)(node + 8);
+    int current = *(int *)(payload + 8);
+    if (current == requested) return *(uint *)(node + 8);
+    if (current > requested) return 0;
+    node = *(uint *)node;
+  } while (node != head);
+  return 0;
 }
 
 // Extract at most one message from every current connection and append each copied record to the persistent +10 queue.

@@ -1919,65 +1919,38 @@ __declspec(naked) void __cdecl UR6GSServers_UR6GSServersCatch12(void)
   }
 }
 
-// Clears client/request/login state, optionally logs, then shuts down the singleton and zero-extends AL.
-// R6GameService.dll @ 10006650 : C++ shutdown with pre-guard effects, exact saved-register boundaries and raw AL.
-__declspec(naked) int __thiscall UR6GSServers::UnInitMSClient()
+// Clear client/request/login state, optionally log, then shut down the singleton and zero-extend its low result byte.
+// R6GameService.dll @ 10006650 : pre-guard mutations and zero-extended low-byte result.
+int __thiscall UR6GSServers::UnInitMSClient(void)
 {
-  byte *nativeFrame;
-  UR6GSServers *receiver;
-  __asm {
-    push   ebp
-    mov    ebp,esp
-    push   0xffffffff
-    push   R6GameServiceAddresses::UnInitMSClientSelectExceptionInfo
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0xc
-    mov    nativeFrame,ebp
-    mov    receiver,ecx
-  }
   *(uint *)0x10091e6c = 0;
-  uint flags = *(uint *)((byte *)receiver + 0x194);
-  __asm {
-    push   ebx
-  }
+  uint flags = *(uint *)((byte *)this + 0x194);
   flags &= 0xffffff7f;
-  *(uint *)((byte *)receiver + 0x194) = flags;
+  *(uint *)((byte *)this + 0x194) = flags;
   uint logging = *(uint *)R6GameServiceAddresses::GServiceVerboseLogging;
-  __asm {
-    push   esi
-    push   edi
-    mov    DWORD PTR [ebp-0x10],esp
-  }
-  *(uint *)(nativeFrame - 4) = 0;
-  *(uint *)R6GameServiceAddresses::GLoggedInUbiDotCom = 0;
-  *(uint *)R6GameServiceAddresses::GJoinInProgress = 0;
-  *(uint *)0x10091d30 = 0;
-  *(uint *)0x10091d38 = 0;
-  *(uint *)0x10091e68 = 0;
-  *(uint *)0x10091e64 = 0;
-  if (logging != 0) {
-    using LogABI = void (__cdecl *)(FOutputDevice *,const TCHAR *,...);
-    FOutputDevice *device = **(FOutputDevice ***)R6GameServiceAddresses::Core__GLogSlot;
-    (*(LogABI *)R6GameServiceAddresses::Core_FOutputDevice_LogfSlot)
-        (device,(const TCHAR *)R6GameServiceAddresses::WideTextMSClientUninitialize);
-  }
-  uint raw = CloseMSClientSingleton();
-  uint predecessor = *(uint *)(nativeFrame - 0xc);
-  __asm {
-    pop    edi
-    pop    esi
-  }
-  uint output = (byte)raw;
-  __asm {
-    mov    eax,output
-    mov    ecx,predecessor
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
-    ret
+  try {
+    *(uint *)R6GameServiceAddresses::GLoggedInUbiDotCom = 0;
+    *(uint *)R6GameServiceAddresses::GJoinInProgress = 0;
+    *(uint *)0x10091d30 = 0;
+    *(uint *)0x10091d38 = 0;
+    *(uint *)0x10091e68 = 0;
+    *(uint *)0x10091e64 = 0;
+    if (logging != 0) {
+      using LogABI = void (__cdecl *)(FOutputDevice *,const TCHAR *,...);
+      FOutputDevice *device = **(FOutputDevice ***)R6GameServiceAddresses::Core__GLogSlot;
+      (*(LogABI *)R6GameServiceAddresses::Core_FOutputDevice_LogfSlot)
+          (device,(const TCHAR *)R6GameServiceAddresses::WideTextMSClientUninitialize);
+    }
+    uint raw = CloseMSClientSingleton();
+    return (byte)raw;
+  } catch (ushort *error) {
+    throw error;
+  } catch (...) {
+    using UnwindABI = void (__cdecl *)(const TCHAR *,...);
+    (*(UnwindABI *)R6GameServiceAddresses::Core__appUnwindfSlot)
+        ((const TCHAR *)R6GameServiceAddresses::WideTextTextFormat,
+         (const TCHAR *)R6GameServiceAddresses::WideTextUR6GSServersExecNativeUnInitMSClient);
+    throw;
   }
 }
 
@@ -2279,59 +2252,33 @@ int __thiscall UR6GSServers::GetLoggedInUbiDotCom(void)
   return *reinterpret_cast<const int *>(0x10091e68);
 }
 
-// Consume end token/optional DebugInfo42 through current VM object/table; preserve current result/global and exact guard/access order.
-// Normal tail70e2..70fe follows the separate native catch bodies; it remains part of this one canonical method.
-// R6GameService.dll @ 10007050 : C++ VM operations with native frame/access boundaries.
-__declspec(naked) void __thiscall UR6GSServers::execIsRefreshServersInProgress(FFrame &Stack,void *const Result)
+// Finish VM parameters and report whether either full-width refresh flag is set.
+// R6GameService.dll @ 10007050 : FFrame/result bridge; typed forwarding and context rethrow preserved.
+void __thiscall UR6GSServers::execIsRefreshServersInProgress(FFrame &Stack,void *const Result)
 {
-  byte *nativeFrame;
-  __asm {
-    push   ebp
-    mov    ebp,esp
-    push   0xffffffff
-    push   R6GameServiceAddresses::UR6GSServers_SelectSmallVMBridgeEH3
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0xc
-    mov    nativeFrame,ebp
-  }
-  FFrame *frame = *(FFrame **)(nativeFrame + 8);
-  byte *code = *(byte **)((byte *)frame + 0xc);
-  code += 1;
-  __asm {
-    push   ebx
-    push   esi
-  }
+  FFrame *frame = &Stack;
+  byte *code = *(byte **)((byte *)frame + 0xc) + 1;
   *(byte **)((byte *)frame + 0xc) = code;
   bool hasDebugInfo = *code == 0x42;
-  __asm {
-    push   edi
-    mov    DWORD PTR [ebp-0x10],esp
-  }
-  *(uint *)(nativeFrame - 4) = 0;
-  if (hasDebugInfo) {
-    UObject *object = *(UObject **)((byte *)frame + 8);
-    *(byte **)((byte *)frame + 0xc) = code + 1;
-    uint *natives = *(uint **)R6GameServiceAddresses::Core__GNativesSlot;
-    using DebugABI = void (__thiscall *)(UObject *,FFrame *,void *);
-    ((DebugABI)natives[0x42])(object,frame,0);
-  }
-  bool refreshingAll = *(int *)0x10091d38 != 0;
-  int active = refreshingAll || *(int *)0x10091d30 != 0;
-  int *output = *(int **)(nativeFrame + 0xc);
-  __asm {
-    pop    edi
-  }
-  *output = active;
-  __asm {
-    mov    ecx,DWORD PTR [ebp-0xc]
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
-    ret    0x8
+  try {
+    if (hasDebugInfo) {
+      UObject *object = *(UObject **)((byte *)frame + 8);
+      *(byte **)((byte *)frame + 0xc) = code + 1;
+      uint *natives = *(uint **)R6GameServiceAddresses::Core__GNativesSlot;
+      using DebugABI = void (__thiscall *)(UObject *,FFrame *,void *);
+      ((DebugABI)natives[0x42])(object,frame,nullptr);
+    }
+    bool refreshingAll = *(int *)0x10091d38 != 0;
+    int active = refreshingAll || *(int *)0x10091d30 != 0;
+    *(int *)Result = active;
+  } catch (ushort *error) {
+    throw error;
+  } catch (...) {
+    using UnwindABI = void (__cdecl *)(const TCHAR *,...);
+    (*(UnwindABI *)R6GameServiceAddresses::Core__appUnwindfSlot)
+        ((const TCHAR *)R6GameServiceAddresses::WideTextTextFormat,
+         (const TCHAR *)R6GameServiceAddresses::WideTextUR6GSServersExecIsRefreshServersInProgress);
+    throw;
   }
 }
 
@@ -2389,58 +2336,32 @@ __declspec(naked) void __cdecl UR6GSServers_UR6GSServersCatch22(void)
   }
 }
 
-// Consume end token/optional DebugInfo42 through current VM object/table; preserve current result/global and exact guard/access order.
-// R6GameService.dll @ 10007100 : C++ VM operations with native frame/access boundaries.
-__declspec(naked) void __thiscall UR6GSServers::execStopRefreshServers(FFrame &Stack,void *const Result)
+// Finish VM parameters and clear the all-server and single-server refresh flags in that order.
+// R6GameService.dll @ 10007100 : FFrame/result bridge; typed forwarding and context rethrow preserved.
+void __thiscall UR6GSServers::execStopRefreshServers(FFrame &Stack,void *const Result)
 {
-  byte *nativeFrame;
-  __asm {
-    push   ebp
-    mov    ebp,esp
-    push   0xffffffff
-    push   R6GameServiceAddresses::UR6GSServers_SelectSmallVMBridgeEH4
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0xc
-    mov    nativeFrame,ebp
-  }
-  FFrame *frame = *(FFrame **)(nativeFrame + 8);
-  byte *code = *(byte **)((byte *)frame + 0xc);
-  __asm {
-    push   ebx
-    push   esi
-    xor    esi,esi
-  }
-  code += 1;
+  FFrame *frame = &Stack;
+  byte *code = *(byte **)((byte *)frame + 0xc) + 1;
   *(byte **)((byte *)frame + 0xc) = code;
   bool hasDebugInfo = *code == 0x42;
-  __asm {
-    push   edi
-    mov    DWORD PTR [ebp-0x10],esp
-  }
-  *(uint *)(nativeFrame - 4) = 0;
-  if (hasDebugInfo) {
-    UObject *object = *(UObject **)((byte *)frame + 8);
-    *(byte **)((byte *)frame + 0xc) = code + 1;
-    uint *natives = *(uint **)R6GameServiceAddresses::Core__GNativesSlot;
-    using DebugABI = void (__thiscall *)(UObject *,FFrame *,void *);
-    ((DebugABI)natives[0x42])(object,frame,0);
-  }
-  uint predecessor = *(uint *)(nativeFrame - 0xc);
-  __asm {
-    pop    edi
-  }
-  *(uint *)0x10091d38 = 0;
-  *(uint *)0x10091d30 = 0;
-  __asm {
-    mov    ecx,predecessor
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
-    ret    0x8
+  try {
+    if (hasDebugInfo) {
+      UObject *object = *(UObject **)((byte *)frame + 8);
+      *(byte **)((byte *)frame + 0xc) = code + 1;
+      uint *natives = *(uint **)R6GameServiceAddresses::Core__GNativesSlot;
+      using DebugABI = void (__thiscall *)(UObject *,FFrame *,void *);
+      ((DebugABI)natives[0x42])(object,frame,nullptr);
+    }
+    *(uint *)0x10091d38 = 0;
+    *(uint *)0x10091d30 = 0;
+  } catch (ushort *error) {
+    throw error;
+  } catch (...) {
+    using UnwindABI = void (__cdecl *)(const TCHAR *,...);
+    (*(UnwindABI *)R6GameServiceAddresses::Core__appUnwindfSlot)
+        ((const TCHAR *)R6GameServiceAddresses::WideTextTextFormat,
+         (const TCHAR *)R6GameServiceAddresses::WideTextUR6GSServersExecStopRefreshServers);
+    throw;
   }
 }
 
@@ -3370,62 +3291,35 @@ __declspec(naked) void __cdecl UR6GSServers_UR6GSServersCatch42(void)
   }
 }
 
-// Consume the optional debug-info byte, then handle a current MS-client router-disconnect flag.
-// No-input VM bridge/RET8; matching package declares Bool return, but native never accesses resultOut.
-// Code increments and candidate byte reads before state0; optional42 dispatch uses current frame object/table.
-// Flag+2c mask20 selects current all-refresh notification, actual UnInitMSClient, then late current flag clear.
-// Notification precedes child global clears; failures retain prior effects and skip the late flag clear.
+// Finish VM parameters, notify an interrupted all-server refresh and handle router disconnect; the result is untouched.
 // R6GameService.dll @ 10007ba0 : complete native control/access order and raw ABI retained.
-__declspec(naked) void __thiscall UR6GSServers::execNativeIsRouterDisconnect(FFrame &frame,void *const resultOut)
+void __thiscall UR6GSServers::execNativeIsRouterDisconnect(FFrame &Stack,void *const Result)
 {
-  __asm {
-    push   ebp
-    mov    ebp,esp
-    push   0xffffffff
-    push   R6GameServiceAddresses::UR6GSServers_execNativeIsRouterDisconnectSelectExceptionInfo
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0xc
-    mov    eax,DWORD PTR [ebp+0x8]
-    mov    edx,DWORD PTR [eax+0xc]
-    push   ebx
-    inc    edx
-    push   esi
-    mov    esi,ecx
-    mov    DWORD PTR [eax+0xc],edx
-    cmp    BYTE PTR [edx],0x42
-    push   edi
-    mov    DWORD PTR [ebp-0x10],esp
-    mov    DWORD PTR [ebp-0x4],0x0
-    jne    Branch44
-    mov    ecx,DWORD PTR [eax+0x8]
-    inc    edx
-    push   0x0
-    mov    DWORD PTR [eax+0xc],edx
-    push   eax
-    mov    eax,ds:R6GameServiceAddresses::Core__GNativesSlot
-    call   DWORD PTR [eax+0x108]
-  Branch44:
-    test   BYTE PTR [esi+0x2c],0x20
-    je     Branch46
-    mov    eax,ds:0x10091d38
-    test   eax,eax
-    je     Branch45
-    mov    DWORD PTR ds:0x10091bf8,0x1
-  Branch45:
-    mov    ecx,esi
-    call   R6GameServiceAddresses::UR6GSServers_UnInitMSClient
-    and    DWORD PTR [esi+0x2c],0xffffffdf
-  Branch46:
-    mov    ecx,DWORD PTR [ebp-0xc]
-    pop    edi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
-    ret    0x8
+  FFrame *frame = &Stack;
+  byte *code = *(byte **)((byte *)frame + 0xc) + 1;
+  *(byte **)((byte *)frame + 0xc) = code;
+  bool hasDebugInfo = *code == 0x42;
+  try {
+    if (hasDebugInfo) {
+      UObject *object = *(UObject **)((byte *)frame + 8);
+      *(byte **)((byte *)frame + 0xc) = code + 1;
+      uint *natives = *(uint **)R6GameServiceAddresses::Core__GNativesSlot;
+      using DebugABI = void (__thiscall *)(UObject *,FFrame *,void *);
+      ((DebugABI)natives[0x42])(object,frame,nullptr);
+    }
+    if ((*((byte *)this + 0x2c) & 0x20) != 0) {
+      if (*(uint *)0x10091d38 != 0) *(uint *)0x10091bf8 = 1;
+      UnInitMSClient();
+      *(uint *)((byte *)this + 0x2c) &= 0xffffffdf;
+    }
+  } catch (ushort *error) {
+    throw error;
+  } catch (...) {
+    using UnwindABI = void (__cdecl *)(const TCHAR *,...);
+    (*(UnwindABI *)R6GameServiceAddresses::Core__appUnwindfSlot)
+        ((const TCHAR *)R6GameServiceAddresses::WideTextTextFormat,
+         (const TCHAR *)R6GameServiceAddresses::WideTextUR6GSServersExecNativeIsRouterDisconnect);
+    throw;
   }
 }
 
@@ -4424,61 +4318,38 @@ __declspec(naked) void execInitializeMSClientSelectExceptionInfo(void)
   }
 }
 
-// Read mapped index before idle gates; publish clock/refresh state, store mapped index44, request CURRENT record at captured inputIndex*dc.
-// Preserve unchecked array reads, pre-state0 gap, late record array/logging and partial published effects.
-// R6GameService.dll @ 10009dd0 : complete native control/access order and raw ABI retained.
-__declspec(naked) void __thiscall UR6GSServers::RefreshOneServer(int serverIndex)
+// Read the mapped index before readiness gates, then publish refresh state and request the original input-index record.
+// R6GameService.dll @ 10009dd0 : native effects and guarded lifetime order represented in C++.
+void __thiscall UR6GSServers::RefreshOneServer(int serverIndex)
 {
-  __asm {
-    push   ebp
-    mov    ebp,esp
-    push   0xffffffff
-    push   R6GameServiceAddresses::UR6GSServers_SelectParentExceptionInfo6
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0xc
-    push ebx
-    push esi
-    push edi
-    mov esi,ecx
-    mov DWORD PTR [ebp-0x10],esp
-  }
-  // These aliases bind existing native storage; inherited-frame handlers and their offsets remain unchanged.
-  byte* nativeFrame;
-  UR6GSServers* receiver;
-  __asm { mov nativeFrame,ebp }
-  __asm { mov receiver,esi }
-  const uint inputIndex = *reinterpret_cast<uint*>(nativeFrame + 8);
-  byte* list = reinterpret_cast<byte*>(receiver);
+  const uint inputIndex = static_cast<uint>(serverIndex);
+  byte* list = reinterpret_cast<byte*>(this);
   uint* display = *reinterpret_cast<uint**>(list + 0x80);
-  const int mappedIndex = display[inputIndex]; // Unchecked access occurs even when the service is disabled.
+  const int mappedIndex = display[inputIndex]; // This unchecked lookup precedes all readiness gates.
   const int enabled = *reinterpret_cast<int*>(0x10091e6c);
-  *reinterpret_cast<int*>(nativeFrame - 4) = 0;
-  if (enabled && !*reinterpret_cast<int*>(0x10091d38) && !*reinterpret_cast<int*>(0x10091d30)) {
-    __asm { call R6GameServiceAddresses::ReadCycleTimeSeconds }
-    __asm { fstp DWORD PTR ds:R6GameServiceAddresses::NativeFloat0_0 }
-    *reinterpret_cast<int*>(0x10091bf8) = 0;
-    *reinterpret_cast<int*>(0x10091d30) = 1;
-    byte* records = *reinterpret_cast<byte**>(list + 0x5c);
-    byte* record = records + inputIndex * 0xdcU;
-    *reinterpret_cast<int*>(list + 0x44) = mappedIndex;
-    const uint first = *reinterpret_cast<uint*>(record);
-    const uint second = *reinterpret_cast<uint*>(record + 4);
-    // Native uses the original input index for the request, although +0x44 stores its mapped display index.
-    ForwardMSClientOperation2(second, first);
-    if (*reinterpret_cast<int*>(R6GameServiceAddresses::GServiceVerboseLogging))
-      GLog->Logf(reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextMSClientRefreshGameServers));
-  }
-  __asm {
-    mov ecx,DWORD PTR [ebp-0xc]
-    pop edi
-    pop esi
-    mov DWORD PTR fs:0x0,ecx
-    pop ebx
-    mov esp,ebp
-    pop ebp
-    ret 0x4
+  try {
+    if (enabled && !*reinterpret_cast<int*>(0x10091d38) && !*reinterpret_cast<int*>(0x10091d30)) {
+      *reinterpret_cast<float*>(R6GameServiceAddresses::NativeFloat0_0) = (float)ReadCycleTimeSeconds();
+      *reinterpret_cast<int*>(0x10091bf8) = 0;
+      *reinterpret_cast<int*>(0x10091d30) = 1;
+      byte* records = *reinterpret_cast<byte**>(list + 0x5c);
+      byte* record = records + inputIndex * 0xdcU;
+      *reinterpret_cast<int*>(list + 0x44) = mappedIndex;
+      const uint first = *reinterpret_cast<uint*>(record);
+      const uint second = *reinterpret_cast<uint*>(record + 4);
+      // Native uses the original input index for the request, although +0x44 stores its mapped display index.
+      ForwardMSClientOperation2(second, first);
+      if (*reinterpret_cast<int*>(R6GameServiceAddresses::GServiceVerboseLogging))
+        GLog->Logf(reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextMSClientRefreshGameServers));
+    }
+  } catch (ushort *error) {
+    throw error;
+  } catch (...) {
+    using UnwindABI = void (__cdecl *)(const TCHAR *,...);
+    (*(UnwindABI *)R6GameServiceAddresses::Core__appUnwindfSlot)
+        ((const TCHAR *)R6GameServiceAddresses::WideTextTextFormat,
+         (const TCHAR *)R6GameServiceAddresses::WideTextUR6GSServersRefreshOneServer);
+    throw;
   }
 }
 
@@ -4536,59 +4407,38 @@ __declspec(naked) void __cdecl UR6GSServers_UR6GSServersCatch62(void)
   }
 }
 
-// Decode an index into initialized DWORD scratch, advance current Code/end/optional DebugInfo42, then refresh captured owner.
-// Preserve current VM table/object, partial decoder writes, late index and untouched script result, RET8.
-// R6GameService.dll @ 10009ec0 : complete native control/access order and raw ABI retained.
-__declspec(naked) void __thiscall UR6GSServers::execRefreshOneServer(FFrame &stack,void *const result)
+// Decode an initialized DWORD index, finish VM parameters and refresh that server without writing a script result.
+// R6GameService.dll @ 10009ec0 : native effects and guarded lifetime order represented in C++.
+void __thiscall UR6GSServers::execRefreshOneServer(FFrame &Stack,void *const Result)
 {
-  __asm {
-    push   ebp
-    mov    ebp,esp
-    push   0xffffffff
-    push   R6GameServiceAddresses::UR6GSServers_SelectParentExceptionInfo7
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x10
-    push ebx
-    push esi
-    push edi
-    mov esi,ecx
-    mov DWORD PTR [ebp-0x10],esp
-  }
-  // These aliases bind existing native storage; inherited-frame handlers and their offsets remain unchanged.
-  byte* nativeFrame;
-  UR6GSServers* receiver;
-  __asm { mov nativeFrame,ebp }
-  __asm { mov receiver,esi }
-  FFrame* executionStack = *reinterpret_cast<FFrame**>(nativeFrame + 8);
+  FFrame* executionStack = &Stack;
   byte*& code = *reinterpret_cast<byte**>(reinterpret_cast<byte*>(executionStack) + 0xc);
-  int& index = *reinterpret_cast<int*>(nativeFrame - 0x14);
-  index = 0;
-  const byte opcode = *code++;
+  int index = 0;
+  byte* operandCode = code;
+  const byte opcode = *operandCode;
+  code = operandCode + 1;
   using ScriptNative = void (__thiscall *)(UObject*, FFrame*, void*);
   ScriptNative* natives = *reinterpret_cast<ScriptNative**>(R6GameServiceAddresses::Core__GNativesSlot);
   UObject* context = *reinterpret_cast<UObject**>(reinterpret_cast<byte*>(executionStack) + 8);
-  *reinterpret_cast<int*>(nativeFrame - 4) = 0;
-  natives[opcode](context, executionStack, &index);
-  byte* next = code + 1;
-  code = next;
-  if (*next == 0x42) {
-    context = *reinterpret_cast<UObject**>(reinterpret_cast<byte*>(executionStack) + 8);
-    code = next + 1;
-    natives = *reinterpret_cast<ScriptNative**>(R6GameServiceAddresses::Core__GNativesSlot);
-    natives[0x42](context, executionStack, nullptr);
-  }
-  receiver->RefreshOneServer(index);
-  __asm {
-    mov ecx,DWORD PTR [ebp-0xc]
-    pop edi
-    pop esi
-    mov DWORD PTR fs:0x0,ecx
-    pop ebx
-    mov esp,ebp
-    pop ebp
-    ret 0x8
+  try {
+    natives[opcode](context, executionStack, &index);
+    byte* next = code + 1;
+    code = next;
+    if (*next == 0x42) {
+      context = *reinterpret_cast<UObject**>(reinterpret_cast<byte*>(executionStack) + 8);
+      code = next + 1;
+      natives = *reinterpret_cast<ScriptNative**>(R6GameServiceAddresses::Core__GNativesSlot);
+      natives[0x42](context, executionStack, nullptr);
+    }
+    RefreshOneServer(index);
+  } catch (ushort *error) {
+    throw error;
+  } catch (...) {
+    using UnwindABI = void (__cdecl *)(const TCHAR *,...);
+    (*(UnwindABI *)R6GameServiceAddresses::Core__appUnwindfSlot)
+        ((const TCHAR *)R6GameServiceAddresses::WideTextTextFormat,
+         (const TCHAR *)R6GameServiceAddresses::WideTextUR6GSServersExecNativeRefreshServer);
+    throw;
   }
 }
 
@@ -6466,60 +6316,36 @@ const R6GameServiceNative::FuncInfo UR6GSServers_ProcessMSClientInitRequestExcep
   0x0,
 };
 
-// Starts a server refresh only when logged in and no refresh is already active.
-// If service enabled and both refresh flags idle, store float cycle time, mark refreshing, clear server/index arrays and request current game name.
-// Register both context catches before gates; preserve late counts/name/logging and partial effects on interruption.
-// R6GameService.dll @ 1000c0d0 : complete native control/access order and raw ABI retained.
-__declspec(naked) void __thiscall UR6GSServers::RefreshServers(UR6GSServers *this)
+// When service is enabled and both refresh flags are idle, publish time/state, clear both arrays and request servers.
+// R6GameService.dll @ 1000c0d0 : native effects and guarded lifetime order represented in C++.
+void __thiscall UR6GSServers::RefreshServers(void)
 {
-  __asm {
-    push   ebp
-    mov    ebp,esp
-    push   0xffffffff
-    push   R6GameServiceAddresses::SelectRefreshServersEH
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0xc
-    push ebx
-    push esi
-    push edi
-    mov esi,ecx
-    mov DWORD PTR [ebp-0x10],esp
-  }
-  // These aliases bind existing native storage; inherited-frame handlers and their offsets remain unchanged.
-  byte* nativeFrame;
-  UR6GSServers* receiver;
-  __asm { mov nativeFrame,ebp }
-  __asm { mov receiver,esi }
   const int serviceEnabled = *reinterpret_cast<int*>(0x10091e6c);
-  *reinterpret_cast<int*>(nativeFrame - 4) = 0;
-  if (serviceEnabled && !*reinterpret_cast<int*>(0x10091d30) && !*reinterpret_cast<int*>(0x10091d38)) {
-    // The clock returns ST(0); the native single-precision spill precedes all refresh publications.
-    __asm { call R6GameServiceAddresses::ReadCycleTimeSeconds }
-    __asm { fstp DWORD PTR ds:R6GameServiceAddresses::NativeFloat0_0 }
-    *reinterpret_cast<int*>(0x10091d38) = 1;
-    *reinterpret_cast<int*>(0x10091bf8) = 0;
-    byte* list = reinterpret_cast<byte*>(receiver);
-    RemoveSTGameServerRange(list + 0x5c, 0, *reinterpret_cast<int*>(list + 0x60));
-    RemoveFourByteArrayElements(list + 0x80, 0, *reinterpret_cast<int*>(list + 0x84));
-    FString* gameName = reinterpret_cast<FString*>(R6GameServiceAddresses::GServiceString1);
-    ForwardMSClientOperation1(appToAnsi(**gameName));
-    if (*reinterpret_cast<int*>(R6GameServiceAddresses::GServiceVerboseLogging)) {
-      const TCHAR* currentName = **gameName;
-      GLog->Logf(reinterpret_cast<const TCHAR*>(
-          R6GameServiceAddresses::WideTextMSClientRequestGameServersMSzGameServiceGameNameS), currentName);
+  try {
+    if (serviceEnabled && !*reinterpret_cast<int*>(0x10091d30) && !*reinterpret_cast<int*>(0x10091d38)) {
+      // The clock returns ST(0); the native single-precision spill precedes all refresh publications.
+      *reinterpret_cast<float*>(R6GameServiceAddresses::NativeFloat0_0) = (float)ReadCycleTimeSeconds();
+      *reinterpret_cast<int*>(0x10091d38) = 1;
+      *reinterpret_cast<int*>(0x10091bf8) = 0;
+      byte* list = reinterpret_cast<byte*>(this);
+      RemoveSTGameServerRange(list + 0x5c, 0, *reinterpret_cast<int*>(list + 0x60));
+      RemoveFourByteArrayElements(list + 0x80, 0, *reinterpret_cast<int*>(list + 0x84));
+      FString* gameName = reinterpret_cast<FString*>(R6GameServiceAddresses::GServiceString1);
+      ForwardMSClientOperation1(appToAnsi(**gameName));
+      if (*reinterpret_cast<int*>(R6GameServiceAddresses::GServiceVerboseLogging)) {
+        const TCHAR* currentName = **gameName;
+        GLog->Logf(reinterpret_cast<const TCHAR*>(
+            R6GameServiceAddresses::WideTextMSClientRequestGameServersMSzGameServiceGameNameS), currentName);
+      }
     }
-  }
-  __asm {
-    mov ecx,DWORD PTR [ebp-0xc]
-    pop edi
-    pop esi
-    mov DWORD PTR fs:0x0,ecx
-    pop ebx
-    mov esp,ebp
-    pop ebp
-    ret
+  } catch (ushort *error) {
+    throw error;
+  } catch (...) {
+    using UnwindABI = void (__cdecl *)(const TCHAR *,...);
+    (*(UnwindABI *)R6GameServiceAddresses::Core__appUnwindfSlot)
+        ((const TCHAR *)R6GameServiceAddresses::WideTextTextFormat,
+         (const TCHAR *)R6GameServiceAddresses::WideTextUR6GSServersRefreshServers);
+    throw;
   }
 }
 
@@ -6571,58 +6397,31 @@ __declspec(naked) void __cdecl UR6GSServers_UR6GSServersCatch84(void)
   }
 }
 
-// Consume end token/optional DebugInfo42 through current VM object/table; preserve current result/global and exact guard/access order.
-// R6GameService.dll @ 1000c1f0 : C++ VM operations with native frame/access boundaries.
-__declspec(naked) void __thiscall UR6GSServers::execRefreshServers(FFrame &Stack,void *const Result)
+// Finish VM parameters and refresh the server list without writing a script result.
+// R6GameService.dll @ 1000c1f0 : FFrame/result bridge; typed forwarding and context rethrow preserved.
+void __thiscall UR6GSServers::execRefreshServers(FFrame &Stack,void *const Result)
 {
-  byte *nativeFrame;
-  UR6GSServers *receiver;
-  __asm {
-    push   ebp
-    mov    ebp,esp
-    push   0xffffffff
-    push   R6GameServiceAddresses::UR6GSServers_SelectSmallVMBridgeEH5
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0xc
-    mov    nativeFrame,ebp
-  }
-  FFrame *frame = *(FFrame **)(nativeFrame + 8);
-  byte *code = *(byte **)((byte *)frame + 0xc);
-  __asm {
-    push   ebx
-  }
-  code += 1;
-  __asm {
-    push   esi
-    mov    esi,ecx
-    mov    receiver,esi
-  }
+  FFrame *frame = &Stack;
+  byte *code = *(byte **)((byte *)frame + 0xc) + 1;
   *(byte **)((byte *)frame + 0xc) = code;
   bool hasDebugInfo = *code == 0x42;
-  __asm {
-    push   edi
-    mov    DWORD PTR [ebp-0x10],esp
-  }
-  *(uint *)(nativeFrame - 4) = 0;
-  if (hasDebugInfo) {
-    UObject *object = *(UObject **)((byte *)frame + 8);
-    *(byte **)((byte *)frame + 0xc) = code + 1;
-    uint *natives = *(uint **)R6GameServiceAddresses::Core__GNativesSlot;
-    using DebugABI = void (__thiscall *)(UObject *,FFrame *,void *);
-    ((DebugABI)natives[0x42])(object,frame,0);
-  }
-  receiver->RefreshServers();
-  __asm {
-    mov    ecx,DWORD PTR [ebp-0xc]
-    pop    edi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
-    ret    0x8
+  try {
+    if (hasDebugInfo) {
+      UObject *object = *(UObject **)((byte *)frame + 8);
+      *(byte **)((byte *)frame + 0xc) = code + 1;
+      uint *natives = *(uint **)R6GameServiceAddresses::Core__GNativesSlot;
+      using DebugABI = void (__thiscall *)(UObject *,FFrame *,void *);
+      ((DebugABI)natives[0x42])(object,frame,nullptr);
+    }
+    RefreshServers();
+  } catch (ushort *error) {
+    throw error;
+  } catch (...) {
+    using UnwindABI = void (__cdecl *)(const TCHAR *,...);
+    (*(UnwindABI *)R6GameServiceAddresses::Core__appUnwindfSlot)
+        ((const TCHAR *)R6GameServiceAddresses::WideTextTextFormat,
+         (const TCHAR *)R6GameServiceAddresses::WideTextUR6GSServersExecRefreshServers);
+    throw;
   }
 }
 
@@ -7272,11 +7071,13 @@ void __thiscall UR6GSServers::CreatedCDKey()
     FString encryptedKey;
     using RegGetABI = int (__cdecl *)(FString,FString,FString&);
     using DecryptABI = FString (__cdecl *)(FString);
+    // This logical FString view transfers the same three words consumed by the raw native wrapper.
+    using ValidateABI = uint (__cdecl *)(FString);
     // RegGet consumes both arguments; its status does not decide whether the output is validated.
     (*(RegGetABI *)R6GameServiceAddresses::Core__RegGetSlot)
         (FString((const TCHAR *)R6GameServiceAddresses::WideTextSOFTWARERedStormEntertainmentRAVENSHIELD),
          FString((const TCHAR *)R6GameServiceAddresses::WideTextCDKey),encryptedKey);
-    if (IsCDKeyValidOnMachine(encryptedKey) != 0) {
+    if (((ValidateABI)R6GameServiceAddresses::IsCDKeyValidOnMachine)(encryptedKey) != 0) {
       FString decrypted = ((DecryptABI)R6GameServiceAddresses::DecryptFStringWithUeviLCore)(encryptedKey);
       *(FString *)R6GameServiceAddresses::GServiceString8 = decrypted;
     } else {
@@ -8980,12 +8781,14 @@ void __thiscall UR6GSServers::RequestModCDKeyProcess(int modProcess)
     }
     using RegGetABI = int (__cdecl *)(FString,FString,FString &);
     using DecryptABI = FString (__cdecl *)(FString);
+    // This logical FString view transfers the same three words consumed by the raw native wrapper.
+    using ValidateABI = uint (__cdecl *)(FString);
     if (selectedProcess == 0) {
       // RegGet owns both outgoing strings; its return status is ignored even if it leaves output empty.
       (*(RegGetABI *)R6GameServiceAddresses::Core__RegGetSlot)
           (FString((const TCHAR *)R6GameServiceAddresses::WideTextSOFTWARERedStormEntertainmentRAVENSHIELD),
            FString((const TCHAR *)R6GameServiceAddresses::WideTextCDKey),encryptedKey);
-      if (IsCDKeyValidOnMachine(encryptedKey) != 0) {
+      if (((ValidateABI)R6GameServiceAddresses::IsCDKeyValidOnMachine)(encryptedKey) != 0) {
         FString decrypted = ((DecryptABI)R6GameServiceAddresses::DecryptFStringWithUeviLCore)(encryptedKey);
         *(FString *)R6GameServiceAddresses::GServiceString8 = decrypted;
       } else {
@@ -8999,7 +8802,7 @@ void __thiscall UR6GSServers::RequestModCDKeyProcess(int modProcess)
       registryPath += *(FString *)(currentMod + 0x94);
       (*(RegGetABI *)R6GameServiceAddresses::Core__RegGetSlot)
           (registryPath,FString((const TCHAR *)R6GameServiceAddresses::WideTextCDKey),encryptedKey);
-      if (IsCDKeyValidOnMachine(encryptedKey) != 0) {
+      if (((ValidateABI)R6GameServiceAddresses::IsCDKeyValidOnMachine)(encryptedKey) != 0) {
         FString decrypted = ((DecryptABI)R6GameServiceAddresses::DecryptFStringWithUeviLCore)(encryptedKey);
         *(FString *)R6GameServiceAddresses::GServiceString5 = decrypted;
       } else {
@@ -11846,31 +11649,24 @@ int __thiscall UR6GSServers::GetRegServerInitialized(void)
   return *reinterpret_cast<const int *>(0x10093b08);
 }
 
-// Close the flagged lobby and uninitialize registration, clearing flags only after optional diagnostics.
-// Exported nonvirtual void(void), unused incoming ECX, RET0; no local exception guard or rollback.
-// Initial full registration word alone gates work. Logf is cached before close/uninitialize; gates and
-// receivers reload, but the final logout log is unconditional after both flag stores.
-// Its GLog import is captured before those stores and its device is dereferenced afterward.
+// Close the active lobby and registration service, clear their flags, then always log logout through the cached logger.
 // R6GameService.dll @ 10011fd0 : no local guard; cached Logf, live logging gates and late unconditional logout diagnostic.
-__declspec(naked) void __thiscall UR6GSServers::UnInitRegServer(void)
+void __thiscall UR6GSServers::UnInitRegServer(void)
 {
-  uint rawEax = *(uint *)0x10093b08;
-  if (rawEax != 0) {
+  uint initialized = *(uint *)0x10093b08;
+  if (initialized != 0) {
     uint lobbyActive = *(uint *)0x100939ec;
-    __asm {
-      push   esi
-    }
     using LogABI = uint (__cdecl *)(FOutputDevice *,const TCHAR *,...);
     LogABI logger = *(LogABI *)R6GameServiceAddresses::Core_FOutputDevice_LogfSlot;
     if (lobbyActive != 0) {
-      ((uint (__stdcall *)(void))R6GameServiceAddresses::CloseLobbyServerConnection)();
+      ((byte (__cdecl *)(void))R6GameServiceAddresses::CloseLobbyServerConnection)();
       if (*(uint *)R6GameServiceAddresses::GServiceVerboseLogging != 0) {
         FOutputDevice *device = **(FOutputDevice ***)R6GameServiceAddresses::Core__GLogSlot;
         logger(device,
             (const TCHAR *)R6GameServiceAddresses::WideTextREGSERVERRegServerSendLobbyServerCloseFromUR6GSServersUnInitRegServer);
       }
     }
-    ((uint (__cdecl *)(void))R6GameServiceAddresses::UninitializeRegistrationService)();
+    ((bool (__cdecl *)(void))R6GameServiceAddresses::UninitializeRegistrationService)();
     if (*(uint *)R6GameServiceAddresses::GServiceVerboseLogging != 0) {
       FOutputDevice *device = **(FOutputDevice ***)R6GameServiceAddresses::Core__GLogSlot;
       logger(device,(const TCHAR *)R6GameServiceAddresses::WideTextREGSERVERRegServerLibraryUninitialize);
@@ -11879,59 +11675,28 @@ __declspec(naked) void __thiscall UR6GSServers::UnInitRegServer(void)
     *(uint *)0x100939ec = 0;
     *(uint *)0x10093b08 = 0;
     FOutputDevice *device = *deviceSlot;
-    rawEax = logger(device,(const TCHAR *)R6GameServiceAddresses::WideTextLoggedOffFromUbiComRegServerService);
-    __asm {
-      pop    esi
-    }
-  }
-  __asm {
-    mov    eax,rawEax
-    ret
+    logger(device,(const TCHAR *)R6GameServiceAddresses::WideTextLoggedOffFromUbiComRegServerService);
   }
 }
 
-// Clear lobby/group IDs, perform registration shutdown, then clear the remaining global only on return.
-// Exported nonvirtual void(void), unused incoming ECX, RET0. The guard is linked before the ID stores.
+
+// Clear lobby/group IDs, shut down registration, then clear the remaining state only on normal return.
 // R6GameService.dll @ 10012060 : ID clears precede shutdown; remaining state clears only on its normal return.
-__declspec(naked) void __thiscall UR6GSServers::LogOutServer(void)
+void __thiscall UR6GSServers::LogOutServer(void)
 {
-  byte *nativeFrame;
-  void *receiver;
-  __asm {
-    push   ebp
-    mov    ebp,esp
-    push   0xffffffff
-    push   R6GameServiceAddresses::UR6GSServers_LogOutServerSelectExceptionInfo
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0xc
-    push   ebx
-    push   esi
-    xor    esi,esi
-    push   edi
-    mov    DWORD PTR [ebp-0x10],esp
-    mov    DWORD PTR [ebp-0x4],esi
-    mov    nativeFrame,ebp
-    mov    receiver,ecx
-  }
-  *(uint *)R6GameServiceAddresses::GSecondaryLobbyServerId = 0;
-  *(uint *)R6GameServiceAddresses::GSecondaryGroupId = 0;
-  uint rawEax = ((uint (__thiscall *)(void *))R6GameServiceAddresses::UR6GSServers_UnInitRegServer)(receiver);
-  uint predecessor = *(uint *)(nativeFrame - 0xc);
-  __asm {
-    pop    edi
-  }
-  *(uint *)0x10091bd8 = 0;
-  __asm {
-    mov    eax,rawEax
-    mov    ecx,predecessor
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
-    ret
+  try {
+    *(uint *)R6GameServiceAddresses::GSecondaryLobbyServerId = 0;
+    *(uint *)R6GameServiceAddresses::GSecondaryGroupId = 0;
+    UnInitRegServer();
+    *(uint *)0x10091bd8 = 0;
+  } catch (ushort *error) {
+    throw error;
+  } catch (...) {
+    using UnwindABI = void (__cdecl *)(const TCHAR *,...);
+    (*(UnwindABI *)R6GameServiceAddresses::Core__appUnwindfSlot)
+        ((const TCHAR *)R6GameServiceAddresses::WideTextTextFormat,
+         (const TCHAR *)R6GameServiceAddresses::WideTextUR6GSServersLogOutServer);
+    throw;
   }
 }
 
@@ -12005,73 +11770,39 @@ const R6GameServiceNative::FuncInfo UR6GSServers_LogOutServerExceptionInfo = {
   0x0,
 };
 
-// Evaluate the replication-info argument, clear its IDs, then perform the complete native logout path.
-// Exported exec void(FFrame&,void*), RET8, result pointer unused. Saved service receiver survives dispatch.
-// Operand byte indexes current GNatives; after it returns, Code advances then optionally consumes 42h.
-// Current local pointer is reread for +3c8/+3cc stores, with no NULL check; both precede LogOutServer.
-// R6GameService.dll @ 100120e0 : RET8; operand result remains in native scratch and both ID destinations are read separately.
-__declspec(naked) void __thiscall UR6GSServers::execNativeLogOutServer(FFrame *frame,void *result)
+// Decode replication info, clear both current ID destinations without null checks, then log out; the result is unused.
+// R6GameService.dll @ 100120e0 : guarded VM operand scratch; both ID destinations use the current decoded pointer.
+void __thiscall UR6GSServers::execNativeLogOutServer(FFrame &Stack,void *const Result)
 {
-  byte *nativeFrame,*vmFrame;
-  void *receiver;
-  __asm {
-    push   ebp
-    mov    ebp,esp
-    push   0xffffffff
-    push   R6GameServiceAddresses::UR6GSServers_execNativeLogOutServerSelectExceptionInfo
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x10
-    push   ebx
-    push   esi
-    mov    esi,DWORD PTR [ebp+0x8]
-    mov    eax,DWORD PTR [esi+0xc]
-    push   edi
-    xor    edi,edi
-    mov    DWORD PTR [ebp-0x14],edi
-    movzx  edx,BYTE PTR [eax]
-    inc    eax
-    mov    DWORD PTR [esi+0xc],eax
-    mov    DWORD PTR [ebp-0x10],esp
-    lea    eax,[ebp-0x14]
-    push   eax
-    mov    eax,ds:R6GameServiceAddresses::Core__GNativesSlot
-    mov    ebx,ecx
-    mov    ecx,DWORD PTR [esi+0x8]
-    push   esi
-    mov    DWORD PTR [ebp-0x4],edi
-    call   DWORD PTR [eax+edx*4]
-    mov    nativeFrame,ebp
-    mov    vmFrame,esi
-    mov    receiver,ebx
-  }
-  byte *code = *(byte **)(vmFrame + 0xc);
-  ++code;
-  *(byte **)(vmFrame + 0xc) = code;
-  if (*code == 0x42) {
-    void *object = *(void **)(vmFrame + 8);
-    ++code;
-    *(byte **)(vmFrame + 0xc) = code;
-    byte *table = *(byte **)R6GameServiceAddresses::Core__GNativesSlot;
-    using DispatchABI = uint (__thiscall *)(void *,FFrame *,void *);
-    (*(DispatchABI *)(table + 0x108))(object,(FFrame *)vmFrame,nullptr);
-  }
-  void *replicationInfo = *(void **)(nativeFrame - 0x14);
-  *(uint *)((byte *)replicationInfo + 0x3c8) = 0;
-  replicationInfo = *(void **)(nativeFrame - 0x14);
-  *(uint *)((byte *)replicationInfo + 0x3cc) = 0;
-  uint rawEax = ((uint (__thiscall *)(void *))R6GameServiceAddresses::UR6GSServers_LogOutServer)(receiver);
-  __asm {
-    mov    eax,rawEax
-    mov    ecx,DWORD PTR [ebp-0xc]
-    pop    edi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
-    ret    0x8
+  FFrame *frame = &Stack;
+  byte *code = *(byte **)((byte *)frame + 0xc);
+  void *replicationInfo = nullptr;
+  uint opcode = *code;
+  *(byte **)((byte *)frame + 0xc) = code + 1;
+  uint *natives = *(uint **)R6GameServiceAddresses::Core__GNativesSlot;
+  UObject *object = *(UObject **)((byte *)frame + 8);
+  using NativeABI = void (__thiscall *)(UObject *,FFrame *,void *);
+  try {
+    ((NativeABI)natives[opcode])(object,frame,&replicationInfo);
+    code = *(byte **)((byte *)frame + 0xc) + 1;
+    *(byte **)((byte *)frame + 0xc) = code;
+    if (*code == 0x42) {
+      object = *(UObject **)((byte *)frame + 8);
+      *(byte **)((byte *)frame + 0xc) = code + 1;
+      natives = *(uint **)R6GameServiceAddresses::Core__GNativesSlot;
+      ((NativeABI)natives[0x42])(object,frame,nullptr);
+    }
+    *(uint *)((byte *)replicationInfo + 0x3c8) = 0;
+    *(uint *)((byte *)replicationInfo + 0x3cc) = 0;
+    LogOutServer();
+  } catch (ushort *error) {
+    throw error;
+  } catch (...) {
+    using UnwindABI = void (__cdecl *)(const TCHAR *,...);
+    (*(UnwindABI *)R6GameServiceAddresses::Core__appUnwindfSlot)
+        ((const TCHAR *)R6GameServiceAddresses::WideTextTextFormat,
+         (const TCHAR *)R6GameServiceAddresses::WideTextUR6GSServersExecNativeLogOutServer);
+    throw;
   }
 }
 
@@ -15770,74 +15501,44 @@ const R6GameServiceNative::FuncInfo UR6GSServers_execNativeGetSecondsExceptionIn
   0x0,
 };
 
-// Reads RDTSC once, combines unsigned halves in x87, scales by live seconds-per-cycle and adds 16777216 before float store.
-// UE2 appSeconds corroborates the formula; inherited x87 precision remains until the final float32 store.
-// R6GameService.dll @ 10005e40 : exported FFrame/result bridge; native frame retains result/link alias effects.
-__declspec(naked) void __thiscall UR6GSServers::execNativeGetSeconds(FFrame &Stack,void *const Result)
+// Finish VM parameters and return cycle time as float32, preserving x87 operation order and precision.
+// R6GameService.dll @ 10005e40 : FFrame/result bridge; typed forwarding and context rethrow preserved.
+void __thiscall UR6GSServers::execNativeGetSeconds(FFrame &Stack,void *const Result)
 {
-  byte *nativeFrame;
-  __asm {
-    push   ebp
-    mov    ebp,esp
-    push   0xffffffff
-    push   R6GameServiceAddresses::UR6GSServers_execNativeGetSecondsSelectExceptionInfo
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0xc
-    mov    nativeFrame,ebp
-  }
-  FFrame *frame = *(FFrame **)(nativeFrame + 8);
+  FFrame *frame = &Stack;
   byte *code = *(byte **)((byte *)frame + 0xc) + 1;
-  __asm {
-    push   ebx
-    push   esi
-  }
   *(byte **)((byte *)frame + 0xc) = code;
   bool hasDebugInfo = *code == 0x42;
-  __asm {
-    push   edi
-    mov    DWORD PTR [ebp-0x10],esp
-  }
-  *(uint *)(nativeFrame - 4) = 0;
-  if (hasDebugInfo) {
-    UObject *object = *(UObject **)((byte *)frame + 8);
-    *(byte **)((byte *)frame + 0xc) = code + 1;
-    uint *natives = *(uint **)R6GameServiceAddresses::Core__GNativesSlot;
-    using DebugABI = void (__thiscall *)(UObject *,FFrame *,void *);
-    ((DebugABI)natives[0x42])(object,frame,0);
-  }
-  ulonglong counter = __rdtsc();
-  *(uint *)(nativeFrame - 0x18) = (uint)counter;
-  *(uint *)(nativeFrame + 8) = (uint)(counter >> 32);
-  // Each float10 operation models one x87 operation; no intermediate float32/float64 narrowing occurs.
-  float10 highCycles = (float10)*(int *)(nativeFrame + 8);
-  int high = *(int *)(nativeFrame + 8);
-  if (high < 0) highCycles += *(double *)R6GameServiceAddresses::NativeDouble4294967296_0;
-  int low = *(int *)(nativeFrame - 0x18);
-  highCycles *= *(double *)R6GameServiceAddresses::NativeDouble4294967296_0;
-  float10 lowCycles = (float10)*(int *)(nativeFrame - 0x18);
-  if (low < 0) lowCycles += *(double *)R6GameServiceAddresses::NativeDouble4294967296_0;
-  const double *secondsPerCycle = *(const double **)R6GameServiceAddresses::Core__GSecondsPerCycleSlot;
-  float10 seconds = highCycles + lowCycles;
-  float *output = *(float **)(nativeFrame + 0xc);
-  uint predecessor = *(uint *)(nativeFrame - 0xc);
-  seconds *= *secondsPerCycle;
-  __asm {
-    pop    edi
-    pop    esi
-  }
-  seconds += *(double *)R6GameServiceAddresses::NativeDouble16777216_0;
-  __asm {
-    pop    ebx
-  }
-  *output = (float)seconds;
-  __asm {
-    mov    ecx,predecessor
-    mov    DWORD PTR fs:0x0,ecx
-    mov    esp,ebp
-    pop    ebp
-    ret    0x8
+  try {
+    if (hasDebugInfo) {
+      UObject *object = *(UObject **)((byte *)frame + 8);
+      *(byte **)((byte *)frame + 0xc) = code + 1;
+      uint *natives = *(uint **)R6GameServiceAddresses::Core__GNativesSlot;
+      using DebugABI = void (__thiscall *)(UObject *,FFrame *,void *);
+      ((DebugABI)natives[0x42])(object,frame,nullptr);
+    }
+    ulonglong counter = __rdtsc();
+    int high = (int)(uint)(counter >> 32);
+    int low = (int)(uint)counter;
+    // float10 denotes the native extended x87 value; keep each operation separate until the float32 result store.
+    float10 highCycles = (float10)high;
+    if (high < 0) highCycles += *(double *)R6GameServiceAddresses::NativeDouble4294967296_0;
+    highCycles *= *(double *)R6GameServiceAddresses::NativeDouble4294967296_0;
+    float10 lowCycles = (float10)low;
+    if (low < 0) lowCycles += *(double *)R6GameServiceAddresses::NativeDouble4294967296_0;
+    const double *secondsPerCycle = *(const double **)R6GameServiceAddresses::Core__GSecondsPerCycleSlot;
+    float10 seconds = highCycles + lowCycles;
+    seconds *= *secondsPerCycle;
+    seconds += *(double *)R6GameServiceAddresses::NativeDouble16777216_0;
+    *(float *)Result = (float)seconds;
+  } catch (ushort *error) {
+    throw error;
+  } catch (...) {
+    using UnwindABI = void (__cdecl *)(const TCHAR *,...);
+    (*(UnwindABI *)R6GameServiceAddresses::Core__appUnwindfSlot)
+        ((const TCHAR *)R6GameServiceAddresses::WideTextTextFormat,
+         (const TCHAR *)R6GameServiceAddresses::WideTextUR6GSServersExecNativeGetSeconds);
+    throw;
   }
 }
 

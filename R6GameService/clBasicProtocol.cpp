@@ -70,171 +70,144 @@ __declspec(naked) void *__thiscall clBasicProtocol_DeleteObject(void *owner,uint
   }
 }
 
-// Install base primary, clear members, release CURRENT12c nodes/head then CURRENT124 nodes/head; retain dangling head fields.
-// ENTRY ESP S: saved ownerS-14/list contextS-10/stateS-4. State1 protects both node lists; state2 disarms12c retry.
-// Preserve successor caching, separate head reloads, three-state cleanup and raw final free EAX.
-// R6GameService.dll @ 1005fb70 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall DestroyRecordOwnerStorage(void *owner)
-{
-  __asm {
-    push    0xffffffff
-    push    R6GameServiceAddresses::SelectBasicProtocolDestroyEH
-    mov    eax,fs:0x0
-    push    eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x8
-    push    ebx
-    mov    ebx,ecx
-    push    esi
-    push    edi
-    mov    DWORD PTR [esp+0xc],ebx
-    mov    DWORD PTR [ebx],R6GameServiceAddresses::clBasicProtocolVTable
-    mov    DWORD PTR [esp+0x1c],0x1
-    call    R6GameServiceAddresses::ClearRecordOwnerMembers
-    lea    esi,[ebx+0x12c]
-    mov    DWORD PTR [esp+0x10],esi
-    mov    eax,DWORD PTR [esi]
-    mov    BYTE PTR [esp+0x1c],0x2
-    mov    edi,DWORD PTR [eax]
-    cmp    edi,eax
-    je    Branch4
-  Branch3:
-    mov    eax,edi
-    mov    edi,DWORD PTR [edi]
-    push    0x1
-    push    eax
-    mov    ecx,esi
-    call    R6GameServiceAddresses::ReleaseMemoryIgnoringSize
-    cmp    edi,DWORD PTR [esi]
-    jne    Branch3
-  Branch4:
-    mov    eax,DWORD PTR [esi]
-    push    0x1
-    mov    ecx,esi
-    mov    DWORD PTR [eax],eax
-    mov    eax,DWORD PTR [esi]
-    mov    DWORD PTR [eax+0x4],eax
-    mov    eax,DWORD PTR [esi]
-    push    eax
-    call    R6GameServiceAddresses::ReleaseMemoryIgnoringSize
-    mov    eax,DWORD PTR [ebx+0x124]
-    mov    esi,DWORD PTR [eax]
-    cmp    esi,eax
-    je    Branch6
-  Branch5:
-    mov    eax,esi
-    mov    esi,DWORD PTR [esi]
-    push    eax
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    cmp    esi,DWORD PTR [ebx+0x124]
-    jne    Branch5
-  Branch6:
-    mov    eax,DWORD PTR [ebx+0x124]
-    mov    DWORD PTR [eax],eax
-    mov    eax,DWORD PTR [ebx+0x124]
-    mov    DWORD PTR [eax+0x4],eax
-    mov    ecx,DWORD PTR [ebx+0x124]
-    push    ecx
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    mov    ecx,DWORD PTR [esp+0x14]
-    pop    edi
-    pop    esi
-    pop    ebx
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x14
-    ret
+namespace {
+// Inferred saved owner/list context and states for the native three-state base-protocol storage lifetime.
+struct BasicProtocolStorageCleanup {
+  void *savedOwner;
+  void *savedListContext;
+  int state;
+  // Release current node storage without retrying payload destruction; state2 skips the already-entered second list.
+  ~BasicProtocolStorageCleanup() noexcept(false) {
+    using ReleaseABI = uint (__thiscall *)(void *);
+    if (state == 1) {
+      void *slot = (void *)((uint)savedOwner + 0x12c);
+      ((ReleaseABI)R6GameServiceAddresses::ReleaseNodesAndSentinelThunk)(slot);
+    } else if (state == 2) {
+      using EmptyABI = void (__thiscall *)(void *);
+      ((EmptyABI)R6GameServiceAddresses::list_node_support_NoOp)(savedListContext);
+    }
+    if (state >= 0) {
+      void *slot = (void *)((uint)savedOwner + 0x124);
+      ((ReleaseABI)R6GameServiceAddresses::ReleaseNodesAndSentinelThunk)(slot);
+    }
   }
+};
+}
+
+// Install base primary, clear members, release CURRENT12c nodes/head then CURRENT124 nodes/head; retain dangling head fields.
+// State1 protects both node lists; state2 disarms second-list retry. Saved owner/context/state map to S-14/S-10/S-4.
+// Preserve successor caching, separate head reloads, three-state cleanup and raw final free EAX.
+// R6GameService.dll @ 1005fb70 : inferred saved-context guard; no payload retry or owner-field clearing.
+uint __fastcall DestroyRecordOwnerStorage(void *owner)
+{
+  BasicProtocolStorageCleanup cleanup{owner, nullptr, -1};
+  uint base = (uint)owner;
+  *(uint *)base = R6GameServiceAddresses::clBasicProtocolVTable;
+  cleanup.state = 1;
+  using ClearABI = uint (__thiscall *)(void *);
+  ((ClearABI)R6GameServiceAddresses::ClearRecordOwnerMembers)(owner);
+  uint *headSlot = (uint *)(base + 0x12c);
+  cleanup.savedListContext = headSlot;
+  uint head = *headSlot;
+  cleanup.state = 2;
+  uint node = *(uint *)head;
+  using ReleaseABI = uint (__thiscall *)(void *,void *,uint);
+  while (node != head) {
+    uint released = node;
+    node = *(uint *)node;
+    ((ReleaseABI)R6GameServiceAddresses::ReleaseMemoryIgnoringSize)(headSlot,(void *)released,1);
+    head = *headSlot;
+  }
+  head = *headSlot;
+  *(uint *)head = head;
+  head = *headSlot;
+  *(uint *)(head + 4) = head;
+  head = *headSlot;
+  ((ReleaseABI)R6GameServiceAddresses::ReleaseMemoryIgnoringSize)(headSlot,(void *)head,1);
+  head = *(uint *)(base + 0x124);
+  node = *(uint *)head;
+  using FreeABI = uint (__stdcall *)(void *);
+  while (node != head) {
+    uint released = node;
+    node = *(uint *)node;
+    ((FreeABI)R6GameServiceAddresses::TailFreeThroughGlobalAllocator)((void *)released);
+    head = *(uint *)(base + 0x124);
+  }
+  head = *(uint *)(base + 0x124);
+  *(uint *)head = head;
+  head = *(uint *)(base + 0x124);
+  *(uint *)(head + 4) = head;
+  void *sentinel = *(void **)(base + 0x124);
+  uint result = ((FreeABI)R6GameServiceAddresses::TailFreeThroughGlobalAllocator)(sentinel);
+  cleanup.state = -1;
+  return result;
 }
 
 // Delete payloads of CURRENT124 then12c lists, then free12c nodes and124 nodes, resetting current heads separately.
 // Release current120 association with physical WORD11c argument retaining124-head upper16, clear120 only AFTER return.
 // No own EH; current next/head accesses survive callbacks, fields keep freed payload pointers, AL1 with raw upper EAX.
-// R6GameService.dll @ 1005fc70 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __fastcall ClearRecordOwnerMembers(void *owner)
+// R6GameService.dll @ 1005fc70 : inferred list/association views; physical argument width and raw AL result retained.
+uint __fastcall ClearRecordOwnerMembers(void *owner)
 {
-  __asm {
-    push    esi
-    mov    esi,ecx
-    push    edi
-    mov    eax,DWORD PTR [esi+0x124]
-    mov    edi,DWORD PTR [eax]
-    cmp    edi,eax
-    je    Branch9
-  Branch7:
-    mov    ecx,DWORD PTR [edi+0x8]
-    test    ecx,ecx
-    je    Branch8
-    mov    eax,DWORD PTR [ecx]
-    push    0x1
-    call    DWORD PTR [eax]
-  Branch8:
-    mov    edi,DWORD PTR [edi]
-    mov    eax,DWORD PTR [esi+0x124]
-    cmp    edi,eax
-    jne    Branch7
-  Branch9:
-    mov    eax,DWORD PTR [esi+0x12c]
-    mov    edi,DWORD PTR [eax]
-    cmp    edi,eax
-    je    Branch12
-  Branch10:
-    mov    ecx,DWORD PTR [edi+0x8]
-    test    ecx,ecx
-    je    Branch11
-    mov    edx,DWORD PTR [ecx]
-    push    0x1
-    call    DWORD PTR [edx]
-  Branch11:
-    mov    edi,DWORD PTR [edi]
-    mov    eax,DWORD PTR [esi+0x12c]
-    cmp    edi,eax
-    jne    Branch10
-  Branch12:
-    mov    eax,DWORD PTR [esi+0x12c]
-    mov    edi,DWORD PTR [eax]
-    cmp    edi,eax
-    je    Branch14
-  Branch13:
-    mov    eax,edi
-    mov    edi,DWORD PTR [edi]
-    push    eax
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    cmp    edi,DWORD PTR [esi+0x12c]
-    jne    Branch13
-  Branch14:
-    mov    eax,DWORD PTR [esi+0x12c]
-    mov    DWORD PTR [eax],eax
-    mov    eax,DWORD PTR [esi+0x12c]
-    mov    DWORD PTR [eax+0x4],eax
-    mov    eax,DWORD PTR [esi+0x124]
-    mov    edi,DWORD PTR [eax]
-    cmp    edi,eax
-    je    Branch16
-  Branch15:
-    mov    eax,edi
-    mov    edi,DWORD PTR [edi]
-    push    eax
-    call    R6GameServiceAddresses::TailFreeThroughGlobalAllocator
-    cmp    edi,DWORD PTR [esi+0x124]
-    jne    Branch15
-  Branch16:
-    mov    eax,DWORD PTR [esi+0x124]
-    mov    DWORD PTR [eax],eax
-    mov    eax,DWORD PTR [esi+0x124]
-    mov    DWORD PTR [eax+0x4],eax
-    mov    ecx,DWORD PTR [esi+0x120]
-    test    ecx,ecx
-    je    Branch17
-    mov    ax,WORD PTR [esi+0x11c]
-    push    eax
-    call    R6GameServiceAddresses::RemoveKeyAndRecycleOrDestroy
-    mov    DWORD PTR [esi+0x120],0x0
-  Branch17:
-    pop    edi
-    mov    al,0x1
-    pop    esi
-    ret
+  uint base = (uint)owner;
+  uint head = *(uint *)(base + 0x124);
+  uint node = *(uint *)head;
+  while (node != head) {
+    void *object = *(void **)(node + 8);
+    if (object != 0) {
+      using DeleteABI = void (__thiscall *)(void *,uint);
+      DeleteABI destroy = *(DeleteABI *)*(void **)object;
+      destroy(object,1);
+    }
+    node = *(uint *)node;
+    head = *(uint *)(base + 0x124);
   }
+  head = *(uint *)(base + 0x12c);
+  node = *(uint *)head;
+  while (node != head) {
+    void *object = *(void **)(node + 8);
+    if (object != 0) {
+      using DeleteABI = void (__thiscall *)(void *,uint);
+      DeleteABI destroy = *(DeleteABI *)*(void **)object;
+      destroy(object,1);
+    }
+    node = *(uint *)node;
+    head = *(uint *)(base + 0x12c);
+  }
+  using FreeABI = uint (__stdcall *)(void *);
+  head = *(uint *)(base + 0x12c);
+  node = *(uint *)head;
+  while (node != head) {
+    uint released = node;
+    node = *(uint *)node;
+    ((FreeABI)R6GameServiceAddresses::TailFreeThroughGlobalAllocator)((void *)released);
+    head = *(uint *)(base + 0x12c);
+  }
+  head = *(uint *)(base + 0x12c);
+  *(uint *)head = head;
+  head = *(uint *)(base + 0x12c);
+  *(uint *)(head + 4) = head;
+  head = *(uint *)(base + 0x124);
+  node = *(uint *)head;
+  while (node != head) {
+    uint released = node;
+    node = *(uint *)node;
+    ((FreeABI)R6GameServiceAddresses::TailFreeThroughGlobalAllocator)((void *)released);
+    head = *(uint *)(base + 0x124);
+  }
+  head = *(uint *)(base + 0x124);
+  *(uint *)head = head;
+  head = *(uint *)(base + 0x124);
+  *(uint *)(head + 4) = head;
+  uint result = head;
+  void *association = *(void **)(base + 0x120);
+  if (association != 0) {
+    uint keyWord = (result & 0xffff0000) | *(ushort *)(base + 0x11c);
+    using ReleaseABI = uint (__thiscall *)(void *,uint);
+    result = ((ReleaseABI)R6GameServiceAddresses::RemoveKeyAndRecycleOrDestroy)(association,keyWord);
+    *(uint *)(base + 0x120) = 0;
+  }
+  return (result & 0xffffff00) | 1;
 }
 
 // Primary slot4: capture124 head, allocate node with CURRENT record argument, link before captured head and return node/RET4.

@@ -142,198 +142,144 @@ __declspec(naked) uint __thiscall AttachCompactRecord(void *owner,uint message)
   }
 }
 
+namespace {
+// Inferred native scratch words and two live Boolean bytes; original argument words also become iterator scratch.
+struct ReceiveCompactInsertScratch {
+  byte untouched[2];
+  byte seenPreceding;
+  byte active;
+  uint current;
+  uint savedOwner;
+  uint wrapper;
+  uint position;
+};
+}
+
 // Allocate owning wrapper12, then capture CURRENT source argument; remove FIRST matching active entry.
 // Insert after first preceding tuple and before next nonpreceding tuple, or append if none; signed key uses strict <.
 // ENTRY ESP S: ownerS-c/wrapperS-8/nodeS-10; sourceS+8 becomes Boolean/iterator scratch.
 // Preserve CURRENT key/head/virtual erase and modulo16 count updates; no local EH. AL1/owner upper, RET8.
-// R6GameService.dll @ 1005c7b0 : complete native control/access order and raw ABI retained.
-__declspec(naked) uint __thiscall InsertOrReplaceCompactRecord(void *owner,uint keyWord,void *source)
+// R6GameService.dll @ 1005c7b0 : inferred scratch view; current source/key, virtual erasure and slot reloads.
+uint __thiscall InsertOrReplaceCompactRecord(void *owner,uint keyWord,void *source)
 {
-  __asm {
-    sub    esp,0x14
-    push    ebx
-    push    ebp
-    push    esi
-    push    edi
-    mov    esi,ecx
-    push    0xc
-    mov    DWORD PTR [esp+0x1c],esi
-    call    R6GameServiceAddresses::AllocateGameServiceBytes
-    mov    ebp,DWORD PTR [esp+0x2c]
-    test    eax,eax
-    je    Branch7
-    mov    ecx,DWORD PTR [esp+0x28]
-    mov    dl,BYTE PTR [ebp+0xe]
-    push    0x1
-    push    ebp
-    push    ecx
-    mov    cl,BYTE PTR [ebp+0xc]
-    push    edx
-    push    ecx
-    mov    ecx,eax
-    call    R6GameServiceAddresses::InitializeCompactRecordHeader
-    jmp    Branch8
-  Branch7:
-    xor    eax,eax
-  Branch8:
-    mov    DWORD PTR [esp+0x1c],eax
-    mov    al,BYTE PTR [ebp+0xe]
-    mov    bl,al
-    mov    BYTE PTR [esp+0x2c],0x0
-    and    bl,0x1f
-    test    al,0x20
-    mov    eax,DWORD PTR [esi+0x4]
-    seta    BYTE PTR [esp+0x13]
-    add    esi,0x4
-    mov    esi,DWORD PTR [eax]
-    cmp    esi,eax
-    mov    DWORD PTR [esp+0x14],esi
-    je    Branch12
-  Branch9:
-    mov    al,BYTE PTR [esp+0x2c]
-    test    al,al
-    jne    Branch12
-    mov    edi,DWORD PTR [esi+0x8]
-    mov    dl,BYTE PTR [ebp+0xc]
-    mov    cl,BYTE PTR [edi+0x4]
-    mov    al,BYTE PTR [edi+0x5]
-    cmp    dl,cl
-    mov    dl,al
-    sete    cl
-    and    dl,0x1f
-    cmp    bl,dl
-    sete    dl
-    and    cl,dl
-    mov    dx,WORD PTR [esp+0x28]
-    cmp    dx,WORD PTR [edi+0x6]
-    mov    edi,DWORD PTR [esp+0x18]
-    sete    dl
-    and    cl,dl
-    test    al,0x20
-    seta    al
-    test    al,cl
-    je    Branch10
-    push    ecx
-    mov    ecx,edi
-    mov    eax,esp
-    mov    DWORD PTR [esp+0x30],esp
-    mov    DWORD PTR [eax],esi
-    mov    edx,DWORD PTR [edi]
-    lea    eax,[esp+0x24]
-    push    eax
-    call    DWORD PTR [edx+0x14]
-    mov    esi,DWORD PTR [eax]
-    dec    WORD PTR [edi+0xc]
-    mov    BYTE PTR [esp+0x2c],0x1
-    jmp    Branch11
-  Branch10:
-    mov    esi,DWORD PTR [esi]
-  Branch11:
-    mov    ecx,DWORD PTR [edi+0x4]
-    lea    eax,[edi+0x4]
-    cmp    esi,ecx
-    mov    DWORD PTR [esp+0x14],esi
-    jne    Branch9
-  Branch12:
-    mov    ecx,DWORD PTR [esp+0x18]
-    mov    BYTE PTR [esp+0x12],0x0
-    mov    BYTE PTR [esp+0x2c],0x0
-    mov    eax,DWORD PTR [ecx+0x4]
-    lea    edi,[ecx+0x4]
-    mov    ebp,DWORD PTR [eax]
-    cmp    ebp,eax
-    mov    DWORD PTR [esp+0x14],ebp
-    je    Branch17
-  Branch13:
-    mov    al,BYTE PTR [esp+0x2c]
-    test    al,al
-    jne    Branch18
-    mov    esi,DWORD PTR [ebp+0x8]
-    mov    cl,BYTE PTR [esi+0x5]
-    mov    al,cl
-    and    al,0x1f
-    test    cl,0x20
-    seta    dl
-    cmp    bl,al
-    seta    cl
-    test    cl,cl
-    jne    Branch14
-    cmp    bl,al
-    jne    Branch14
-    mov    al,BYTE PTR [esp+0x13]
-    cmp    al,dl
-    seta    cl
-    test    cl,cl
-    jne    Branch14
-    cmp    al,dl
-    jne    Branch14
-    mov    dx,WORD PTR [esp+0x28]
-    cmp    dx,WORD PTR [esi+0x6]
-    setg    cl
-  Branch14:
-    mov    al,BYTE PTR [esp+0x12]
-    test    al,al
-    je    Branch15
-    test    cl,cl
-    jne    Branch16
-    lea    eax,[esp+0x14]
-    lea    ecx,[esp+0x20]
-    push    eax
-    call    R6GameServiceAddresses::CopyFirstWord
-    lea    ecx,[esp+0x1c]
-    push    ecx
-    mov    ecx,edi
-    call    R6GameServiceAddresses::AllocateListPayloadNode
-    mov    esi,DWORD PTR [esp+0x20]
-    mov    BYTE PTR [esp+0x2c],0x1
-    mov    edx,DWORD PTR [esi+0x4]
-    lea    ecx,[esi+0x4]
-    mov    DWORD PTR [eax],esi
-    mov    DWORD PTR [eax+0x4],edx
-    mov    DWORD PTR [edx],eax
-    mov    DWORD PTR [ecx],eax
-    mov    ebp,DWORD PTR [esp+0x14]
-    jmp    Branch16
-  Branch15:
-    test    cl,cl
-    je    Branch16
-    mov    BYTE PTR [esp+0x12],0x1
-  Branch16:
-    mov    ebp,DWORD PTR [ebp+0x0]
-    mov    eax,DWORD PTR [edi]
-    cmp    ebp,eax
-    mov    DWORD PTR [esp+0x14],ebp
-    jne    Branch13
-    mov    al,BYTE PTR [esp+0x2c]
-    test    al,al
-    jne    Branch18
-  Branch17:
-    lea    edx,[esp+0x28]
-    mov    ecx,edi
-    push    edx
-    call    R6GameServiceAddresses::CopyListHeadSlot
-    lea    eax,[esp+0x1c]
-    mov    ecx,edi
-    push    eax
-    call    R6GameServiceAddresses::AllocateListPayloadNode
-    mov    esi,DWORD PTR [esp+0x28]
-    mov    edx,DWORD PTR [esi+0x4]
-    lea    ecx,[esi+0x4]
-    mov    DWORD PTR [eax],esi
-    mov    DWORD PTR [eax+0x4],edx
-    mov    DWORD PTR [edx],eax
-    mov    DWORD PTR [ecx],eax
-  Branch18:
-    mov    eax,DWORD PTR [esp+0x18]
-    pop    edi
-    pop    esi
-    pop    ebp
-    inc    WORD PTR [eax+0xc]
-    mov    al,0x1
-    pop    ebx
-    add    esp,0x14
-    ret    0x8
+  uint initialOwner = (uint)owner;
+  ReceiveCompactInsertScratch scratch;
+  scratch.savedOwner = initialOwner;
+  using AllocateABI = uint (__stdcall *)(uint);
+  uint allocated = ((AllocateABI)R6GameServiceAddresses::AllocateGameServiceBytes)(12);
+  uint cachedSource = (uint)source;
+  uint wrapper = 0;
+  if (allocated != 0) {
+    uint key = keyWord;
+    byte flags = *(byte *)(cachedSource + 0xe);
+    uint headerWord = (key & 0xffffff00) | *(byte *)(cachedSource + 0xc);
+    // The initializer consumes only the flags BYTE; the allocator's upper EDX residue is unused.
+    using ConstructABI = uint (__thiscall *)(void *,uint,byte,uint,void *,uint);
+    wrapper = ((ConstructABI)R6GameServiceAddresses::InitializeCompactRecordHeader)(
+        (void *)allocated,headerWord,flags,key,(void *)cachedSource,1);
   }
+  scratch.wrapper = wrapper;
+  byte incomingFlags = *(byte *)(cachedSource + 0xe);
+  *(byte *)&source = 0;
+  byte priority = incomingFlags & 0x1f;
+  uint head = *(uint *)(initialOwner + 4);
+  scratch.active = (incomingFlags & 0x20) != 0;
+  uint current = *(uint *)head;
+  scratch.current = current;
+  while (current != head) {
+    if (*(byte *)&source != 0) break;
+    uint oldWrapper = *(uint *)(current + 8);
+    byte wantedClass = *(byte *)(cachedSource + 0xc);
+    byte oldClass = *(byte *)(oldWrapper + 4);
+    byte oldFlags = *(byte *)(oldWrapper + 5);
+    bool matches = wantedClass == oldClass;
+    byte oldPriority = oldFlags & 0x1f;
+    matches &= priority == oldPriority;
+    ushort currentKey = *(ushort *)&keyWord;
+    ushort oldKey = *(ushort *)(oldWrapper + 6);
+    uint listOwner = scratch.savedOwner;
+    matches &= currentKey == oldKey;
+    bool oldActive = (oldFlags & 0x20) != 0;
+    if (oldActive && matches) {
+      uint iterator = current;
+      source = &iterator;
+      uint table = *(uint *)listOwner;
+      using EraseABI = uint * (__thiscall *)(void *,uint *,void *);
+      EraseABI erase = *(EraseABI *)(table + 0x14);
+      uint *returned = erase((void *)listOwner,&scratch.position,(void *)iterator);
+      current = *returned;
+      ushort count = *(ushort *)(listOwner + 0xc);
+      *(ushort *)(listOwner + 0xc) = (ushort)(count - 1);
+      *(byte *)&source = 1;
+    } else {
+      current = *(uint *)current;
+    }
+    head = *(uint *)(listOwner + 4);
+    scratch.current = current;
+  }
+  uint listOwner = scratch.savedOwner;
+  scratch.seenPreceding = 0;
+  *(byte *)&source = 0;
+  head = *(uint *)(listOwner + 4);
+  uint *headSlot = (uint *)(listOwner + 4);
+  current = *(uint *)head;
+  scratch.current = current;
+  using CopyABI = uint * (__thiscall *)(uint *,const uint *);
+  using AllocateNodeABI = uint (__thiscall *)(void *,const uint *);
+  while (current != head) {
+    if (*(byte *)&source != 0) break;
+    uint oldWrapper = *(uint *)(current + 8);
+    byte oldFlags = *(byte *)(oldWrapper + 5);
+    byte oldPriority = oldFlags & 0x1f;
+    byte oldActive = (oldFlags & 0x20) != 0;
+    bool preceding = priority > oldPriority;
+    if (!preceding && priority == oldPriority) {
+      byte active = scratch.active;
+      preceding = active > oldActive;
+      if (!preceding && active == oldActive) {
+        short currentKey = *(short *)&keyWord;
+        short oldKey = *(short *)(oldWrapper + 6);
+        preceding = currentKey > oldKey;
+      }
+    }
+    byte seenPreceding = scratch.seenPreceding;
+    if (seenPreceding != 0) {
+      if (!preceding) {
+        ((CopyABI)R6GameServiceAddresses::CopyFirstWord)(&scratch.position,&scratch.current);
+        uint node = ((AllocateNodeABI)R6GameServiceAddresses::AllocateListPayloadNode)(headSlot,&scratch.wrapper);
+        uint position = scratch.position;
+        *(byte *)&source = 1;
+        uint previous = *(uint *)(position + 4);
+        *(uint *)node = position;
+        *(uint *)(node + 4) = previous;
+        *(uint *)previous = node;
+        *(uint *)(position + 4) = node;
+        current = scratch.current;
+      } else {
+        scratch.seenPreceding = 1;
+      }
+    } else if (preceding) {
+      scratch.seenPreceding = 1;
+    }
+    current = *(uint *)current;
+    head = *headSlot;
+    scratch.current = current;
+  }
+  if (*(byte *)&source == 0) {
+    using HeadABI = uint * (__thiscall *)(void *,uint *);
+    ((HeadABI)R6GameServiceAddresses::CopyListHeadSlot)(headSlot,&keyWord);
+    uint node = ((AllocateNodeABI)R6GameServiceAddresses::AllocateListPayloadNode)(headSlot,&scratch.wrapper);
+    uint position = keyWord;
+    uint previous = *(uint *)(position + 4);
+    *(uint *)node = position;
+    *(uint *)(node + 4) = previous;
+    *(uint *)previous = node;
+    *(uint *)(position + 4) = node;
+  }
+  uint result = scratch.savedOwner;
+  ushort count = *(ushort *)(result + 0xc);
+  *(ushort *)(result + 0xc) = (ushort)(count + 1);
+  return (result & 0xffffff00) | 1;
 }
 
 // Native virtual-table prefix: clRcvMsgQueueVTable

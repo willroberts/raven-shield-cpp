@@ -1,6 +1,24 @@
 #include "native_addresses.h"
 #include "native_records.h"
 
+namespace {
+// Inferred scope guard for an explicitly constructed native FString, including delayed ownership arming.
+struct NativeFStringCleanup {
+  FString *value;
+  bool armed;
+  // Destroy the string only after native ownership has been armed.
+  ~NativeFStringCleanup() noexcept(false) {
+    if (armed) Destroy();
+  }
+  // Disarm before the imported destructor so its own failure cannot destroy the same string twice.
+  void Destroy() {
+    armed = false;
+    using DestroyABI = void (__thiscall *)(FString *);
+    (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringSlot)(value);
+  }
+};
+}
+
 // Native lifetime maps for the selected 0x174-byte UR6ServerList object.
 // R6GameService.dll data @ 1007b104 : destructor predecessor/action pairs.
 const R6GameServiceNative::UnwindEntry UR6ServerList_UR6ServerListUnwindMap[8] = {
@@ -157,7 +175,7 @@ __declspec(naked) UR6ServerList * __thiscall UR6ServerList::operator=(UR6ServerL
 }
 
 // Installs the class vtable, calls ConditionalDestroy, then destroys members and base under exact eight-state cleanup.
-// R6GameService.dll @ 10003ae0 : RET0; native saved receiver and staged subobject cleanup remain explicit.
+// R6GameService.dll @ 10003ae0 : receiver in ECX; seven-state subobject cleanup represented by a C++ scope guard.
 __declspec(naked) void __thiscall UR6ServerList::~UR6ServerList(void)
 {
   byte *nativeStack,*receiver;
@@ -206,41 +224,45 @@ __declspec(naked) void __thiscall UR6ServerList::~UR6ServerList(void)
   }
 }
 
+namespace {
+// Inferred scope guard for the server-list constructor's seven native unwind states.
+struct ServerListConstructionCleanup {
+  byte *object;
+  int state;
+  // Destroy completed subobjects in reverse native construction order.
+  ~ServerListConstructionCleanup() noexcept(false) {
+    using DestroyABI = void (__thiscall *)(void *);
+    while (state >= 0) {
+      switch (state--) {
+      case 6: ((DestroyABI)R6GameServiceAddresses::DestroySTGameServer)(object + 0x8c); break;
+      case 5: ((DestroyABI)R6GameServiceAddresses::ForwardToArrayDestructor)(object + 0x80); break;
+      case 4: ((DestroyABI)R6GameServiceAddresses::unreal_array_support_ForwardToArrayDestructor)(object + 0x74); break;
+      case 3: ((DestroyABI)R6GameServiceAddresses::unreal_array_support_ForwardToArrayDestructor)(object + 0x68); break;
+      case 2: ((DestroyABI)R6GameServiceAddresses::unreal_array_support_ForwardArrayDestroy3)(object + 0x5c); break;
+      case 1: ((DestroyABI)R6GameServiceAddresses::ForwardArrayDestroy)(object + 0x50); break;
+      case 0: (*(DestroyABI *)R6GameServiceAddresses::R6Abstract__DestroyUR6AbstractGameServiceSlot)(object); break;
+      }
+    }
+  }
+};
+}
+
 // Constructs the base, installs the class vtable, then constructs the embedded server and trailing no-init version string.
-// R6GameService.dll @ 10003ba0 : RET0; native saved receiver and staged subobject cleanup remain explicit.
-__declspec(naked) UR6ServerList * __thiscall UR6ServerList::UR6ServerList(void)
+// R6GameService.dll @ 10003ba0 : receiver in ECX; seven-state subobject cleanup represented by a C++ scope guard.
+UR6ServerList::UR6ServerList(void)
 {
-  byte *nativeStack,*receiver;
-  __asm {
-    // State0 precedes the vtable store, then byte state5 arms untouched arrays; no scalar/array initialization is invented.
-    push   0xffffffff
-    push   R6GameServiceAddresses::SelectServerListConstructorInfo
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    push   ecx
-    push   esi
-    mov    esi,ecx
-    mov    DWORD PTR [esp+0x4],esi
-    mov    nativeStack,esp
-    mov    receiver,esi
-  }
-  using ConstructABI = void * (__thiscall *)(void *);
-  (*(ConstructABI *)R6GameServiceAddresses::R6Abstract__ConstructUR6AbstractGameServiceSlot2)(receiver);
-  *(uint *)(nativeStack + 0x10) = 0;
-  *(uint *)receiver = R6GameServiceAddresses::UR6ServerListDispatchTable;
-  *(byte *)(nativeStack + 0x10) = 5;
-  ((ConstructABI)R6GameServiceAddresses::ConstructServerInfo)(receiver + 0x8c);
-  *(byte *)(nativeStack + 0x10) = 6;
-  (*(ConstructABI *)R6GameServiceAddresses::Core__ConstructFStringNoInitSlot)(receiver + 0x168);
-  __asm {
-    mov    ecx,DWORD PTR [esp+0x8]
-    mov    eax,esi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    add    esp,0x10
-    ret
-  }
+  byte *object = (byte *)this;
+  ServerListConstructionCleanup cleanup{object, -1};
+  using ConstructABI = void (__thiscall *)(void *);
+  (*(ConstructABI *)R6GameServiceAddresses::R6Abstract__ConstructUR6AbstractGameServiceSlot2)(object);
+  cleanup.state = 0;
+  *(uint *)object = R6GameServiceAddresses::UR6ServerListDispatchTable;
+  // Native construction leaves all five array headers untouched, but arms their destruction before the embedded record.
+  cleanup.state = 5;
+  ((ConstructABI)R6GameServiceAddresses::ConstructServerInfo)(object + 0x8c);
+  cleanup.state = 6;
+  (*(ConstructABI *)R6GameServiceAddresses::Core__ConstructFStringNoInitSlot)(object + 0x168);
+  cleanup.state = -1;
 }
 
 // Copy-constructs base, selective flags, scalars, arrays, embedded server and trailing string under seven-state cleanup.
@@ -395,18 +417,13 @@ __declspec(naked) void * __thiscall DeleteUR6ServerList(UR6ServerList *object,ui
   }
 }
 
-// Returns for null storage or tail-forwards the current storage pointer to the default constructor.
-// R6GameService.dll @ 100042e0 : complete native control/access order and raw ABI retained.
-__declspec(naked) void __cdecl UR6ServerList::InternalConstructor(void *objectMemory)
+// Constructs a server list in nonnull supplied storage; null storage has no effect.
+// R6GameService.dll @ 100042e0 : caller-clean placement-construction wrapper; no allocation or result value.
+void __cdecl UR6ServerList::InternalConstructor(void *objectMemory)
 {
-  __asm {
-    // The cdecl argument slot stays on the caller stack; null preserves incoming EAX rather than manufacturing a result.
-    mov    ecx,DWORD PTR [esp+0x4]
-    test   ecx,ecx
-    je    Branch4
-    jmp    R6GameServiceAddresses::UR6ServerList_UR6ServerList
-  Branch4:
-    ret
+  if (objectMemory != nullptr) {
+    using ConstructABI = void (__thiscall *)(void *);
+    ((ConstructABI)R6GameServiceAddresses::UR6ServerList_UR6ServerList)(objectMemory);
   }
 }
 
@@ -656,58 +673,33 @@ __declspec(naked) void __thiscall UR6ServerList::eventGetLobbyAndGroupID(int& lo
   }
 }
 
-// Finish the parameter list, consume optional DebugInfo, and write the raw 32-bit GetTickCount result.
-// Consume end token/optional DebugInfo42 through current VM object/table; preserve current result/global and exact guard/access order.
-// R6GameService.dll @ 10005f20 : exported FFrame/result bridge; native frame retains result/link alias effects.
-__declspec(naked) void __thiscall UR6ServerList::execNativeGetMilliSeconds(FFrame &Stack,void *const Result)
+// Finish VM parameters, dispatch optional DebugInfo and return the raw 32-bit GetTickCount value.
+// R6GameService.dll @ 10005f20 : FFrame/result bridge; typed forwarding and context rethrow preserved.
+void __thiscall UR6ServerList::execNativeGetMilliSeconds(FFrame &Stack,void *const Result)
 {
-  byte *nativeFrame;
-  __asm {
-    push   ebp
-    mov    ebp,esp
-    push   0xffffffff
-    push   R6GameServiceAddresses::SelectSmallVMBridgeEH
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0xc
-    mov    nativeFrame,ebp
-  }
-  FFrame *frame = *(FFrame **)(nativeFrame + 8);
+  FFrame *frame = &Stack;
   byte *code = *(byte **)((byte *)frame + 0xc) + 1;
-  __asm {
-    push   ebx
-    push   esi
-  }
   *(byte **)((byte *)frame + 0xc) = code;
   bool hasDebugInfo = *code == 0x42;
-  __asm {
-    push   edi
-    mov    DWORD PTR [ebp-0x10],esp
-  }
-  *(uint *)(nativeFrame - 4) = 0;
-  if (hasDebugInfo) {
-    UObject *object = *(UObject **)((byte *)frame + 8);
-    *(byte **)((byte *)frame + 0xc) = code + 1;
-    uint *natives = *(uint **)R6GameServiceAddresses::Core__GNativesSlot;
-    using DebugABI = void (__thiscall *)(UObject *,FFrame *,void *);
-    ((DebugABI)natives[0x42])(object,frame,0);
-  }
-  using TickABI = uint (__stdcall *)(void);
-  uint milliseconds = (*(TickABI *)R6GameServiceAddresses::KERNEL32_GetTickCountSlot)();
-  uint *output = *(uint **)(nativeFrame + 0xc);
-  __asm {
-    pop    edi
-  }
-  *output = milliseconds;
-  __asm {
-    mov    ecx,DWORD PTR [ebp-0xc]
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
-    ret    0x8
+  try {
+    if (hasDebugInfo) {
+      UObject *object = *(UObject **)((byte *)frame + 8);
+      *(byte **)((byte *)frame + 0xc) = code + 1;
+      uint *natives = *(uint **)R6GameServiceAddresses::Core__GNativesSlot;
+      using DebugABI = void (__thiscall *)(UObject *,FFrame *,void *);
+      ((DebugABI)natives[0x42])(object,frame,nullptr);
+    }
+    using TickABI = uint (__stdcall *)(void);
+    uint milliseconds = (*(TickABI *)R6GameServiceAddresses::KERNEL32_GetTickCountSlot)();
+    *(uint *)Result = milliseconds;
+  } catch (ushort *error) {
+    throw error;
+  } catch (...) {
+    using UnwindABI = void (__cdecl *)(const TCHAR *,...);
+    (*(UnwindABI *)R6GameServiceAddresses::Core__appUnwindfSlot)
+        ((const TCHAR *)R6GameServiceAddresses::WideTextTextFormat,
+         (const TCHAR *)R6GameServiceAddresses::WideTextUR6ServerListExecNativeGetMilliSeconds);
+    throw;
   }
 }
 
@@ -765,48 +757,31 @@ __declspec(naked) void __cdecl UR6ServerList_UR6ServerListCatch4(void)
   }
 }
 
-// Consume end token/optional DebugInfo42 through current VM object/table; preserve current result/global and exact guard/access order.
-// R6GameService.dll @ 10006210 : complete native control/access order and raw ABI retained.
-__declspec(naked) void __thiscall UR6ServerList::execNativeGetMaxPlayers(UR6ServerList *this,FFrame *stack,void *result)
+// Finish VM parameters, dispatch optional DebugInfo and return the fixed 16-player display cap.
+// R6GameService.dll @ 10006210 : FFrame/result bridge; typed forwarding and context rethrow preserved.
+void __thiscall UR6ServerList::execNativeGetMaxPlayers(FFrame &Stack,void *const Result)
 {
-  __asm {
-    push   ebp
-    mov    ebp,esp
-    push   0xffffffff
-    push   R6GameServiceAddresses::UR6ServerList_SelectSmallVMBridgeEH
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0xc
-    mov    eax,DWORD PTR [ebp+0x8]
-    mov    edx,DWORD PTR [eax+0xc]
-    inc    edx
-    push   ebx
-    push   esi
-    mov    DWORD PTR [eax+0xc],edx
-    cmp    BYTE PTR [edx],0x42
-    push   edi
-    mov    DWORD PTR [ebp-0x10],esp
-    mov    DWORD PTR [ebp-0x4],0x0
-    jne    Branch6
-    mov    ecx,DWORD PTR [eax+0x8]
-    inc    edx
-    push   0x0
-    mov    DWORD PTR [eax+0xc],edx
-    push   eax
-    mov    eax,ds:R6GameServiceAddresses::Core__GNativesSlot
-    call   DWORD PTR [eax+0x108]
-  Branch6:
-    mov    eax,DWORD PTR [ebp+0xc]
-    mov    ecx,DWORD PTR [ebp-0xc]
-    pop    edi
-    pop    esi
-    mov    DWORD PTR [eax],0x10
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
-    ret    0x8
+  FFrame *frame = &Stack;
+  byte *code = *(byte **)((byte *)frame + 0xc) + 1;
+  *(byte **)((byte *)frame + 0xc) = code;
+  bool hasDebugInfo = *code == 0x42;
+  try {
+    if (hasDebugInfo) {
+      UObject *object = *(UObject **)((byte *)frame + 8);
+      *(byte **)((byte *)frame + 0xc) = code + 1;
+      uint *natives = *(uint **)R6GameServiceAddresses::Core__GNativesSlot;
+      using DebugABI = void (__thiscall *)(UObject *,FFrame *,void *);
+      ((DebugABI)natives[0x42])(object,frame,nullptr);
+    }
+    *(uint *)Result = 16;
+  } catch (ushort *error) {
+    throw error;
+  } catch (...) {
+    using UnwindABI = void (__cdecl *)(const TCHAR *,...);
+    (*(UnwindABI *)R6GameServiceAddresses::Core__appUnwindfSlot)
+        ((const TCHAR *)R6GameServiceAddresses::WideTextTextFormat,
+         (const TCHAR *)R6GameServiceAddresses::WideTextUR6ServerListExecNativeGetMaxPlayers);
+    throw;
   }
 }
 
@@ -1112,64 +1087,42 @@ const R6GameServiceNative::FuncInfo InitFavoritesExceptionInfo = {
   0x0,
 };
 
-// Appends successive Favorites/favServerN strings to the existing array until the first zero config result.
-// R6GameService.dll @ 10008730 : complete native control/access order and raw ABI retained.
-__declspec(naked) void __thiscall UR6ServerList::InitFavorites(UR6ServerList *this)
+// Append Favorites/favServerN strings to the existing array until the first zero config result.
+// R6GameService.dll @ 10008730 : native effects and guarded lifetime order represented in C++.
+void __thiscall UR6ServerList::InitFavorites(void)
 {
-  __asm {
-    push   ebp
-    mov    ebp,esp
-    push   0xffffffff
-    push   R6GameServiceAddresses::InitFavoritesSelectExceptionInfo
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x3c
-    push ebx
-    push esi
-    push edi
-    mov esi,ecx
-    mov DWORD PTR [ebp-0x10],esp
-  }
-  // These aliases bind existing native storage; inherited-frame handlers and their offsets remain unchanged.
-  byte* nativeFrame;
-  UR6ServerList* receiver;
-  __asm { mov nativeFrame,ebp }
-  __asm { mov receiver,esi }
-  *reinterpret_cast<UR6ServerList**>(nativeFrame - 0x14) = receiver;
-  *reinterpret_cast<int*>(nativeFrame - 4) = 0;
-  FString* value = reinterpret_cast<FString*>(nativeFrame - 0x28);
-  FString::FString(value);
-  *reinterpret_cast<byte*>(nativeFrame - 4) = 1;
-  uint index = 0;
-  int found;
-  do {
-    char* key = reinterpret_cast<char*>(nativeFrame - 0x48);
-    sprintf(key, reinterpret_cast<const char*>(R6GameServiceAddresses::TextFavServerI), index);
-    const TCHAR* wideKey = appFromAnsi(key);
-    found = GConfig->GetString(reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextFavorites),
-        wideKey, *value, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextUser));
-    if (found) {
-      // Saved owner and current storage are reloaded after configuration; appends survive assignment failure.
-      byte* currentOwner = *reinterpret_cast<byte**>(nativeFrame - 0x14);
-      FArray* favorites = reinterpret_cast<FArray*>(currentOwner + 0x50);
-      const int added = favorites->AddZeroed(12, 1);
-      FString* data = *reinterpret_cast<FString**>(favorites);
-      data[added] = *value;
-    }
-    ++index; // DWORD wrap, including the final missing key. No array reset or duplicate suppression.
-  } while (found);
-  *reinterpret_cast<byte*>(nativeFrame - 4) = 0;
-  FString::~FString(value);
-  __asm {
-    mov ecx,DWORD PTR [ebp-0xc]
-    pop edi
-    pop esi
-    mov DWORD PTR fs:0x0,ecx
-    pop ebx
-    mov esp,ebp
-    pop ebp
-    ret
+  try {
+    alignas(4) byte valueStorage[0xc];
+    FString *value = reinterpret_cast<FString *>(valueStorage);
+    NativeFStringCleanup cleanup{value, false};
+    using ConstructABI = void (__thiscall *)(FString *);
+    (*(ConstructABI *)R6GameServiceAddresses::Core__ConstructFStringSlot)(value);
+    cleanup.armed = true;
+    uint index = 0;
+    int found;
+    char key[0x20];
+    do {
+      sprintf(key, reinterpret_cast<const char*>(R6GameServiceAddresses::TextFavServerI), index);
+      const TCHAR* wideKey = appFromAnsi(key);
+      found = GConfig->GetString(reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextFavorites),
+          wideKey, *value, reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextUser));
+      if (found) {
+        FArray* favorites = reinterpret_cast<FArray*>(reinterpret_cast<byte*>(this) + 0x50);
+        const int added = favorites->AddZeroed(12, 1);
+        FString* data = *reinterpret_cast<FString**>(favorites);
+        data[added] = *value;
+      }
+      ++index;
+    } while (found);
+    cleanup.Destroy();
+  } catch (ushort *error) {
+    throw error;
+  } catch (...) {
+    using UnwindABI = void (__cdecl *)(const TCHAR *,...);
+    (*(UnwindABI *)R6GameServiceAddresses::Core__appUnwindfSlot)
+        ((const TCHAR *)R6GameServiceAddresses::WideTextTextFormat,
+         (const TCHAR *)R6GameServiceAddresses::WideTextUR6ServerListExecNativeInitFavorites);
+    throw;
   }
 }
 
@@ -1222,54 +1175,31 @@ __declspec(naked) void InitFavoritesSelectExceptionInfo(void)
   }
 }
 
-// Finish the VM argument list, dispatch optional debug token42, then append favorites through the actual native loader.
-// Preserve saved owner, nested guard and raw final loader EAX; the script result pointer is unused.
-// R6GameService.dll @ 10008830 : complete native control/access order and raw ABI retained.
-__declspec(naked) void __thiscall UR6ServerList::execNativeInitFavorites(FFrame &frame,void *result)
+// Finish VM parameters and append favorites through the native loader; the script result is unused.
+// R6GameService.dll @ 10008830 : native effects and guarded lifetime order represented in C++.
+void __thiscall UR6ServerList::execNativeInitFavorites(FFrame &Stack,void *const Result)
 {
-  __asm {
-    push    ebp
-    mov    ebp,esp
-    push    0xffffffff
-    push    R6GameServiceAddresses::SelectInitFavoritesBridgeEH
-    mov    eax,fs:0x0
-    push    eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0xc
-    push ebx
-    push esi
-    push edi
-    mov esi,ecx
-    mov DWORD PTR [ebp-0x10],esp
-  }
-  // These aliases bind existing native storage; inherited-frame handlers and their offsets remain unchanged.
-  byte* nativeFrame;
-  UR6ServerList* receiver;
-  __asm { mov nativeFrame,ebp }
-  __asm { mov receiver,esi }
-  FFrame* executionStack = *reinterpret_cast<FFrame**>(nativeFrame + 8);
-  byte*& code = *reinterpret_cast<byte**>(reinterpret_cast<byte*>(executionStack) + 0xc);
-  byte* next = code + 1;
-  code = next;
-  const bool debugInfo = *next == 0x42;
-  *reinterpret_cast<int*>(nativeFrame - 4) = 0;
-  if (debugInfo) {
-    UObject* context = *reinterpret_cast<UObject**>(reinterpret_cast<byte*>(executionStack) + 8);
-    code = next + 1;
-    using ScriptNative = void (__thiscall *)(UObject*, FFrame*, void*);
-    ScriptNative* natives = *reinterpret_cast<ScriptNative**>(R6GameServiceAddresses::Core__GNativesSlot);
-    natives[0x42](context, executionStack, nullptr);
-  }
-  receiver->InitFavorites();
-  __asm {
-    mov ecx,DWORD PTR [ebp-0xc]
-    pop edi
-    pop esi
-    mov DWORD PTR fs:0x0,ecx
-    pop ebx
-    mov esp,ebp
-    pop ebp
-    ret 0x8
+  FFrame *frame = &Stack;
+  byte *code = *(byte **)((byte *)frame + 0xc) + 1;
+  *(byte **)((byte *)frame + 0xc) = code;
+  bool hasDebugInfo = *code == 0x42;
+  try {
+    if (hasDebugInfo) {
+      UObject *object = *(UObject **)((byte *)frame + 8);
+      *(byte **)((byte *)frame + 0xc) = code + 1;
+      uint *natives = *(uint **)R6GameServiceAddresses::Core__GNativesSlot;
+      using DebugABI = void (__thiscall *)(UObject *,FFrame *,void *);
+      ((DebugABI)natives[0x42])(object,frame,nullptr);
+    }
+    InitFavorites();
+  } catch (ushort *error) {
+    throw error;
+  } catch (...) {
+    using UnwindABI = void (__cdecl *)(const TCHAR *,...);
+    (*(UnwindABI *)R6GameServiceAddresses::Core__appUnwindfSlot)
+        ((const TCHAR *)R6GameServiceAddresses::WideTextTextFormat,
+         (const TCHAR *)R6GameServiceAddresses::WideTextUR6ServerListExecNativeInitFavorites2);
+    throw;
   }
 }
 
@@ -1287,68 +1217,44 @@ __declspec(naked) void __cdecl UR6ServerList_UR6ServerListCatch14(void)
   }
 }
 
-// Empty Favorites/User, then store each live array value under favServer%i without a native flush.
-// Keep signed current count/storage, value pointer captured before key conversion, current config and raw final EAX.
-// The native epilogue follows separate catch entries; those entries remain canonical outside this parent body.
-// R6GameService.dll @ 100088d0 : complete native control/access order and raw ABI retained.
-__declspec(naked) void __thiscall UR6ServerList::execNativeUpdateFavorites(FFrame &frame,void *result)
+// Empty Favorites/User, then store each live array value under favServerN without flushing the config.
+// R6GameService.dll @ 100088d0 : native effects and guarded lifetime order represented in C++.
+void __thiscall UR6ServerList::execNativeUpdateFavorites(FFrame &Stack,void *const Result)
 {
-  __asm {
-    push    ebp
-    mov    ebp,esp
-    push    0xffffffff
-    push    R6GameServiceAddresses::SelectUpdateFavoritesBridgeEH
-    mov    eax,fs:0x0
-    push    eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x2c
-    push ebx
-    push esi
-    push edi
-    mov esi,ecx
-    mov DWORD PTR [ebp-0x10],esp
-  }
-  // These aliases bind existing native storage; inherited-frame handlers and their offsets remain unchanged.
-  byte* nativeFrame;
-  UR6ServerList* receiver;
-  __asm { mov nativeFrame,ebp }
-  __asm { mov receiver,esi }
-  FFrame* executionStack = *reinterpret_cast<FFrame**>(nativeFrame + 8);
-  byte*& code = *reinterpret_cast<byte**>(reinterpret_cast<byte*>(executionStack) + 0xc);
-  byte* next = code + 1;
-  code = next;
-  const bool debugInfo = *next == 0x42;
-  *reinterpret_cast<int*>(nativeFrame - 4) = 0;
-  if (debugInfo) {
-    UObject* context = *reinterpret_cast<UObject**>(reinterpret_cast<byte*>(executionStack) + 8);
-    code = next + 1;
-    using ScriptNative = void (__thiscall *)(UObject*, FFrame*, void*);
-    ScriptNative* natives = *reinterpret_cast<ScriptNative**>(R6GameServiceAddresses::Core__GNativesSlot);
-    natives[0x42](context, executionStack, nullptr);
-  }
-  const TCHAR* section = reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextFavorites);
-  const TCHAR* filename = reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextUser);
-  GConfig->EmptySection(section, filename);
-  byte* list = reinterpret_cast<byte*>(receiver);
-  uint index = 0;
-  while (static_cast<int>(index) < *reinterpret_cast<int*>(list + 0x54)) {
-    char* key = reinterpret_cast<char*>(nativeFrame - 0x38);
-    sprintf(key, reinterpret_cast<const char*>(R6GameServiceAddresses::TextFavServerI), index);
-    FString* favorites = *reinterpret_cast<FString**>(list + 0x50);
-    const TCHAR* value = *favorites[index]; // Capture before key conversion; it can invalidate this borrowed pointer.
-    const TCHAR* wideKey = appFromAnsi(key);
-    GConfig->SetString(section, wideKey, value, filename); // Current config and virtual slot, without an explicit flush.
-    ++index;
-  }
-  __asm {
-    mov ecx,DWORD PTR [ebp-0xc]
-    pop edi
-    pop esi
-    mov DWORD PTR fs:0x0,ecx
-    pop ebx
-    mov esp,ebp
-    pop ebp
-    ret 0x8
+  FFrame *frame = &Stack;
+  byte *code = *(byte **)((byte *)frame + 0xc) + 1;
+  *(byte **)((byte *)frame + 0xc) = code;
+  bool hasDebugInfo = *code == 0x42;
+  try {
+    if (hasDebugInfo) {
+      UObject *object = *(UObject **)((byte *)frame + 8);
+      *(byte **)((byte *)frame + 0xc) = code + 1;
+      uint *natives = *(uint **)R6GameServiceAddresses::Core__GNativesSlot;
+      using DebugABI = void (__thiscall *)(UObject *,FFrame *,void *);
+      ((DebugABI)natives[0x42])(object,frame,nullptr);
+    }
+    const TCHAR* section = reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextFavorites);
+    const TCHAR* filename = reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextUser);
+    GConfig->EmptySection(section, filename);
+    byte* list = reinterpret_cast<byte*>(this);
+    uint index = 0;
+    while (static_cast<int>(index) < *reinterpret_cast<int*>(list + 0x54)) {
+      char key[0x20];
+      sprintf(key, reinterpret_cast<const char*>(R6GameServiceAddresses::TextFavServerI), index);
+      FString* favorites = *reinterpret_cast<FString**>(list + 0x50);
+      const TCHAR* value = *favorites[index]; // Capture before key conversion; it can invalidate this borrowed pointer.
+      const TCHAR* wideKey = appFromAnsi(key);
+      GConfig->SetString(section, wideKey, value, filename); // Current config and virtual slot, without an explicit flush.
+      ++index;
+    }
+  } catch (ushort *error) {
+    throw error;
+  } catch (...) {
+    using UnwindABI = void (__cdecl *)(const TCHAR *,...);
+    (*(UnwindABI *)R6GameServiceAddresses::Core__appUnwindfSlot)
+        ((const TCHAR *)R6GameServiceAddresses::WideTextTextFormat,
+         (const TCHAR *)R6GameServiceAddresses::WideTextUR6ServerListExecNativeUpdateFavorites);
+    throw;
   }
 }
 
@@ -1366,158 +1272,128 @@ __declspec(naked) void __cdecl UR6ServerList_UR6ServerListCatch16(void)
   }
 }
 
-// Decode sort type/full ascending DWORD, reset m_GSLSortIdx when its Num equals m_GameServerList.Num, then bubble-sort indices.
-// Cases0..3: favorite/password/dedicated/PunkBuster bits;4 ping,5 name,6 game type,7 adversarial,8 map,9 player count.
-// Ascending0 swaps numeric/text left<right; nonzero swaps numeric left>right but text left>=right (ties reverse).
-// Keep captured count, current array bases, right-then-left string reads, exact split swap stores and untouched VM result.
-// R6GameService.dll @ 100089d0 : complete native control/access order and raw ABI retained.
-__declspec(naked) void __thiscall UR6ServerList::execSortServers(UR6ServerList *this,FFrame *frame,void *result)
+// Decode the category and full ascending DWORD, reset sort indices and bubble-sort them against live server data.
+// R6GameService.dll @ 100089d0 : native effects and guarded lifetime order represented in C++.
+void __thiscall UR6ServerList::execSortServers(FFrame &Stack,void *const Result)
 {
-  __asm {
-    push   ebp
-    mov    ebp,esp
-    push   0xffffffff
-    push   R6GameServiceAddresses::UR6ServerList_SelectParentExceptionInfo
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x1c
-    push ebx
-    push esi
-    push edi
-    mov esi,ecx
-    mov DWORD PTR [ebp-0x10],esp
-  }
-  // These aliases bind existing native storage; inherited-frame handlers and their offsets remain unchanged.
-  byte* nativeFrame;
-  UR6ServerList* receiver;
-  __asm { mov nativeFrame,ebp }
-  __asm { mov receiver,esi }
-  FFrame* executionStack = *reinterpret_cast<FFrame**>(nativeFrame + 8);
+  FFrame* executionStack = &Stack;
   byte*& code = *reinterpret_cast<byte**>(reinterpret_cast<byte*>(executionStack) + 0xc);
-  int& sortType = *reinterpret_cast<int*>(nativeFrame - 0x20);
-  uint& ascending = *reinterpret_cast<uint*>(nativeFrame - 0x1c);
-  sortType = 0;
-  const byte typeOpcode = *code++;
+  int sortType = 0;
+  uint ascending;
+  byte* typeCode = code;
+  const byte typeOpcode = *typeCode;
+  code = typeCode + 1;
   using ScriptNative = void (__thiscall *)(UObject*, FFrame*, void*);
   ScriptNative* natives = *reinterpret_cast<ScriptNative**>(R6GameServiceAddresses::Core__GNativesSlot);
   UObject* context = *reinterpret_cast<UObject**>(reinterpret_cast<byte*>(executionStack) + 8);
-  *reinterpret_cast<int*>(nativeFrame - 4) = 0;
-  natives[typeOpcode](context, executionStack, &sortType);
-  byte* ascendingCode = code;
-  context = *reinterpret_cast<UObject**>(reinterpret_cast<byte*>(executionStack) + 8);
-  ascending = 0;
-  const byte ascendingOpcode = *ascendingCode;
-  code = ascendingCode + 1;
-  natives = *reinterpret_cast<ScriptNative**>(R6GameServiceAddresses::Core__GNativesSlot);
-  natives[ascendingOpcode](context, executionStack, &ascending);
-  byte* next = code + 1;
-  code = next;
-  if (*next == 0x42) {
+  try {
+    natives[typeOpcode](context, executionStack, &sortType);
+    byte* ascendingCode = code;
     context = *reinterpret_cast<UObject**>(reinterpret_cast<byte*>(executionStack) + 8);
-    code = next + 1;
+    ascending = 0;
+    const byte ascendingOpcode = *ascendingCode;
+    code = ascendingCode + 1;
     natives = *reinterpret_cast<ScriptNative**>(R6GameServiceAddresses::Core__GNativesSlot);
-    natives[0x42](context, executionStack, nullptr);
-  }
-  byte* list = reinterpret_cast<byte*>(receiver);
-  int& count = *reinterpret_cast<int*>(nativeFrame - 0x14);
-  count = *reinterpret_cast<int*>(list + 0x60);
-  if (count != *reinterpret_cast<int*>(list + 0x84)) {
-    GLog->Logf(reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextErrorMGameServerListNumMGSLSortIdxNum));
-  } else {
-    for (uint i = 0; static_cast<int>(i) < count; ++i)
-      (*reinterpret_cast<uint**>(list + 0x80))[i] = i;
-    const uint kind = static_cast<uint>(sortType); // Dispatch once, after resetting every index.
-    if (kind > 9) {
-      GLog->Logf(reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextErrorSortTypeIsNotDefine));
+    natives[ascendingOpcode](context, executionStack, &ascending);
+    byte* next = code + 1;
+    code = next;
+    if (*next == 0x42) {
+      context = *reinterpret_cast<UObject**>(reinterpret_cast<byte*>(executionStack) + 8);
+      code = next + 1;
+      natives = *reinterpret_cast<ScriptNative**>(R6GameServiceAddresses::Core__GNativesSlot);
+      natives[0x42](context, executionStack, nullptr);
+    }
+    byte* list = reinterpret_cast<byte*>(this);
+    int count = *reinterpret_cast<int*>(list + 0x60);
+    if (count != *reinterpret_cast<int*>(list + 0x84)) {
+      GLog->Logf(reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextErrorMGameServerListNumMGSLSortIdxNum));
     } else {
-      uint& pass = *reinterpret_cast<uint*>(nativeFrame + 8); // Native reuses the incoming frame slot.
-      pass = 0;
-      while (static_cast<int>(pass) < static_cast<int>(static_cast<uint>(count) - 1U)) {
-        uint pair = 0;
-        while (static_cast<int>(pair) < static_cast<int>(static_cast<uint>(count) - pass - 1U)) {
-          const bool ascendingNow = ascending != 0;
-          bool swapPair;
-          if (kind == 4 || kind == 9) {
-            uint* indices = *reinterpret_cast<uint**>(list + 0x80);
-            const uint rightIndex = indices[pair + 1];
-            uint leftIndex;
-            byte* records;
-            if (ascendingNow) {
-              records = *reinterpret_cast<byte**>(list + 0x5c);
-              leftIndex = indices[pair];
-            } else {
-              leftIndex = indices[pair];
-              records = *reinterpret_cast<byte**>(list + 0x5c);
-            }
-            const uint offset = kind == 4 ? 0xc : 0x78;
-            const int left = *reinterpret_cast<int*>(records + leftIndex * 0xdcU + offset);
-            const int right = *reinterpret_cast<int*>(records + rightIndex * 0xdcU + offset);
-            swapPair = ascendingNow ? left > right : left < right;
-          } else if (kind == 5 || kind == 6 || kind == 8) {
-            *reinterpret_cast<uint*>(nativeFrame - 0x18) = pair;
-            uint* indices = *reinterpret_cast<uint**>(list + 0x80);
-            const uint leftIndex = indices[pair];
-            uint rightIndex;
-            byte* records;
-            if (ascendingNow) {
-              records = *reinterpret_cast<byte**>(list + 0x5c);
-              rightIndex = indices[pair + 1];
-            } else {
-              rightIndex = indices[pair + 1];
-              records = *reinterpret_cast<byte**>(list + 0x5c);
-            }
-            const uint offset = kind == 5 ? 0x5c : kind == 6 ? 0x88 : 0x94;
-            FString* leftString = reinterpret_cast<FString*>(records + leftIndex * 0xdcU + offset);
-            FString* rightString = reinterpret_cast<FString*>(records + rightIndex * 0xdcU + offset);
-            const TCHAR* right = **rightString; // Right dereference runs first; both object addresses were captured.
-            if (ascendingNow) *reinterpret_cast<const TCHAR**>(nativeFrame - 0x18) = right;
-            const TCHAR* left = **leftString;
-            if (ascendingNow) right = *reinterpret_cast<const TCHAR**>(nativeFrame - 0x18);
-            const int comparison = appStricmp(left, right);
-            if (!ascendingNow) pair = *reinterpret_cast<uint*>(nativeFrame - 0x18);
-            swapPair = ascendingNow ? comparison >= 0 : comparison < 0;
-          } else {
-            const uint offset = kind == 0 ? 0x28 : (kind == 1 || kind == 2) ? 0x38 : 0x4c;
-            const uint mask = kind == 0 ? 4 : kind == 1 ? 1 : kind == 2 ? 2 : kind == 3 ? 0x400 : 0x40;
-            uint* indices = *reinterpret_cast<uint**>(list + 0x80);
-            const uint leftIndex = indices[pair];
-            byte* records = *reinterpret_cast<byte**>(list + 0x5c);
-            byte* leftField = records + leftIndex * 0xdcU + offset;
-            const bool left = kind == 3 ? (*reinterpret_cast<uint*>(leftField) & mask) != 0 : (*leftField & mask) != 0;
-            swapPair = false;
-            // The right index and field are not accessed when the left bit already rules out a swap.
-            if (ascendingNow ? !left : left) {
+      for (uint i = 0; static_cast<int>(i) < count; ++i)
+        (*reinterpret_cast<uint**>(list + 0x80))[i] = i;
+      const uint kind = static_cast<uint>(sortType); // Dispatch once, after resetting every index.
+      if (kind > 9) {
+        GLog->Logf(reinterpret_cast<const TCHAR*>(R6GameServiceAddresses::WideTextErrorSortTypeIsNotDefine));
+      } else {
+        uint pass = 0;
+        while (static_cast<int>(pass) < static_cast<int>(static_cast<uint>(count) - 1U)) {
+          uint pair = 0;
+          while (static_cast<int>(pair) < static_cast<int>(static_cast<uint>(count) - pass - 1U)) {
+            const bool ascendingNow = ascending != 0;
+            bool swapPair;
+            if (kind == 4 || kind == 9) {
+              uint* indices = *reinterpret_cast<uint**>(list + 0x80);
               const uint rightIndex = indices[pair + 1];
-              byte* rightField = records + rightIndex * 0xdcU + offset;
-              const bool right = kind == 3 ? (*reinterpret_cast<uint*>(rightField) & mask) != 0 : (*rightField & mask) != 0;
-              swapPair = ascendingNow ? right : !right;
+              uint leftIndex;
+              byte* records;
+              if (ascendingNow) {
+                records = *reinterpret_cast<byte**>(list + 0x5c);
+                leftIndex = indices[pair];
+              } else {
+                leftIndex = indices[pair];
+                records = *reinterpret_cast<byte**>(list + 0x5c);
+              }
+              const uint offset = kind == 4 ? 0xc : 0x78;
+              const int left = *reinterpret_cast<int*>(records + leftIndex * 0xdcU + offset);
+              const int right = *reinterpret_cast<int*>(records + rightIndex * 0xdcU + offset);
+              swapPair = ascendingNow ? left > right : left < right;
+            } else if (kind == 5 || kind == 6 || kind == 8) {
+              uint* indices = *reinterpret_cast<uint**>(list + 0x80);
+              const uint leftIndex = indices[pair];
+              uint rightIndex;
+              byte* records;
+              if (ascendingNow) {
+                records = *reinterpret_cast<byte**>(list + 0x5c);
+                rightIndex = indices[pair + 1];
+              } else {
+                rightIndex = indices[pair + 1];
+                records = *reinterpret_cast<byte**>(list + 0x5c);
+              }
+              const uint offset = kind == 5 ? 0x5c : kind == 6 ? 0x88 : 0x94;
+              FString* leftString = reinterpret_cast<FString*>(records + leftIndex * 0xdcU + offset);
+              FString* rightString = reinterpret_cast<FString*>(records + rightIndex * 0xdcU + offset);
+              const TCHAR* right = **rightString; // Right dereference runs first; both object addresses were captured.
+              const TCHAR* left = **leftString;
+              const int comparison = appStricmp(left, right);
+              swapPair = ascendingNow ? comparison >= 0 : comparison < 0;
+            } else {
+              const uint offset = kind == 0 ? 0x28 : (kind == 1 || kind == 2) ? 0x38 : 0x4c;
+              const uint mask = kind == 0 ? 4 : kind == 1 ? 1 : kind == 2 ? 2 : kind == 3 ? 0x400 : 0x40;
+              uint* indices = *reinterpret_cast<uint**>(list + 0x80);
+              const uint leftIndex = indices[pair];
+              byte* records = *reinterpret_cast<byte**>(list + 0x5c);
+              byte* leftField = records + leftIndex * 0xdcU + offset;
+              const bool left = kind == 3 ? (*reinterpret_cast<uint*>(leftField) & mask) != 0 : (*leftField & mask) != 0;
+              swapPair = false;
+              // The right index and field are not accessed when the left bit already rules out a swap.
+              if (ascendingNow ? !left : left) {
+                const uint rightIndex = indices[pair + 1];
+                byte* rightField = records + rightIndex * 0xdcU + offset;
+                const bool right = kind == 3 ? (*reinterpret_cast<uint*>(rightField) & mask) != 0 : (*rightField & mask) != 0;
+                swapPair = ascendingNow ? right : !right;
+              }
             }
+            if (swapPair) {
+              uint* indices = *reinterpret_cast<uint**>(list + 0x80);
+              const uint left = indices[pair];
+              const uint right = indices[pair + 1];
+              indices[pair] = right;
+              // Preserve the separate current-base reload and partially committed first store.
+              (*reinterpret_cast<uint**>(list + 0x80))[pair + 1] = left;
+            }
+            ++pair;
           }
-          if (swapPair) {
-            uint* indices = *reinterpret_cast<uint**>(list + 0x80);
-            const uint left = indices[pair];
-            const uint right = indices[pair + 1];
-            indices[pair] = right;
-            // Preserve the separate current-base reload and partially committed first store.
-            (*reinterpret_cast<uint**>(list + 0x80))[pair + 1] = left;
-          }
-          ++pair;
+          ++pass;
         }
-        ++pass;
       }
     }
-  }
-  // Numeric/bit ties do not swap; ascending text ties swap, so sorting is not generally stable.
-  __asm {
-    mov ecx,DWORD PTR [ebp-0xc]
-    pop edi
-    pop esi
-    mov DWORD PTR fs:0x0,ecx
-    pop ebx
-    mov esp,ebp
-    pop ebp
-    ret 0x8
+  } catch (ushort *error) {
+    throw error;
+  } catch (...) {
+    using UnwindABI = void (__cdecl *)(const TCHAR *,...);
+    (*(UnwindABI *)R6GameServiceAddresses::Core__appUnwindfSlot)
+        ((const TCHAR *)R6GameServiceAddresses::WideTextTextFormat,
+         (const TCHAR *)R6GameServiceAddresses::WideTextUR6ServerListExecSortServers);
+    throw;
   }
 }
 
@@ -1606,61 +1482,38 @@ const R6GameServiceNative::FuncInfo execGetDisplayListSizeExceptionInfo = {
   0x0,
 };
 
-// Finishes the script token and counts bDisplay in live server-list storage, reloading count/data each iteration.
-// R6GameService.dll @ 10009580 : complete native control/access order and raw ABI retained.
-__declspec(naked) void __thiscall UR6ServerList::execGetDisplayListSize
-    (UR6ServerList *this,FFrame *frame,int *result)
+// Finish VM parameters and count bDisplay in live server storage, reloading count/data on each iteration.
+// R6GameService.dll @ 10009580 : native effects and guarded lifetime order represented in C++.
+void __thiscall UR6ServerList::execGetDisplayListSize(FFrame &Stack,void *const Result)
 {
-  __asm {
-    push   ebp
-    mov    ebp,esp
-    push   0xffffffff
-    push   R6GameServiceAddresses::execGetDisplayListSizeSelectExceptionInfo
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0xc
-    push ebx
-    push esi
-    push edi
-    mov esi,ecx
-    mov DWORD PTR [ebp-0x10],esp
-  }
-  // These aliases bind existing native storage; inherited-frame handlers and their offsets remain unchanged.
-  byte* nativeFrame;
-  UR6ServerList* receiver;
-  __asm { mov nativeFrame,ebp }
-  __asm { mov receiver,esi }
-  FFrame* executionStack = *reinterpret_cast<FFrame**>(nativeFrame + 8);
-  byte*& code = *reinterpret_cast<byte**>(reinterpret_cast<byte*>(executionStack) + 0xc);
-  byte* next = code + 1;
-  code = next;
-  const bool debugInfo = *next == 0x42;
-  *reinterpret_cast<int*>(nativeFrame - 4) = 0;
-  if (debugInfo) {
-    UObject* context = *reinterpret_cast<UObject**>(reinterpret_cast<byte*>(executionStack) + 8);
-    code = next + 1;
-    using ScriptNative = void (__thiscall *)(UObject*, FFrame*, void*);
-    ScriptNative* natives = *reinterpret_cast<ScriptNative**>(R6GameServiceAddresses::Core__GNativesSlot);
-    natives[0x42](context, executionStack, nullptr);
-  }
-  byte* list = reinterpret_cast<byte*>(receiver);
-  uint displayed = 0;
-  for (uint index = 0; static_cast<int>(index) < *reinterpret_cast<int*>(list + 0x60); ++index) {
-    byte* servers = *reinterpret_cast<byte**>(list + 0x5c);
-    if (*(servers + index * 0xdcU + 0x28) & 2) ++displayed;
-  }
-  uint* output = *reinterpret_cast<uint**>(nativeFrame + 0xc);
-  *output = displayed; // Count bDisplay in server storage; this does not count or rewrite the sort-index array.
-  __asm {
-    mov ecx,DWORD PTR [ebp-0xc]
-    pop edi
-    pop esi
-    mov DWORD PTR fs:0x0,ecx
-    pop ebx
-    mov esp,ebp
-    pop ebp
-    ret 0x8
+  FFrame *frame = &Stack;
+  byte *code = *(byte **)((byte *)frame + 0xc) + 1;
+  *(byte **)((byte *)frame + 0xc) = code;
+  bool hasDebugInfo = *code == 0x42;
+  try {
+    if (hasDebugInfo) {
+      UObject *object = *(UObject **)((byte *)frame + 8);
+      *(byte **)((byte *)frame + 0xc) = code + 1;
+      uint *natives = *(uint **)R6GameServiceAddresses::Core__GNativesSlot;
+      using DebugABI = void (__thiscall *)(UObject *,FFrame *,void *);
+      ((DebugABI)natives[0x42])(object,frame,nullptr);
+    }
+    byte* list = reinterpret_cast<byte*>(this);
+    uint displayed = 0;
+    for (uint index = 0; static_cast<int>(index) < *reinterpret_cast<int*>(list + 0x60); ++index) {
+      byte* servers = *reinterpret_cast<byte**>(list + 0x5c);
+      if (*(servers + index * 0xdcU + 0x28) & 2) ++displayed;
+    }
+    uint* output = reinterpret_cast<uint*>(Result);
+    *output = displayed; // Count bDisplay in server storage; this does not count or rewrite the sort-index array.
+  } catch (ushort *error) {
+    throw error;
+  } catch (...) {
+    using UnwindABI = void (__cdecl *)(const TCHAR *,...);
+    (*(UnwindABI *)R6GameServiceAddresses::Core__appUnwindfSlot)
+        ((const TCHAR *)R6GameServiceAddresses::WideTextTextFormat,
+         (const TCHAR *)R6GameServiceAddresses::WideTextUR6ServerListExecGetDisplayListSize);
+    throw;
   }
 }
 
@@ -2204,67 +2057,49 @@ const R6GameServiceNative::FuncInfo UR6ServerList_execNativeGetPingTimeException
   0x0,
 };
 
-// Parses an address, runs the actual exchange and stores its full result before destroying its temporary string.
-// R6GameService.dll @ 10005af0 : exported FFrame/result bridge; native frame preserves late ownership and result aliases.
-__declspec(naked) void __thiscall UR6ServerList::execNativeGetPingTime(FFrame &Stack,void *const Result)
+
+// Parse an address, run the ping exchange and store its DWORD result before destroying the temporary string.
+// R6GameService.dll @ 10005af0 : native effects and guarded lifetime order represented in C++.
+void __thiscall UR6ServerList::execNativeGetPingTime(FFrame &Stack,void *const Result)
 {
-  byte *nativeFrame;
-  __asm {
-    push   ebp
-    mov    ebp,esp
-    push   0xffffffff
-    push   R6GameServiceAddresses::UR6ServerList_execNativeGetPingTimeSelectExceptionInfo
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0x18
-    push   ebx
-    push   esi
-    push   edi
-    lea    ecx,[ebp-0x24]
-    mov    DWORD PTR [ebp-0x10],esp
-    mov    nativeFrame,ebp
-  }
-  using EmptyABI = FString * (__thiscall *)(FString *);
-  using NativeABI = void (__thiscall *)(UObject *,FFrame *,void *);
-  using DereferenceABI = const TCHAR * (__thiscall *)(const FString *);
-  using AnsiABI = const char * (__cdecl *)(const TCHAR *);
-  using DestroyABI = void (__thiscall *)(FString *);
-  *(uint *)(nativeFrame - 4) = 0;
-  FString *address = (FString *)(nativeFrame - 0x24);
-  (*(EmptyABI *)R6GameServiceAddresses::Core__ConstructFStringSlot)(address);
-  FFrame *frame = *(FFrame **)(nativeFrame + 8);
-  byte *code = *(byte **)((byte *)frame + 0xc);
-  uint opcode = *code;
-  UObject *object = *(UObject **)((byte *)frame + 8);
-  *(byte **)((byte *)frame + 0xc) = code + 1;
-  uint *natives = *(uint **)R6GameServiceAddresses::Core__GNativesSlot;
-  *(byte *)(nativeFrame - 4) = 1;
-  ((NativeABI)natives[opcode])(object,frame,address);
-  code = *(byte **)((byte *)frame + 0xc) + 1;
-  *(byte **)((byte *)frame + 0xc) = code;
-  if (*code == 0x42) {
-    object = *(UObject **)((byte *)frame + 8);
+  try {
+    alignas(4) byte addressStorage[0xc];
+    FString *address = reinterpret_cast<FString *>(addressStorage);
+    NativeFStringCleanup cleanup{address, false};
+    using EmptyABI = FString * (__thiscall *)(FString *);
+    using NativeABI = void (__thiscall *)(UObject *,FFrame *,void *);
+    using DereferenceABI = const TCHAR * (__thiscall *)(const FString *);
+    using AnsiABI = const char * (__cdecl *)(const TCHAR *);
+    (*(EmptyABI *)R6GameServiceAddresses::Core__ConstructFStringSlot)(address);
+    FFrame *frame = &Stack;
+    byte *code = *(byte **)((byte *)frame + 0xc);
+    uint opcode = *code;
+    UObject *object = *(UObject **)((byte *)frame + 8);
     *(byte **)((byte *)frame + 0xc) = code + 1;
-    natives = *(uint **)R6GameServiceAddresses::Core__GNativesSlot;
-    ((NativeABI)natives[0x42])(object,frame,0);
-  }
-  const TCHAR *wideAddress = (*(DereferenceABI *)R6GameServiceAddresses::Core__DFStringSlot)(address);
-  const char *ansiAddress = (*(AnsiABI *)R6GameServiceAddresses::Core__appToAnsiSlot)(wideAddress);
-  uint ping = ServerPing::GetPingTime(ansiAddress);
-  uint *output = *(uint **)(nativeFrame + 0xc);
-  *output = ping;
-  *(byte *)(nativeFrame - 4) = 0;
-  (*(DestroyABI *)R6GameServiceAddresses::Core__DestroyFStringSlot)(address);
-  __asm {
-    mov    ecx,DWORD PTR [ebp-0xc]
-    pop    edi
-    pop    esi
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
-    ret    0x8
+    uint *natives = *(uint **)R6GameServiceAddresses::Core__GNativesSlot;
+    cleanup.armed = true;
+    ((NativeABI)natives[opcode])(object,frame,address);
+    code = *(byte **)((byte *)frame + 0xc) + 1;
+    *(byte **)((byte *)frame + 0xc) = code;
+    if (*code == 0x42) {
+      object = *(UObject **)((byte *)frame + 8);
+      *(byte **)((byte *)frame + 0xc) = code + 1;
+      natives = *(uint **)R6GameServiceAddresses::Core__GNativesSlot;
+      ((NativeABI)natives[0x42])(object,frame,nullptr);
+    }
+    const TCHAR *wideAddress = (*(DereferenceABI *)R6GameServiceAddresses::Core__DFStringSlot)(address);
+    const char *ansiAddress = (*(AnsiABI *)R6GameServiceAddresses::Core__appToAnsiSlot)(wideAddress);
+    uint ping = ServerPing::GetPingTime(ansiAddress);
+    *(uint *)Result = ping;
+    cleanup.Destroy();
+  } catch (ushort *error) {
+    throw error;
+  } catch (...) {
+    using UnwindABI = void (__cdecl *)(const TCHAR *,...);
+    (*(UnwindABI *)R6GameServiceAddresses::Core__appUnwindfSlot)
+        ((const TCHAR *)R6GameServiceAddresses::WideTextTextFormat,
+         (const TCHAR *)R6GameServiceAddresses::WideTextUR6ServerListExecNativeGetPingTime);
+    throw;
   }
 }
 
@@ -2341,56 +2176,31 @@ const R6GameServiceNative::FuncInfo UR6ServerList_execNativeGetPingTimeOutExcept
   0x0,
 };
 
-// Advances parameter-finish/debug tokens and writes the fixed integer timeout 1000 through the current result slot.
-// R6GameService.dll @ 10005be0 : exported FFrame/result bridge; native frame retains result/link alias effects.
-__declspec(naked) void __thiscall UR6ServerList::execNativeGetPingTimeOut(FFrame &Stack,void *const Result)
+// Finish the VM parameters, dispatch optional DebugInfo and return the fixed 1000 ms ping timeout.
+// R6GameService.dll @ 10005be0 : FFrame/result bridge; typed forwarding and context rethrow preserved.
+void __thiscall UR6ServerList::execNativeGetPingTimeOut(FFrame &Stack,void *const Result)
 {
-  byte *nativeFrame;
-  __asm {
-    push   ebp
-    mov    ebp,esp
-    push   0xffffffff
-    push   R6GameServiceAddresses::UR6ServerList_execNativeGetPingTimeOutSelectExceptionInfo
-    mov    eax,fs:0x0
-    push   eax
-    mov    DWORD PTR fs:0x0,esp
-    sub    esp,0xc
-    mov    nativeFrame,ebp
-  }
-  FFrame *frame = *(FFrame **)(nativeFrame + 8);
+  FFrame *frame = &Stack;
   byte *code = *(byte **)((byte *)frame + 0xc) + 1;
-  __asm {
-    push   ebx
-    push   esi
-  }
   *(byte **)((byte *)frame + 0xc) = code;
   bool hasDebugInfo = *code == 0x42;
-  __asm {
-    push   edi
-    mov    DWORD PTR [ebp-0x10],esp
-  }
-  *(uint *)(nativeFrame - 4) = 0;
-  if (hasDebugInfo) {
-    UObject *object = *(UObject **)((byte *)frame + 8);
-    *(byte **)((byte *)frame + 0xc) = code + 1;
-    uint *natives = *(uint **)R6GameServiceAddresses::Core__GNativesSlot;
-    using DebugABI = void (__thiscall *)(UObject *,FFrame *,void *);
-    ((DebugABI)natives[0x42])(object,frame,0);
-  }
-  uint *output = *(uint **)(nativeFrame + 0xc);
-  uint predecessor = *(uint *)(nativeFrame - 0xc);
-  __asm {
-    pop    edi
-    pop    esi
-  }
-  *output = 1000;
-  __asm {
-    mov    ecx,predecessor
-    mov    DWORD PTR fs:0x0,ecx
-    pop    ebx
-    mov    esp,ebp
-    pop    ebp
-    ret    0x8
+  try {
+    if (hasDebugInfo) {
+      UObject *object = *(UObject **)((byte *)frame + 8);
+      *(byte **)((byte *)frame + 0xc) = code + 1;
+      uint *natives = *(uint **)R6GameServiceAddresses::Core__GNativesSlot;
+      using DebugABI = void (__thiscall *)(UObject *,FFrame *,void *);
+      ((DebugABI)natives[0x42])(object,frame,nullptr);
+    }
+    *(uint *)Result = 1000;
+  } catch (ushort *error) {
+    throw error;
+  } catch (...) {
+    using UnwindABI = void (__cdecl *)(const TCHAR *,...);
+    (*(UnwindABI *)R6GameServiceAddresses::Core__appUnwindfSlot)
+        ((const TCHAR *)R6GameServiceAddresses::WideTextTextFormat,
+         (const TCHAR *)R6GameServiceAddresses::WideTextUR6ServerListExecNativeGetPingTimeOut);
+    throw;
   }
 }
 
